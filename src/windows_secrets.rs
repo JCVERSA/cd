@@ -27,9 +27,7 @@ pub fn save_api_key(target: &str, secret: &mut [u8]) -> Result<(), String> {
         return Err("Enter an API key before saving.".into());
     }
     if std::str::from_utf8(secret).is_err()
-        || secret
-            .iter()
-            .any(|byte| matches!(*byte, b'\r' | b'\n' | 0))
+        || secret.iter().any(|byte| matches!(*byte, b'\r' | b'\n' | 0))
     {
         return Err("The API key contains unsupported characters.".into());
     }
@@ -55,14 +53,7 @@ pub fn save_api_key(target: &str, secret: &mut [u8]) -> Result<(), String> {
 pub fn read_api_key(target: &str) -> Result<Option<SecretBytes>, String> {
     let target = wide(target);
     let mut raw = std::ptr::null_mut::<CREDENTIALW>();
-    match unsafe {
-        CredReadW(
-            PCWSTR(target.as_ptr()),
-            CRED_TYPE_GENERIC,
-            0,
-            &mut raw,
-        )
-    } {
+    match unsafe { CredReadW(PCWSTR(target.as_ptr()), CRED_TYPE_GENERIC, 0, &mut raw) } {
         Ok(()) if raw.is_null() => Ok(None),
         Ok(()) => {
             let allocation = CredentialAllocation(raw);

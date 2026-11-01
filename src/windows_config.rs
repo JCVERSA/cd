@@ -47,7 +47,10 @@ pub fn save_provider_config(config: &ProviderConfig) -> Result<(), String> {
             None,
         );
         if status != ERROR_SUCCESS {
-            return Err(format!("Could not open SwiftSlate settings (Windows error {}).", status.0));
+            return Err(format!(
+                "Could not open SwiftSlate settings (Windows error {}).",
+                status.0
+            ));
         }
         let key = RegistryKey(key);
         write_string(key.0, ENDPOINT_VALUE, &config.endpoint)?;
@@ -83,7 +86,10 @@ fn read_string(value_name: &str) -> Result<Option<String>, String> {
             return Ok(None);
         }
         if status != ERROR_SUCCESS {
-            return Err(format!("Could not read SwiftSlate settings (Windows error {}).", status.0));
+            return Err(format!(
+                "Could not read SwiftSlate settings (Windows error {}).",
+                status.0
+            ));
         }
         if byte_count < 2 || byte_count % 2 != 0 {
             return Err("SwiftSlate settings contain an invalid string.".into());
@@ -100,9 +106,15 @@ fn read_string(value_name: &str) -> Result<Option<String>, String> {
             Some(&mut byte_count),
         );
         if status != ERROR_SUCCESS {
-            return Err(format!("Could not read SwiftSlate settings (Windows error {}).", status.0));
+            return Err(format!(
+                "Could not read SwiftSlate settings (Windows error {}).",
+                status.0
+            ));
         }
-        let length = buffer.iter().position(|unit| *unit == 0).unwrap_or(buffer.len());
+        let length = buffer
+            .iter()
+            .position(|unit| *unit == 0)
+            .unwrap_or(buffer.len());
         Ok(Some(String::from_utf16_lossy(&buffer[..length])))
     }
 }
@@ -115,7 +127,10 @@ unsafe fn write_string(key: HKEY, value_name: &str, value: &str) -> Result<(), S
     if status == ERROR_SUCCESS {
         Ok(())
     } else {
-        Err(format!("Could not save SwiftSlate settings (Windows error {}).", status.0))
+        Err(format!(
+            "Could not save SwiftSlate settings (Windows error {}).",
+            status.0
+        ))
     }
 }
 

@@ -165,7 +165,11 @@ fn parse_numeric_port(port: &str) -> Result<u16, ConfigError> {
 }
 
 fn default_port(secure: bool) -> u16 {
-    if secure { 443 } else { 80 }
+    if secure {
+        443
+    } else {
+        80
+    }
 }
 
 fn is_exact_loopback(host: &str) -> bool {

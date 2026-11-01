@@ -242,13 +242,10 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
     let module = GetModuleHandleW(None)?;
     let instance = HINSTANCE(module.0);
 
-    let initial_config = load_provider_config()
-        .ok()
-        .flatten()
-        .unwrap_or_else(|| {
-            ProviderConfig::new(DEFAULT_ENDPOINT, DEFAULT_MODEL)
-                .expect("the built-in provider configuration is valid")
-        });
+    let initial_config = load_provider_config().ok().flatten().unwrap_or_else(|| {
+        ProviderConfig::new(DEFAULT_ENDPOINT, DEFAULT_MODEL)
+            .expect("the built-in provider configuration is valid")
+    });
     let endpoint_text = wide(&initial_config.endpoint);
     let model_text = wide(&initial_config.model);
 
@@ -967,7 +964,10 @@ unsafe fn begin_provider_request(hwnd: HWND) {
         return;
     }
     if source.trim().is_empty() {
-        set_text(status_control, "Enter or capture text before requesting an improvement.");
+        set_text(
+            status_control,
+            "Enter or capture text before requesting an improvement.",
+        );
         return;
     }
     if !unsaved_key.is_empty() {
@@ -1059,7 +1059,10 @@ unsafe fn begin_provider_request(hwnd: HWND) {
         sent
     });
     if !sent {
-        set_text(status_control, "Could not queue the provider request. Nothing was sent.");
+        set_text(
+            status_control,
+            "Could not queue the provider request. Nothing was sent.",
+        );
         return;
     }
     if SetTimer(hwnd, PROVIDER_TIMER_ID, PROVIDER_TIMEOUT_MS, None) == 0 {

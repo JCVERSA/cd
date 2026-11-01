@@ -110,14 +110,18 @@ fn worker_main(
 }
 
 fn perform_request(config: &ProviderConfig, input: &str) -> Result<String, String> {
-    let endpoint = config
-        .endpoint_parts()
+    let endpoint = config.endpoint_parts().map_err(|error| error.to_string())?;
+    let target = config
+        .credential_target()
         .map_err(|error| error.to_string())?;
-    let target = config.credential_target().map_err(|error| error.to_string())?;
     let api_key = read_api_key(&target)?
         .ok_or_else(|| "No API key is saved for this provider host.".to_owned())?;
     let api_key = api_key.as_utf8()?;
-    if api_key.is_empty() || api_key.bytes().any(|byte| matches!(byte, b'\r' | b'\n' | 0)) {
+    if api_key.is_empty()
+        || api_key
+            .bytes()
+            .any(|byte| matches!(byte, b'\r' | b'\n' | 0))
+    {
         return Err("The stored API key is invalid.".into());
     }
 
@@ -188,7 +192,8 @@ unsafe fn send_winhttp(
     )
     .map_err(|error| network_error("disable redirects", error))?;
 
-    let body_length = u32::try_from(body.len()).map_err(|_| "The request is too large.".to_owned())?;
+    let body_length =
+        u32::try_from(body.len()).map_err(|_| "The request is too large.".to_owned())?;
     WinHttpSendRequest(
         request.0,
         Some(headers),
