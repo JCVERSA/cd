@@ -142,7 +142,7 @@ unsafe fn window_proc_inner(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LP
                     "The prototype UI could not be initialized.\n\n{error}"
                 ));
                 MessageBoxW(
-                    Some(hwnd),
+                    hwnd,
                     PCWSTR(text.as_ptr()),
                     WINDOW_TITLE,
                     MB_OK | MB_ICONERROR,
@@ -346,7 +346,7 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
     }
 
     let hotkey_registered =
-        RegisterHotKey(Some(hwnd), HOTKEY_ID, HOTKEY_MODIFIERS, VK_SPACE.0 as u32).is_ok();
+        RegisterHotKey(hwnd, HOTKEY_ID, HOTKEY_MODIFIERS, VK_SPACE.0 as u32).is_ok();
 
     let raw_input = RAWINPUTDEVICE {
         usUsagePage: 0x01,
@@ -388,9 +388,9 @@ unsafe fn create_control(
     instance: HINSTANCE,
 ) -> windows::core::Result<HWND> {
     let menu = if id == 0 {
-        None
+        HMENU::default()
     } else {
-        Some(HMENU(id as *mut c_void))
+        HMENU(id as *mut c_void)
     };
     CreateWindowExW(
         extended_style,
@@ -401,7 +401,7 @@ unsafe fn create_control(
         y,
         width,
         height,
-        Some(parent),
+        parent,
         menu,
         instance,
         None,

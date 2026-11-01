@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo test --all-targets 2>&1 | tee cargo-test.log
+          cargo test --locked --all-targets 2>&1 | tee cargo-test.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             log=$(tail -n 200 cargo-test.log)
@@ -50,30 +50,10 @@ jobs:
           exit "$status"
 
       - name: Run Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
-      - name: Upload generated dependency lock
-        uses: actions/upload-artifact@v7
-        with:
-          name: cargo-lock
-          path: Cargo.lock
-          if-no-files-found: error
-          retention-days: 7
-
-      - name: Apply formatting on the session branch
-        if: github.event_name == 'push'
-        shell: bash
-        run: |
-          cargo fmt --all
-          git add src Cargo.lock
-          if git diff --cached --quiet; then
-            echo 'Formatting and dependency lock are current.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'style: apply rustfmt and lock dependencies'
-          git push origin HEAD:arena/33e46336-cd
+      - name: Check formatting
+        run: cargo fmt --all --check
 
   windows:
     name: Prototype / Windows x64
@@ -91,7 +71,7 @@ jobs:
       - name: Run tests
         shell: pwsh
         run: |
-          cargo test --all-targets 2>&1 | Tee-Object -FilePath cargo-test.log
+          cargo test --locked --all-targets 2>&1 | Tee-Object -FilePath cargo-test.log
           $status = $LASTEXITCODE
           if ($status -ne 0) {
             $log = (Get-Content cargo-test.log -Tail 250) -join "`n"
@@ -107,10 +87,10 @@ jobs:
           exit $status
 
       - name: Run Clippy
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Build optimized prototype
-        run: cargo build --release
+        run: cargo build --locked --release
 
       - name: Package artifact and record measurements
         shell: pwsh
