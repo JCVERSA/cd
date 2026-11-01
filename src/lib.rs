@@ -6,6 +6,7 @@
 //! command engine and safety invariants can be tested on any CI runner.
 
 pub mod preview;
+pub mod provider;
 pub mod replacement;
 pub mod selection;
 pub mod trigger;

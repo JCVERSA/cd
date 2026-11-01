@@ -3,6 +3,12 @@
 #[cfg(windows)]
 mod windows_app;
 #[cfg(windows)]
+mod windows_config;
+#[cfg(windows)]
+mod windows_provider;
+#[cfg(windows)]
+mod windows_secrets;
+#[cfg(windows)]
 mod windows_selection;
 
 #[cfg(windows)]
