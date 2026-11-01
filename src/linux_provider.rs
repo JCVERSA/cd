@@ -177,10 +177,7 @@ mod tests {
             .unwrap()
             .endpoint_parts()
             .unwrap();
-        assert_eq!(
-            request_url(&local),
-            "http://127.0.0.1:11434/v1/chat"
-        );
+        assert_eq!(request_url(&local), "http://127.0.0.1:11434/v1/chat");
 
         let remote = ProviderConfig::new("https://example.com/v1/chat", "remote")
             .unwrap()

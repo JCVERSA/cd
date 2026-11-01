@@ -394,11 +394,7 @@ mod tests {
     #[test]
     fn winhttp_posts_and_reads_a_bounded_completion() {
         let response = br#"{"choices":[{"message":{"content":"Revised."}}]}"#.to_vec();
-        let server = spawn_server(
-            "200 OK",
-            &[("Content-Type", "application/json")],
-            response,
-        );
+        let server = spawn_server("200 OK", &[("Content-Type", "application/json")], response);
         let (status, body) =
             unsafe { send_winhttp(&endpoint(server.port), &headers(), br#"{"request":true}"#) }
                 .unwrap();
@@ -426,11 +422,7 @@ mod tests {
 
     #[test]
     fn winhttp_rejects_oversized_response_bodies() {
-        let server = spawn_server(
-            "200 OK",
-            &[],
-            vec![b'x'; MAX_PROVIDER_RESPONSE_BYTES + 1],
-        );
+        let server = spawn_server("200 OK", &[], vec![b'x'; MAX_PROVIDER_RESPONSE_BYTES + 1]);
         let result = unsafe { send_winhttp(&endpoint(server.port), &headers(), b"{}") };
         assert_eq!(
             result.unwrap_err(),

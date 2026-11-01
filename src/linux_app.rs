@@ -154,7 +154,8 @@ fn doctor(arguments: &[String]) -> Result<(), String> {
 
 fn read_and_validate_input() -> Result<String, String> {
     let bytes = read_stdin(MAX_INPUT_BYTES, "input text")?;
-    let text = String::from_utf8(bytes).map_err(|_| "Input text must be valid UTF-8.".to_owned())?;
+    let text =
+        String::from_utf8(bytes).map_err(|_| "Input text must be valid UTF-8.".to_owned())?;
     match combine_selection_ranges([text]) {
         Ok(Some(text)) => Ok(text),
         Ok(None) => Err("Input text is empty.".into()),
