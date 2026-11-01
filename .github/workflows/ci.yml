@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -52,20 +52,8 @@ jobs:
       - name: Run Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
 
-      - name: Apply formatting on the session branch
-        if: github.event_name == 'push'
-        shell: bash
-        run: |
-          cargo fmt --all
-          git add src
-          if git diff --cached --quiet; then
-            echo 'Formatting is current.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'style: apply rustfmt to selection capture phase'
-          git push origin HEAD:arena/33e46336-cd
+      - name: Check formatting
+        run: cargo fmt --all --check
 
   windows:
     name: Prototype / Windows x64

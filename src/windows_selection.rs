@@ -186,7 +186,7 @@ unsafe fn capture_selection(
             element.GetCurrentPatternAs(UIA_TextPatternId);
         if let Ok(pattern) = pattern {
             let outcome = capture_ranges(&pattern);
-            return verify_target(automation, &focused, source_window, outcome);
+            return verify_target(automation, &focused, &element, source_window, outcome);
         }
 
         candidate = walker
@@ -239,11 +239,15 @@ unsafe fn capture_ranges(pattern: &IUIAutomationTextPattern) -> CaptureOutcome {
 unsafe fn verify_target(
     automation: &IUIAutomation,
     original_focus: &IUIAutomationElement,
+    pattern_element: &IUIAutomationElement,
     source_window: HWND,
     outcome: CaptureOutcome,
 ) -> CaptureOutcome {
     if GetForegroundWindow() != source_window {
         return CaptureOutcome::TargetChanged;
+    }
+    if is_protected(pattern_element) {
+        return CaptureOutcome::Protected;
     }
     let current_focus = match automation.GetFocusedElement() {
         Ok(element) => element,
