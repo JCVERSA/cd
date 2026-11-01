@@ -30,7 +30,7 @@ pub fn load_provider_config() -> Result<Option<ProviderConfig>, String> {
     }
 
     let mut bytes = Vec::new();
-    file.by_ref()
+    Read::by_ref(&mut file)
         .take(MAX_CONFIG_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| format!("Could not read {}: {error}", path.display()))?;
