@@ -31,20 +31,20 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::Input::{
     GetCurrentInputMessageSource, GetRawInputData, RegisterRawInputDevices, HRAWINPUT,
-    INPUT_MESSAGE_SOURCE, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RIDEV_REMOVE,
-    RID_INPUT, RIM_TYPEKEYBOARD, IMO_INJECTED,
+    IMO_INJECTED, INPUT_MESSAGE_SOURCE, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK,
+    RIDEV_REMOVE, RID_INPUT, RIM_TYPEKEYBOARD,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow,
     GetMessageW, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, KillTimer,
     LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW, SendMessageW, SetForegroundWindow,
-    SetTimer, SetWindowTextW,
-    ShowWindow, TranslateMessage, BS_DEFPUSHBUTTON, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE,
-    ES_PASSWORD, ES_READONLY, ES_WANTRETURN, HMENU, IDC_ARROW, IDYES, MB_DEFBUTTON2, MB_ICONERROR,
-    MB_ICONWARNING, MB_OK, MB_YESNO, MSG, SW_HIDE, SW_RESTORE, SW_SHOWNORMAL, WINDOW_EX_STYLE,
-    WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_COPY, WM_CREATE, WM_DESTROY, WM_HOTKEY, WM_INPUT,
-    WM_PASTE, WM_SETFONT, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE,
-    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
+    SetTimer, SetWindowTextW, ShowWindow, TranslateMessage, BS_DEFPUSHBUTTON, ES_AUTOHSCROLL,
+    ES_AUTOVSCROLL, ES_MULTILINE, ES_PASSWORD, ES_READONLY, ES_WANTRETURN, HMENU, IDC_ARROW, IDYES,
+    MB_DEFBUTTON2, MB_ICONERROR, MB_ICONWARNING, MB_OK, MB_YESNO, MSG, SW_HIDE, SW_RESTORE,
+    SW_SHOWNORMAL, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_COPY, WM_CREATE,
+    WM_DESTROY, WM_HOTKEY, WM_INPUT, WM_PASTE, WM_SETFONT, WM_TIMER, WNDCLASSW, WS_BORDER,
+    WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
+    WS_VISIBLE, WS_VSCROLL,
 };
 
 const CLASS_NAME: PCWSTR = w!("SwiftSlateWindow");
@@ -885,11 +885,7 @@ unsafe fn finish_selection_capture(hwnd: HWND) {
     }
 }
 
-unsafe fn finish_inline_capture(
-    hwnd: HWND,
-    command_index: usize,
-    outcome: CaptureOutcome,
-) {
+unsafe fn finish_inline_capture(hwnd: HWND, command_index: usize, outcome: CaptureOutcome) {
     match outcome {
         CaptureOutcome::Selected(text) => {
             UI.with(|slot| {
@@ -1253,14 +1249,11 @@ unsafe fn begin_provider_request(hwnd: HWND) {
         };
         state.latest_provider_id = state.latest_provider_id.wrapping_add(1).max(1);
         let request_id = state.latest_provider_id;
-        let sent = state
-            .provider_worker
-            .as_ref()
-            .is_some_and(|worker| {
-                worker
-                    .request(request_id, config, instruction, source.clone())
-                    .is_ok()
-            });
+        let sent = state.provider_worker.as_ref().is_some_and(|worker| {
+            worker
+                .request(request_id, config, instruction, source.clone())
+                .is_ok()
+        });
         if sent {
             state.provider_busy = true;
             state.provider_response_expected = true;
@@ -1472,9 +1465,7 @@ unsafe fn handle_raw_input(hwnd: HWND, lparam: LPARAM) {
             return None;
         }
 
-        if virtual_key == VK_CAPITAL.0 as usize
-            && state.keyboard_state[virtual_key] & 0x80 == 0
-        {
+        if virtual_key == VK_CAPITAL.0 as usize && state.keyboard_state[virtual_key] & 0x80 == 0 {
             state.keyboard_state[virtual_key] ^= 0x01;
         }
         state.keyboard_state[virtual_key] |= 0x80;
@@ -1545,9 +1536,7 @@ fn inline_command_index(id: &str) -> Option<usize> {
         .position(|candidate| candidate.id == command.id)
 }
 
-unsafe fn read_raw_keyboard(
-    lparam: LPARAM,
-) -> Option<windows::Win32::UI::Input::RAWKEYBOARD> {
+unsafe fn read_raw_keyboard(lparam: LPARAM) -> Option<windows::Win32::UI::Input::RAWKEYBOARD> {
     let mut raw = RAWINPUT::default();
     let mut size = size_of::<RAWINPUT>() as u32;
     let read = GetRawInputData(

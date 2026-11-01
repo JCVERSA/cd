@@ -267,14 +267,14 @@ unsafe fn capture_inline(
             element.GetCurrentPatternAs(UIA_TextPatternId);
         if let Ok(pattern) = text_pattern {
             let outcome = match pattern.DocumentRange() {
-                Ok(range) => match range.GetText((MAX_SELECTION_UTF16 + trigger.len() + 1) as i32)
-                {
-                    Ok(text) => inline_text_outcome(
-                        String::from_utf16_lossy(text.as_wide()),
-                        trigger,
-                    ),
-                    Err(_) => CaptureOutcome::Unavailable,
-                },
+                Ok(range) => {
+                    match range.GetText((MAX_SELECTION_UTF16 + trigger.len() + 1) as i32) {
+                        Ok(text) => {
+                            inline_text_outcome(String::from_utf16_lossy(text.as_wide()), trigger)
+                        }
+                        Err(_) => CaptureOutcome::Unavailable,
+                    }
+                }
                 Err(_) => CaptureOutcome::Unavailable,
             };
             return verify_target(automation, &focused, &element, source_window, outcome);

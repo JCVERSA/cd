@@ -214,11 +214,7 @@ pub fn build_chat_request(config: &ProviderConfig, input: &str) -> Vec<u8> {
     build_command_request(config, DEFAULT_INSTRUCTION, input)
 }
 
-pub fn build_command_request(
-    config: &ProviderConfig,
-    instruction: &str,
-    input: &str,
-) -> Vec<u8> {
+pub fn build_command_request(config: &ProviderConfig, instruction: &str, input: &str) -> Vec<u8> {
     let instruction = if instruction.trim().is_empty()
         || instruction.len() > MAX_INSTRUCTION_LENGTH
         || instruction.chars().any(char::is_control)

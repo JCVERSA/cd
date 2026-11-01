@@ -95,6 +95,9 @@ mod tests {
             preset_for_endpoint("https://API.OPENAI.COM/v1/chat/completions"),
             0
         );
-        assert_eq!(preset_for_endpoint("https://example.com/v1"), PRESETS.len() - 1);
+        assert_eq!(
+            preset_for_endpoint("https://example.com/v1"),
+            PRESETS.len() - 1
+        );
     }
 }
