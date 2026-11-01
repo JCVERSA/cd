@@ -109,7 +109,7 @@ fn run() -> windows::core::Result<()> {
             None,
         )?;
 
-        ShowWindow(hwnd, SW_SHOWNORMAL);
+        let _ = ShowWindow(hwnd, SW_SHOWNORMAL);
         let _ = SetForegroundWindow(hwnd);
 
         let mut message = MSG::default();
@@ -171,7 +171,7 @@ unsafe fn window_proc_inner(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LP
                 ID_IMPROVE => run_local_preview(),
                 ID_COPY => copy_result(),
                 ID_HIDE => {
-                    ShowWindow(hwnd, SW_HIDE);
+                    let _ = ShowWindow(hwnd, SW_HIDE);
                 }
                 _ => {}
             }
@@ -431,7 +431,7 @@ unsafe fn show_palette(hwnd: HWND) {
             )
         };
         set_text(state.status, &status);
-        ShowWindow(hwnd, SW_RESTORE);
+        let _ = ShowWindow(hwnd, SW_RESTORE);
         let _ = SetForegroundWindow(hwnd);
         let _ = SetFocus(state.original);
     });
