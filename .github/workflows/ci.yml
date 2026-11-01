@@ -87,7 +87,16 @@ jobs:
           exit $status
 
       - name: Run Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
+        shell: pwsh
+        run: |
+          cargo clippy --locked --all-targets -- -D warnings 2>&1 | Tee-Object -FilePath cargo-clippy.log
+          $status = $LASTEXITCODE
+          if ($status -ne 0) {
+            $log = (Get-Content cargo-clippy.log -Tail 250) -join "`n"
+            $escaped = $log.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Windows Clippy failed::$escaped"
+          }
+          exit $status
 
       - name: Build optimized prototype
         run: cargo build --locked --release
