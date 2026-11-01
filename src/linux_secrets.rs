@@ -65,6 +65,10 @@ pub fn read_api_key(target: &str) -> Result<Option<SecretBytes>, String> {
             output.pop();
         }
     }
+    if output.len() > MAX_SECRET_BYTES {
+        output.fill(0);
+        return Err("The stored API key exceeds SwiftSlate's limit.".into());
+    }
     if output.is_empty() {
         Ok(None)
     } else {

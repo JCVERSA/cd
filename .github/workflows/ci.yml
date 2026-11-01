@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,7 +16,7 @@ env:
 
 jobs:
   core:
-    name: Core / Linux
+    name: Linux application / x64
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -27,19 +27,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-
-      - name: Refresh generated Rust files
-        shell: bash
-        run: |
-          cargo generate-lockfile
-          cargo fmt --all
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Cargo.lock src Cargo.toml
-            git commit -m "chore: refresh 1.0 Rust files"
-            git push origin HEAD:arena/33e46336-cd
-          fi
 
       - name: Run tests
         shell: bash
@@ -112,7 +99,7 @@ jobs:
           retention-days: 14
 
   windows:
-    name: Prototype / Windows x64
+    name: Windows application / x64
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -154,10 +141,10 @@ jobs:
           }
           exit $status
 
-      - name: Build optimized prototype
+      - name: Build optimized Windows application
         run: cargo build --locked --release
 
-      - name: Package artifact and record measurements
+      - name: Package Windows application and record measurements
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -172,7 +159,7 @@ jobs:
           $zip = Get-Item 'artifacts/swiftslate-windows-x64.zip'
           $hash = (Get-FileHash "$package/swiftslate.exe" -Algorithm SHA256).Hash
           @"
-          ## Windows prototype measurements
+          ## Windows application measurements
 
           | Metric | Value |
           |---|---:|
@@ -187,9 +174,9 @@ jobs:
             sha256 = $hash
           } | ConvertTo-Json | Set-Content 'artifacts/measurements.json'
 
-          Write-Output "::notice title=Windows prototype measurements::EXE $($exe.Length) bytes; distribution ZIP $($zip.Length) bytes; SHA-256 $hash"
+          Write-Output "::notice title=Windows application measurements::EXE $($exe.Length) bytes; distribution ZIP $($zip.Length) bytes; SHA-256 $hash"
 
-      - name: Upload Windows prototype
+      - name: Upload Windows application
         uses: actions/upload-artifact@v7
         with:
           name: swiftslate-windows-x64
