@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -27,6 +27,19 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: Refresh generated Rust files
+        shell: bash
+        run: |
+          cargo generate-lockfile
+          cargo fmt --all
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock src Cargo.toml
+            git commit -m "chore: refresh 1.0 Rust files"
+            git push origin HEAD:arena/33e46336-cd
+          fi
 
       - name: Run tests
         shell: bash
@@ -54,6 +67,49 @@ jobs:
 
       - name: Check formatting
         run: cargo fmt --all --check
+
+      - name: Build optimized Linux application
+        run: cargo build --locked --release
+
+      - name: Package Linux application and record measurements
+        shell: bash
+        run: |
+          set -euo pipefail
+          package='artifacts/swiftslate-linux-x64'
+          mkdir -p "$package"
+          cp target/release/swiftslate "$package/swiftslate"
+          cp README.md LICENSE "$package/"
+          tar -C artifacts -czf artifacts/swiftslate-linux-x64.tar.gz swiftslate-linux-x64
+          binary_bytes=$(stat -c %s "$package/swiftslate")
+          archive_bytes=$(stat -c %s artifacts/swiftslate-linux-x64.tar.gz)
+          hash=$(sha256sum "$package/swiftslate" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
+          cat > artifacts/linux-measurements.json <<EOF
+          {
+            "executable_bytes": $binary_bytes,
+            "archive_bytes": $archive_bytes,
+            "sha256": "$hash"
+          }
+          EOF
+          {
+            echo '## Linux application measurements'
+            echo
+            echo '| Metric | Value |'
+            echo '|---|---:|'
+            echo "| Release binary | $binary_bytes bytes |"
+            echo "| Distribution archive | $archive_bytes bytes |"
+            echo "| SHA-256 | \`$hash\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::notice title=Linux application measurements::Binary $binary_bytes bytes; distribution archive $archive_bytes bytes; SHA-256 $hash"
+
+      - name: Upload Linux application
+        uses: actions/upload-artifact@v7
+        with:
+          name: swiftslate-linux-x64
+          path: |
+            artifacts/swiftslate-linux-x64.tar.gz
+            artifacts/linux-measurements.json
+          if-no-files-found: error
+          retention-days: 14
 
   windows:
     name: Prototype / Windows x64

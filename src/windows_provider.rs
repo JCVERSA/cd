@@ -152,7 +152,7 @@ unsafe fn send_winhttp(
     body: &[u8],
 ) -> Result<(u32, Vec<u8>), String> {
     let started = Instant::now();
-    let agent = wide("SwiftSlate/0.3");
+    let agent = wide("SwiftSlate/1.0");
     let access_type = if endpoint.secure {
         WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY
     } else {
@@ -318,4 +318,124 @@ impl Drop for SensitiveWide {
 
 fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+
+    struct TestServer {
+        port: u16,
+        request_rx: mpsc::Receiver<Vec<u8>>,
+        handle: std::thread::JoinHandle<()>,
+    }
+
+    fn spawn_server(status: &str, extra_headers: &[(&str, &str)], body: Vec<u8>) -> TestServer {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let status = status.to_owned();
+        let extra_headers: Vec<(String, String)> = extra_headers
+            .iter()
+            .map(|(name, value)| ((*name).to_owned(), (*value).to_owned()))
+            .collect();
+        let (request_tx, request_rx) = mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(5)))
+                .unwrap();
+            let mut request = Vec::new();
+            let mut chunk = [0u8; 1024];
+            while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+                let read = stream.read(&mut chunk).unwrap();
+                if read == 0 {
+                    break;
+                }
+                request.extend_from_slice(&chunk[..read]);
+            }
+            let _ = request_tx.send(request);
+
+            let mut response = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n",
+                body.len()
+            );
+            for (name, value) in extra_headers {
+                response.push_str(&format!("{name}: {value}\r\n"));
+            }
+            response.push_str("\r\n");
+            let _ = stream.write_all(response.as_bytes());
+            let _ = stream.write_all(&body);
+        });
+        TestServer {
+            port,
+            request_rx,
+            handle,
+        }
+    }
+
+    fn endpoint(port: u16) -> EndpointParts {
+        EndpointParts {
+            secure: false,
+            host: "127.0.0.1".into(),
+            port,
+            path_and_query: "/v1/chat/completions".into(),
+        }
+    }
+
+    fn headers() -> Vec<u16> {
+        "Content-Type: application/json\r\nAuthorization: Bearer test-key\r\n"
+            .encode_utf16()
+            .collect()
+    }
+
+    #[test]
+    fn winhttp_posts_and_reads_a_bounded_completion() {
+        let response = br#"{"choices":[{"message":{"content":"Revised."}}]}"#.to_vec();
+        let server = spawn_server(
+            "200 OK",
+            &[("Content-Type", "application/json")],
+            response,
+        );
+        let (status, body) =
+            unsafe { send_winhttp(&endpoint(server.port), &headers(), br#"{"request":true}"#) }
+                .unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(parse_chat_response(status, &body), Ok("Revised.".into()));
+        let request = server.request_rx.recv().unwrap();
+        let request = String::from_utf8_lossy(&request);
+        assert!(request.starts_with("POST /v1/chat/completions HTTP/1.1\r\n"));
+        assert!(request.contains("Authorization: Bearer test-key\r\n"));
+        server.handle.join().unwrap();
+    }
+
+    #[test]
+    fn winhttp_does_not_follow_redirects() {
+        let server = spawn_server(
+            "302 Found",
+            &[("Location", "http://127.0.0.1:1/should-not-open")],
+            b"{}".to_vec(),
+        );
+        let (status, _) =
+            unsafe { send_winhttp(&endpoint(server.port), &headers(), b"{}") }.unwrap();
+        assert_eq!(status, 302);
+        server.handle.join().unwrap();
+    }
+
+    #[test]
+    fn winhttp_rejects_oversized_response_bodies() {
+        let server = spawn_server(
+            "200 OK",
+            &[],
+            vec![b'x'; MAX_PROVIDER_RESPONSE_BYTES + 1],
+        );
+        let result = unsafe { send_winhttp(&endpoint(server.port), &headers(), b"{}") };
+        assert_eq!(
+            result.unwrap_err(),
+            "The provider response exceeded the download limit."
+        );
+        server.handle.join().unwrap();
+    }
 }

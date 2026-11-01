@@ -1,141 +1,144 @@
-# SwiftSlate architecture
+# SwiftSlate 1.0 architecture
 
-## Goals
+## Product invariants
 
-1. Remain idle with effectively zero CPU consumption.
-2. Keep the Windows download, installed footprint, startup time, and UI overhead small.
-3. Never persist typed text, selections, prompts, or model output by default.
-4. Reject protected fields before reading or transforming text.
-5. Keep Windows and future Linux integration behind platform boundaries.
-6. Keep blocking accessibility and network work away from the window thread.
-7. Show every provider result for explicit review rather than replacing source text.
+1. Idle work is event-driven; there is no polling loop.
+2. Typed text, selections, prompts, and model output are not persisted.
+3. Protected or ambiguous capture fails closed where the platform exposes protection metadata.
+4. Capture never triggers a network request by itself.
+5. Provider access requires explicit endpoint/model consent.
+6. Accessibility and network blocking never occur on the Windows window thread.
+7. Provider output is review-only; SwiftSlate does not synthesize replacement input.
+8. Remote endpoints use HTTPS, redirects are disabled, and all inputs and responses are bounded.
 
-## Current modules
+## Source layout
 
 ```text
 src/
-├── lib.rs                 portable, safe Rust module boundary
-├── trigger.rs             bounded suffix detector
-├── replacement.rs         stale-result replacement guards
-├── selection.rs           accessibility selection limits and assembly
-├── preview.rs             deterministic offline transform
-├── provider.rs            endpoint policy and OpenAI-compatible JSON
-├── main.rs                platform entry point
-├── windows_app.rs         native Win32 shell, settings, consent, review
-├── windows_selection.rs   dedicated UI Automation capture worker
-├── windows_provider.rs    dedicated bounded WinHTTP worker
-├── windows_config.rs      HKCU nonsecret provider settings
-└── windows_secrets.rs     Windows Credential Manager API-key adapter
+├── lib.rs                  portable safe-Rust boundary
+├── trigger.rs              bounded suffix detector
+├── replacement.rs          stale-result guard model
+├── selection.rs            shared capture limits and assembly
+├── preview.rs              deterministic offline transform
+├── provider.rs             endpoint policy and OpenAI-compatible JSON
+├── main.rs                 target entry point
+├── windows_app.rs          native settings, consent, review, and copy UI
+├── windows_selection.rs    dedicated MTA UI Automation worker
+├── windows_provider.rs     dedicated bounded WinHTTP worker
+├── windows_config.rs       HKCU nonsecret settings
+├── windows_secrets.rs      Windows Credential Manager adapter
+├── linux_app.rs            consented CLI and desktop integration commands
+├── linux_selection.rs      X11/Wayland primary-selection adapters
+├── linux_provider.rs       bounded native-TLS HTTP transport
+├── linux_config.rs         XDG nonsecret settings
+└── linux_secrets.rs        Secret Service adapter through secret-tool
 ```
 
-The portable library forbids unsafe Rust. Unsafe operating-system calls stay in Windows adapter modules. No browser engine, GUI framework, async runtime, or general HTTP client is included.
+The portable library forbids unsafe Rust. Unsafe calls are confined to direct Windows adapters. Linux uses safe Rust plus narrowly scoped standard desktop tools for Secret Service and primary-selection interoperability.
 
-## Runtime boundaries
+## Windows runtime
 
 ```text
-┌───────────────────────────────────────────────────────────┐
-│ Native Win32 window thread                                │
-│ palette · provider settings · consent · review · copy     │
-├───────────────────────────────────────────────────────────┤
-│ Dedicated workers                                         │
-│ MTA UI Automation capture │ synchronous bounded WinHTTP   │
-├───────────────────────────────────────────────────────────┤
-│ Portable safe core                                        │
-│ trigger · selection bounds · endpoint policy · JSON       │
-├──────────────────────────┬────────────────────────────────┤
-│ Windows adapters         │ Future Linux adapters          │
-│ Raw Input / UIA          │ X11 / Wayland capability tiers │
-│ HKCU / Credential Mgr    │ config / Secret Service        │
-│ WinHTTP                  │ minimal HTTP adapter            │
-└──────────────────────────┴────────────────────────────────┘
+Global hotkey
+  → preserve foreground window
+  → MTA UI Automation worker
+  → password/focus/range validation
+  → native Original text review
+  → explicit Improve with AI
+  → endpoint/model session consent
+  → WinHTTP worker + Credential Manager key
+  → bounded OpenAI-compatible response parsing
+  → exact source-text revalidation
+  → read-only result
+  → explicit Copy result
 ```
 
-Worker results return through channels and private `WM_APP` messages. The window never waits synchronously for a UI Automation provider or HTTP server.
-
-## Windows input and selection
-
-- `RegisterHotKey` handles the global `Ctrl+Alt+Space` command.
-- Raw Input with `RIDEV_INPUTSINK` proves background input visibility without a low-level hook; the shell counts key-down events but never stores key content.
-- The portable inline detector stores no more characters than the longest configured trigger.
-- SwiftSlate-generated input is tagged and excluded by the portable detector design.
-
-Selection capture runs in a multithreaded COM apartment:
+### Capture worker
 
 1. Preserve the foreground target before opening SwiftSlate.
 2. Query the focused UI Automation element.
 3. Fail closed if `IsPassword` is true or unavailable.
-4. Probe the focused element and a bounded number of ancestors for `TextPattern`.
-5. Limit captures to 8 ranges and 32,768 UTF-16 code units.
-6. Recheck foreground window, focused-element identity, and password status.
-7. Deliver text only if all checks still pass.
+4. Probe the focused element and at most eight ancestors for `TextPattern`.
+5. Accept at most eight ranges and 32,768 UTF-16 code units.
+6. Recheck foreground window, focus identity, and password status.
+7. Deliver text only if every check still passes.
 
-The shell stops waiting after 1.5 seconds and ignores late capture results. Unsupported controls may load the existing clipboard as a clearly labelled fallback; protected controls never do.
+The UI stops waiting after 1.5 seconds and ignores late results. An unsupported non-protected control may load the existing clipboard as a labelled fallback. Protected controls never do.
 
-## Provider request path
+### Provider worker
 
-Provider settings consist of an endpoint and model. `provider.rs` validates and parses the endpoint without a heavyweight URL or HTTP dependency:
+- Reads the key for the endpoint's canonical host/port from Credential Manager.
+- Builds request JSON with `serde_json` rather than string concatenation.
+- Uses WinHTTP with redirects disabled.
+- Uses 5-second resolution, 8-second connect, 10-second send/receive, and a 45-second total worker deadline.
+- Limits headers to 32 KiB and response bodies to 256 KiB.
+- Returns through a channel and private `WM_APP` notification.
+- Keeps the worker marked busy after a UI timeout until its current bounded operation returns, preventing an unbounded queue.
 
-- remote endpoints require `https://`;
-- `http://` is limited to exact `localhost`, `127.0.0.1`, or `[::1]` hosts;
-- fragments, embedded credentials, whitespace, malformed ports, and malformed authorities are rejected;
-- the credential target is canonicalized to host and port.
+Windows loopback integration tests exercise POST behavior, redirect refusal, response parsing, and oversized-body rejection through real local sockets.
 
-The request path is:
+## Linux runtime
 
-```text
-Improve with AI
-  → validate endpoint/model and require a saved host-scoped key
-  → request session consent for this exact endpoint/model
-  → copy current Original text into a worker command
-  → retrieve the key from Credential Manager on the worker
-  → build OpenAI-compatible JSON in safe Rust
-  → POST through WinHTTP with redirects disabled
-  → enforce finite DNS/connect/send/receive and size limits
-  → parse and bound the provider response
-  → return through a channel and WM_APP notification
-  → compare current Original text with the submitted source
-  → show an unchanged-source result for review
-```
-
-WinHTTP uses 5-second resolution, 8-second connect, and 10-second send/receive timeouts plus a 45-second worker deadline checked between blocking calls. It has a 32 KiB response-header limit and a 256 KiB response-body limit. Parsed model output is capped at 32,768 UTF-16 code units. The shell stops accepting a result after 45 seconds; a late result is discarded. A timed-out worker remains marked busy until the current blocking call returns, preventing an unbounded request queue.
-
-Redirects are disabled rather than followed so a bearer credential cannot be forwarded to another location. Request text, response text, and API keys are never logged.
-
-## Settings and secrets
-
-- Endpoint and model are nonsecret and stored under `HKCU\Software\SwiftSlate`.
-- API keys are Generic Credentials in Windows Credential Manager.
-- Credential names are scoped to canonical host and port, not endpoint path or model.
-- Saving a blank API-key field preserves an existing key; **Remove key** explicitly deletes it.
-- The API-key edit uses the password style and is cleared after a successful save.
-- Consent is held only in memory and is tied to the exact endpoint/model string for the session.
-
-## Review and future replacement
-
-The current application does not replace text. It displays provider output in a read-only result control and requires **Copy result**.
-
-A future replacement phase must still revalidate:
+Linux is a composable CLI because secure desktop capabilities differ fundamentally by display server and compositor.
 
 ```text
-review acceptance
-  → foreground process and window
-  → focused control identity
-  → selected/source text
-  → target integrity level
-  → released physical modifiers
-  → semantically safe ValuePattern or guarded clipboard + SendInput
+stdin or explicit capture-selection command
+  → shared 32,768 UTF-16-unit limit
+  → mandatory --consent for a sending invocation
+  → XDG endpoint/model config
+  → host-scoped key lookup through Secret Service
+  → bounded native-TLS HTTP request
+  → sanitized OpenAI-compatible response
+  → stdout for review
 ```
 
-Any mismatch must cancel replacement while preserving the reviewed output for manual copy.
+### Capability tiers
+
+| Environment | Input capability |
+|---|---|
+| Any Linux shell | Explicit UTF-8 stdin |
+| X11 | PRIMARY selection through `xclip` or `xsel` |
+| Wayland with primary-selection support | `wl-paste --primary` |
+| Restricted Wayland compositor | Stdin only; SwiftSlate does not bypass policy |
+
+Desktop-wide shortcuts are configured in the desktop environment and invoke SwiftSlate commands. Selection capture is a separate, non-networking command. `improve-selection` requires the explicit `--consent` flag and prints output instead of injecting it.
+
+### Linux storage and transport
+
+- Endpoint/model: `$XDG_CONFIG_HOME/swiftslate/provider.json` or `~/.config/swiftslate/provider.json`, directory mode `0700`, file mode `0600`, atomic replacement.
+- API key: Secret Service via `secret-tool`; secret bytes travel through pipes and never argv, environment, or config.
+- HTTPS: `ureq` with native TLS and platform roots.
+- Redirects: zero allowed.
+- Time budget: 45 seconds globally, with 10-second read/write bounds.
+- Loopback HTTP: proxies disabled and `localhost` transported as `127.0.0.1`.
+
+Linux loopback integration tests exercise request headers, completion parsing, and redirect refusal through real local sockets.
+
+## Shared endpoint policy
+
+`provider.rs` rejects:
+
+- schemes other than HTTP/HTTPS;
+- remote plaintext HTTP;
+- HTTP hosts other than exact loopback addresses;
+- fragments or embedded credentials;
+- malformed IPv6 brackets, ports, authorities, whitespace, and controls;
+- overlong endpoints or model identifiers.
+
+Credential targets are canonical host/port identities, independent of endpoint path and model. Consent includes the exact configured endpoint and model.
+
+## Data lifetime
+
+SwiftSlate has no text database, request history, analytics, telemetry, or content logs. Sensitive request, response, key, and authorization buffers are overwritten when practical before release. Operating-system credential services remain the only persistent secret stores.
+
+## Why replacement remains manual
+
+Reliable automatic replacement requires platform-specific proof of unchanged foreground process, target identity, source range, integrity level, and physical modifier state. Wayland intentionally prevents universal injection. SwiftSlate therefore treats explicit review and copy/stdout as the final safe product behavior, not an unfinished fallback.
 
 ## Dependency policy
 
-- Prefer the standard library and operating-system APIs.
-- Every runtime dependency requires size, security, maintenance, and licensing justification.
-- `serde_json` is used to avoid unsafe or incorrect hand-built JSON.
-- `windows` is target-specific and provides generated Win32 bindings.
-- No browser engine, cross-platform GUI toolkit, async runtime, database, or scripting runtime is part of the Windows prototype.
-
-## Linux follow-up
-
-Linux work begins after Windows provider behavior is validated. It must define explicit X11 and Wayland capability tiers, use Secret Service for keys, retain endpoint/consent policy in the portable core, and preserve review-before-copy unless safe replacement can be proven per desktop environment.
+- Standard library and operating-system APIs are preferred.
+- `serde_json` prevents incorrect hand-built JSON.
+- Windows uses only Microsoft's target-specific `windows` bindings.
+- Linux uses `ureq` with native TLS; no async runtime or GUI framework is included.
+- There is no browser engine, database, scripting runtime, or telemetry SDK.
