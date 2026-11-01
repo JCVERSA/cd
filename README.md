@@ -1,125 +1,47 @@
 # SwiftSlate
 
-SwiftSlate 1.2 is a lightweight, system-wide AI writing assistant for Windows and Linux. It keeps capture, provider access, and review explicit: text is never sent merely because it was selected or typed, and provider output is never pasted automatically.
+SwiftSlate is a lightweight system-wide writing assistant. The active implementation is the Python/Win32 Windows application under [`desktop/`](desktop/).
 
-## Platforms
+Type inline commands such as `.fix`, `.shorten`, or `.bold` at the end of text in another Windows application. SwiftSlate detects them through Raw Input and replaces the text in place using its clipboard/`SendInput` pipeline.
 
-### Windows
+## Windows application
 
-The Windows application is a native Win32 executable with no browser, WebView, Electron, GUI runtime, or async runtime.
+The Windows build includes:
 
-- Global `Ctrl+Alt+Space` shortcut.
-- System-wide typed commands: `?improve`, `?fix`, `?shorten`, `?expand`, `?formal`, `?casual`, `?human`, `?reply`, and `?translate:fr`.
-- Visible command selector and provider presets for OpenAI, Google Gemini, Groq, **NVIDIA NIM**, OpenRouter, Mistral AI, DeepSeek, Ollama, LM Studio, and Custom.
-- Explicit **Fetch models** action that loads a bounded live `/models` catalog into an editable model selector, plus **Test provider** for credential/connectivity validation without sending user text.
-- Protected selection and inline-field capture through UI Automation on a dedicated COM worker.
-- Fail-closed password checks, foreground/focus revalidation, physical-input filtering, and bounded capture.
-- Existing-clipboard fallback only for explicit shortcut capture of unsupported, non-protected controls; inline commands never use clipboard fallback.
-- Native provider settings, endpoint/model session consent, asynchronous WinHTTP requests, review, and explicit copy.
-- Endpoint/model in `HKCU\Software\SwiftSlate`.
-- Host/port-scoped API keys in Windows Credential Manager.
+- the existing low-overhead Win32 tray and inline-command engine;
+- a Nebula-inspired settings dashboard hosted on demand with Edge WebView2;
+- provider/model/key management for OpenAI, Gemini, Groq, OpenRouter, Mistral, DeepSeek, NVIDIA NIM, Ollama, LM Studio, and custom endpoints;
+- command CRUD, local style previews, playground, startup settings, and diagnostics;
+- first-run onboarding and safe defaults when no configuration exists;
+- current-user DPAPI protection for provider keys;
+- PyInstaller one-directory packaging and a normal per-user Inno Setup installer.
 
-### Linux
+The distributed files are **`SwiftSlate-Setup-x64.exe`** and the installed **`SwiftSlate.exe`**. Python and all static interface assets are bundled. Node.js and Electron are not installed or shipped.
 
-Linux ships as a small command-line application designed to work with desktop shortcut managers and shell pipelines. This is deliberate: Wayland does not provide a universal system-wide selected-text or global-hotkey portal.
+See [`desktop/README.md`](desktop/README.md) for installation, architecture, privacy, commands, development, and build instructions.
 
-- OpenAI-compatible provider requests with native TLS and bounded responses.
-- Endpoint/model in `$XDG_CONFIG_HOME/swiftslate/provider.json` or `~/.config/swiftslate/provider.json`.
-- Host/port-scoped API keys in Secret Service through `secret-tool`; keys never enter arguments, environment variables, or config files.
-- X11 PRIMARY selection through `xclip` or `xsel`.
-- Wayland primary selection through `wl-paste` when the compositor supports it.
-- Required `--consent` flag for every CLI process that transmits text.
-- Output goes to stdout for review and is never pasted automatically.
+## Build and test
 
-`improve` through stdin works on every Linux session, including compositors that intentionally block global selection capture.
-
-## Security properties
-
-- Remote endpoints require HTTPS.
-- Plain HTTP is allowed only for exact loopback hosts (`localhost`, `127.0.0.1`, and `::1`); local mode bypasses proxies and canonicalizes `localhost` to `127.0.0.1` for transport.
-- Embedded endpoint credentials, fragments, malformed authorities, invalid ports, controls, and whitespace are rejected.
-- HTTP redirects are disabled to prevent bearer-token forwarding.
-- Network operations have a 45-second total budget and bounded per-operation timeouts.
-- Response headers are limited to 32 KiB, response bodies to 256 KiB, and output to 32,768 UTF-16 code units.
-- Request text, response text, keystrokes, and API keys are not logged or persisted.
-- Provider errors are sanitized and bounded before display.
-- Automatic source-text replacement is intentionally disabled. Windows requires **Copy result**; Linux prints reviewable output.
-
-See [`docs/SECURITY.md`](docs/SECURITY.md) for the complete threat model and residual risks.
-
-## Windows usage
-
-1. Download and extract `swiftslate-windows-x64.zip` from the latest successful CI run.
-2. Run `swiftslate.exe`.
-3. Choose a provider preset and command, enter the API key, and choose **Save**. NVIDIA NIM uses keys from NVIDIA Build. Ollama and LM Studio on exact loopback may run without a key.
-4. Choose **Test provider** to verify the saved endpoint/key, or **Fetch models** to load the provider's current catalog and select a model from the editable **Model** list; choose **Save** after selecting it.
-5. Either select text in another application and press `Ctrl+Alt+Space`, or type a supported command after text in an editable field—for example, `This needs grammar help?fix`.
-6. SwiftSlate revalidates the target, opens the captured text for review, and asks for endpoint/model session consent before the first request.
-7. Review the response and explicitly choose **Copy result**. SwiftSlate intentionally leaves the source field and typed trigger unchanged.
-8. Use **Local preview** for an offline deterministic transform.
-
-Typed commands activate as soon as their final character is physically typed. They require a UI Automation-compatible editable field, are disabled in password/protected fields, inspect at most 32,768 UTF-16 units, reject synthetic input, and never fall back to clipboard contents. The key field clears after Credential Manager accepts it. **Remove key** deletes the credential for the current host and port.
-
-## Linux usage
-
-Runtime packages vary by distribution. Install Secret Service's command-line client (`secret-tool`, commonly in `libsecret-tools`). Selection commands additionally need `wl-clipboard` on Wayland or `xclip`/`xsel` on X11.
+On any development machine:
 
 ```bash
-# Save nonsecret settings.
-swiftslate configure \
-  --endpoint https://api.openai.com/v1/chat/completions \
-  --model gpt-4o-mini
-
-# Save a key through a pipe; for example, from an existing password manager.
-pass show services/openai | swiftslate set-key --stdin
-
-# Improve stdin. --consent is mandatory and scoped to this invocation.
-printf '%s' 'Text to improve.' | swiftslate improve --consent
-
-# Capture the desktop primary selection without sending it.
-swiftslate capture-selection
-
-# Capture and improve; output remains on stdout for review.
-swiftslate improve-selection --consent
-
-# Inspect configuration and capability status without printing the key.
-swiftslate doctor
-
-# Delete the host-scoped key.
-swiftslate remove-key
+cd desktop
+python -m unittest discover -s tests -v
+cd ui
+npm ci
+npm run typecheck
+npm test
+npm audit --audit-level=moderate
+npm run build
 ```
 
-For a global Linux shortcut, bind `swiftslate capture-selection` or a terminal command invoking `swiftslate improve-selection --consent` in the desktop environment's own shortcut settings. SwiftSlate does not bypass compositor security policy.
+On Windows x64 with Python 3.13, Node.js 22, and Inno Setup:
 
-## Provider compatibility
-
-SwiftSlate sends a JSON `POST` compatible with OpenAI's chat-completions shape:
-
-- configured `model`;
-- one bounded built-in system instruction for the visibly selected command;
-- one user message containing only the reviewed/captured input;
-- `stream: false`.
-
-It reads `choices[0].message.content` and sends `Authorization: Bearer <API key>`.
-
-## Development and automated validation
-
-```bash
-cargo fmt --check
-cargo test --locked --all-targets
-cargo clippy --locked --all-targets -- -D warnings
-cargo build --locked --release
+```powershell
+powershell -ExecutionPolicy Bypass -File .\desktop\build_windows.ps1
 ```
 
-CI performs Linux and Windows tests, warnings-denied Clippy, formatting, release builds, loopback transport tests, package measurement, hashing, and artifact upload. Model fetching and testing use an explicit bounded `GET` to the provider's `/models` endpoint, with the same host-scoped credential, timeout, redirect, HTTPS/loopback, and response-size policies. The fetched catalog is session-only; only the model selected and saved by the user is persisted.
-
-This repository intentionally avoids intermediate public builds; downloadable artifacts are produced only after the consolidated 1.2 state passes both platform jobs.
-
-Additional design documents:
-
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
-- [`docs/PROTOTYPE.md`](docs/PROTOTYPE.md)
-- [`docs/SECURITY.md`](docs/SECURITY.md)
+GitHub Actions runs the cross-platform test suite and builds, installs, smoke-tests, uninstalls, hashes, and uploads the Windows installer. Linux application work follows the Windows-first delivery.
 
 ## License
 

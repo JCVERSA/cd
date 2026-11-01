@@ -1,0 +1,85 @@
+import io
+import json
+import unittest
+
+from provider_catalog import (
+    ProviderError,
+    fetch_models,
+    join_endpoint,
+    public_provider_records,
+    test_provider,
+    validate_endpoint,
+)
+
+
+class _Response(io.BytesIO):
+    def __init__(self, payload):
+        super().__init__(json.dumps(payload).encode("utf-8"))
+        self.headers = {}
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        self.close()
+
+
+class _Opener:
+    def __init__(self, payload):
+        self.payload = payload
+        self.request = None
+        self.timeout = None
+
+    def open(self, request, timeout):
+        self.request = request
+        self.timeout = timeout
+        return _Response(self.payload)
+
+
+class ProviderCatalogTests(unittest.TestCase):
+    def test_remote_http_is_rejected_but_loopback_http_is_allowed(self):
+        with self.assertRaises(ProviderError):
+            validate_endpoint("http://api.example.com/v1")
+        self.assertEqual(validate_endpoint("http://127.0.0.1:11434"), "http://127.0.0.1:11434")
+        self.assertEqual(validate_endpoint("http://localhost:1234/v1"), "http://localhost:1234/v1")
+
+    def test_versioned_endpoints_are_joined_without_duplicate_v1(self):
+        self.assertEqual(join_endpoint("https://example.com/v1", "/v1/models"), "https://example.com/v1/models")
+        self.assertEqual(join_endpoint("https://example.com/v1", "/models"), "https://example.com/v1/models")
+
+    def test_gemini_model_list_uses_header_auth_and_strips_prefix(self):
+        opener = _Opener({"models": [{"name": "models/gemini-z"}, {"name": "models/gemini-a"}]})
+        models = fetch_models("gemini", api_key="secret-value", opener=opener)
+        self.assertEqual(models, ["gemini-a", "gemini-z"])
+        self.assertEqual(opener.request.get_header("X-goog-api-key"), "secret-value")
+        self.assertNotIn("secret-value", opener.request.full_url)
+
+    def test_ollama_models_need_no_key(self):
+        opener = _Opener({"models": [{"name": "llama3.2:latest"}]})
+        self.assertEqual(fetch_models("ollama", opener=opener), ["llama3.2:latest"])
+        self.assertIsNone(opener.request.get_header("Authorization"))
+
+    def test_provider_test_sends_only_a_fixed_probe(self):
+        opener = _Opener({"choices": [{"message": {"content": "OK"}}]})
+        result = test_provider(
+            "openai", api_key="secret-value", model="gpt-test", opener=opener,
+        )
+        self.assertTrue(result["ok"])
+        request_body = json.loads(opener.request.data)
+        self.assertEqual(request_body["messages"][0]["content"], "Reply with OK.")
+        self.assertEqual(request_body["model"], "gpt-test")
+
+    def test_public_records_never_include_decrypted_keys(self):
+        records = public_provider_records({
+            "provider": "openai",
+            "providers": {"openai": {"api_key": "top-secret", "model": "gpt-test"}},
+        })
+        serialized = json.dumps(records)
+        self.assertNotIn("top-secret", serialized)
+        openai = next(item for item in records if item["id"] == "openai")
+        self.assertTrue(openai["keyConfigured"])
+        self.assertTrue(openai["connected"])
+
+
+if __name__ == "__main__":
+    unittest.main()

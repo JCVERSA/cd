@@ -1,4 +1,4 @@
-name: CI
+name: SwiftSlate desktop CI
 
 on:
   push:
@@ -10,178 +10,114 @@ on:
 permissions:
   contents: read
 
-env:
-  CARGO_TERM_COLOR: always
-  RUST_BACKTRACE: 1
-
 jobs:
-  core:
-    name: Linux application / x64
+  tests:
+    name: Python and interface tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: desktop
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          components: rustfmt, clippy
+          python-version: '3.13'
 
-      - name: Run tests
-        shell: bash
-        run: |
-          set +e
-          cargo test --locked --all-targets 2>&1 | tee cargo-test.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            log=$(tail -n 200 cargo-test.log)
-            {
-              echo '## Linux test failure'
-              echo '```text'
-              echo "$log"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            escaped=${log//'%'/'%25'}
-            escaped=${escaped//$'\n'/'%0A'}
-            escaped=${escaped//$'\r'/'%0D'}
-            echo "::error title=Linux cargo test failed::$escaped"
-          fi
-          exit "$status"
-
-      - name: Run Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
-
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Build optimized Linux application
-        run: cargo build --locked --release
-
-      - name: Package Linux application and record measurements
-        shell: bash
-        run: |
-          set -euo pipefail
-          package='artifacts/swiftslate-linux-x64'
-          mkdir -p "$package"
-          cp target/release/swiftslate "$package/swiftslate"
-          cp README.md LICENSE "$package/"
-          tar -C artifacts -czf artifacts/swiftslate-linux-x64.tar.gz swiftslate-linux-x64
-          binary_bytes=$(stat -c %s "$package/swiftslate")
-          archive_bytes=$(stat -c %s artifacts/swiftslate-linux-x64.tar.gz)
-          hash=$(sha256sum "$package/swiftslate" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
-          cat > artifacts/linux-measurements.json <<EOF
-          {
-            "executable_bytes": $binary_bytes,
-            "archive_bytes": $archive_bytes,
-            "sha256": "$hash"
-          }
-          EOF
-          {
-            echo '## Linux application measurements'
-            echo
-            echo '| Metric | Value |'
-            echo '|---|---:|'
-            echo "| Release binary | $binary_bytes bytes |"
-            echo "| Distribution archive | $archive_bytes bytes |"
-            echo "| SHA-256 | \`$hash\` |"
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "::notice title=Linux application measurements::Binary $binary_bytes bytes; distribution archive $archive_bytes bytes; SHA-256 $hash"
-
-      - name: Upload Linux application
-        uses: actions/upload-artifact@v7
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
-          name: swiftslate-linux-x64
-          path: |
-            artifacts/swiftslate-linux-x64.tar.gz
-            artifacts/linux-measurements.json
-          if-no-files-found: error
-          retention-days: 14
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/ui/package-lock.json
 
-  windows:
-    name: Windows application / x64
+      - name: Run Python tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile Python modules
+        run: python -m py_compile SwiftSlate.pyw dashboard_server.py provider_catalog.py secure_config.py text_styles.py ui_host.py
+
+      - name: Install interface dependencies
+        working-directory: desktop/ui
+        run: npm ci
+
+      - name: Type-check, test, audit, and build interface
+        working-directory: desktop/ui
+        run: |
+          npm run typecheck
+          npm test
+          npm audit --audit-level=moderate
+          npm run build
+
+  windows-installer:
+    name: Windows x64 installer
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          components: clippy
+          python-version: '3.13'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: desktop/requirements-build.txt
 
-      - name: Run tests
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: desktop/ui/package-lock.json
+
+      - name: Install Inno Setup
         shell: pwsh
-        run: |
-          cargo test --locked --all-targets 2>&1 | Tee-Object -FilePath cargo-test.log
-          $status = $LASTEXITCODE
-          if ($status -ne 0) {
-            $log = (Get-Content cargo-test.log -Tail 250) -join "`n"
-            @"
-          ## Windows test/build failure
-          ```text
-          $log
-          ```
-          "@ | Add-Content $env:GITHUB_STEP_SUMMARY
-            $escaped = $log.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-            Write-Output "::error title=Windows cargo test failed::$escaped"
-          }
-          exit $status
+        run: choco install innosetup --no-progress -y
 
-      - name: Run Clippy
+      - name: Build and smoke-test SwiftSlate
         shell: pwsh
-        run: |
-          cargo clippy --locked --all-targets -- -D warnings 2>&1 | Tee-Object -FilePath cargo-clippy.log
-          $status = $LASTEXITCODE
-          if ($status -ne 0) {
-            $log = (Get-Content cargo-clippy.log -Tail 250) -join "`n"
-            $escaped = $log.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-            Write-Output "::error title=Windows Clippy failed::$escaped"
-          }
-          exit $status
+        run: ./desktop/build_windows.ps1
 
-      - name: Build optimized Windows application
-        run: cargo build --locked --release
-
-      - name: Package Windows application and record measurements
+      - name: Install, verify, and uninstall package
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $package = 'artifacts/swiftslate-windows-x64'
-          New-Item -ItemType Directory -Force -Path $package | Out-Null
-          Copy-Item 'target/release/swiftslate.exe' "$package/swiftslate.exe"
-          Copy-Item 'README.md' "$package/README.md"
-          Copy-Item 'LICENSE' "$package/LICENSE"
-          Compress-Archive -Path "$package/*" -DestinationPath 'artifacts/swiftslate-windows-x64.zip' -Force
+          $installer = Resolve-Path 'desktop/release/SwiftSlate-Setup-x64.exe'
+          $installDir = Join-Path $env:RUNNER_TEMP 'SwiftSlateInstalled'
+          $install = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$installDir") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer exited with $($install.ExitCode)." }
+          $smoke = Start-Process (Join-Path $installDir 'SwiftSlate.exe') -ArgumentList '--self-test' -Wait -PassThru
+          if ($smoke.ExitCode -ne 0) { throw "Installed application self-test exited with $($smoke.ExitCode)." }
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          $uninstall = Start-Process $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with $($uninstall.ExitCode)." }
 
-          $exe = Get-Item "$package/swiftslate.exe"
-          $zip = Get-Item 'artifacts/swiftslate-windows-x64.zip'
-          $hash = (Get-FileHash "$package/swiftslate.exe" -Algorithm SHA256).Hash
+      - name: Record installer measurements
+        shell: pwsh
+        run: |
+          $installer = Get-Item 'desktop/release/SwiftSlate-Setup-x64.exe'
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash
           @"
-          ## Windows application measurements
+          ## SwiftSlate Windows installer
 
           | Metric | Value |
           |---|---:|
-          | Release EXE | $($exe.Length) bytes |
-          | Distribution ZIP | $($zip.Length) bytes |
+          | Installer | $($installer.Length) bytes |
           | SHA-256 | ``$hash`` |
           "@ | Add-Content $env:GITHUB_STEP_SUMMARY
+          Write-Output "::notice title=SwiftSlate installer::Size $($installer.Length) bytes; SHA-256 $hash"
 
-          @{
-            executable_bytes = $exe.Length
-            zip_bytes = $zip.Length
-            sha256 = $hash
-          } | ConvertTo-Json | Set-Content 'artifacts/measurements.json'
-
-          Write-Output "::notice title=Windows application measurements::EXE $($exe.Length) bytes; distribution ZIP $($zip.Length) bytes; SHA-256 $hash"
-
-      - name: Upload Windows application
-        uses: actions/upload-artifact@v7
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
         with:
-          name: swiftslate-windows-x64
+          name: SwiftSlate-Windows-x64
           path: |
-            artifacts/swiftslate-windows-x64.zip
-            artifacts/measurements.json
+            desktop/release/SwiftSlate-Setup-x64.exe
+            desktop/release/SwiftSlate-Setup-x64.exe.sha256
           if-no-files-found: error
           retention-days: 14
