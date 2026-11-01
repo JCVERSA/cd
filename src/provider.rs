@@ -51,10 +51,14 @@ impl ProviderConfig {
 
     pub fn credential_target(&self) -> Result<String, ConfigError> {
         let endpoint = self.endpoint_parts()?;
-        let host = if endpoint.host.contains(':') {
-            format!("[{}]", endpoint.host.to_ascii_lowercase())
+        let canonical_host = endpoint
+            .host
+            .parse::<std::net::IpAddr>()
+            .map_or_else(|_| endpoint.host.to_ascii_lowercase(), |address| address.to_string());
+        let host = if canonical_host.contains(':') {
+            format!("[{canonical_host}]")
         } else {
-            endpoint.host.to_ascii_lowercase()
+            canonical_host
         };
         Ok(format!("SwiftSlate/provider/{host}:{}", endpoint.port))
     }
@@ -83,9 +87,7 @@ fn parse_endpoint(endpoint: &str) -> Result<EndpointParts, ConfigError> {
         return Err(ConfigError::InvalidEndpoint);
     };
 
-    let authority_end = remainder
-        .find(|character| matches!(character, '/' | '?'))
-        .unwrap_or(remainder.len());
+    let authority_end = remainder.find(['/', '?']).unwrap_or(remainder.len());
     let authority = &remainder[..authority_end];
     if authority.is_empty() || authority.contains('@') || authority.contains('\\') {
         return Err(ConfigError::InvalidEndpoint);
@@ -173,7 +175,14 @@ fn default_port(secure: bool) -> u16 {
 }
 
 fn is_exact_loopback(host: &str) -> bool {
-    host.eq_ignore_ascii_case("localhost") || host == "127.0.0.1" || host == "::1"
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(address)) => address == std::net::Ipv4Addr::LOCALHOST,
+        Ok(std::net::IpAddr::V6(address)) => address == std::net::Ipv6Addr::LOCALHOST,
+        Err(_) => false,
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -311,6 +320,10 @@ mod tests {
             ProviderConfig::new("http://127.0.0.1.evil.test/v1", "model"),
             Err(ConfigError::InsecureEndpoint)
         );
+        assert_eq!(
+            ProviderConfig::new("http://127.0.0.2/v1", "model"),
+            Err(ConfigError::InsecureEndpoint)
+        );
         assert!(ProviderConfig::new("http://localhost:11434/v1/chat/completions", "model").is_ok());
         assert!(ProviderConfig::new("http://[::1]:11434/v1/chat/completions", "model").is_ok());
     }
@@ -335,6 +348,32 @@ mod tests {
             config.credential_target().unwrap(),
             "SwiftSlate/provider/example.com:8443"
         );
+        let other_path =
+            ProviderConfig::new("https://example.com:8443/other", "another-model").unwrap();
+        assert_eq!(
+            config.credential_target().unwrap(),
+            other_path.credential_target().unwrap()
+        );
+    }
+
+    #[test]
+    fn endpoint_parser_rejects_ambiguous_authorities() {
+        for endpoint in [
+            "ftp://example.com/v1",
+            "https://user@example.com/v1",
+            "https://example.com/v1#fragment",
+            "https://example.com:0/v1",
+            "https://example.com:/v1",
+            "https://::1/v1",
+            "https://[::1]suffix/v1",
+            "https://example.com/white space",
+        ] {
+            assert_eq!(
+                ProviderConfig::new(endpoint, "model"),
+                Err(ConfigError::InvalidEndpoint),
+                "accepted {endpoint}"
+            );
+        }
     }
 
     #[test]
@@ -359,6 +398,13 @@ mod tests {
             Err(ResponseError::Http {
                 status: 400,
                 message: "invalid modelsecret-safe".into(),
+            })
+        );
+        assert_eq!(
+            parse_chat_response(502, b"not json"),
+            Err(ResponseError::Http {
+                status: 502,
+                message: String::new(),
             })
         );
     }

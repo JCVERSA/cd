@@ -20,8 +20,8 @@ const MODEL_VALUE: &str = "ProviderModel";
 pub const DEFAULT_ENDPOINT: &str = "https://api.openai.com/v1/chat/completions";
 
 pub fn load_provider_config() -> Result<Option<ProviderConfig>, String> {
-    let endpoint = read_string(ENDPOINT_VALUE)?;
-    let model = read_string(MODEL_VALUE)?;
+    let endpoint = read_string(ENDPOINT_VALUE, 2_048)?;
+    let model = read_string(MODEL_VALUE, 128)?;
     match (endpoint, model) {
         (Some(endpoint), Some(model)) => ProviderConfig::new(endpoint, model)
             .map(Some)
@@ -68,7 +68,7 @@ impl Drop for RegistryKey {
     }
 }
 
-fn read_string(value_name: &str) -> Result<Option<String>, String> {
+fn read_string(value_name: &str, max_utf16_units: usize) -> Result<Option<String>, String> {
     unsafe {
         let subkey = wide(SUBKEY);
         let value_name = wide(value_name);
@@ -91,8 +91,11 @@ fn read_string(value_name: &str) -> Result<Option<String>, String> {
                 status.0
             ));
         }
-        if byte_count < 2 || byte_count % 2 != 0 {
-            return Err("SwiftSlate settings contain an invalid string.".into());
+        if byte_count < 2
+            || byte_count % 2 != 0
+            || byte_count as usize > (max_utf16_units + 1) * 2
+        {
+            return Err("SwiftSlate settings contain an invalid or oversized string.".into());
         }
 
         let mut buffer = vec![0u16; byte_count as usize / 2];

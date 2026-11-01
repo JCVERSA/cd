@@ -61,6 +61,9 @@ pub fn read_api_key(target: &str) -> Result<Option<SecretBytes>, String> {
             if credential.CredentialBlob.is_null() || credential.CredentialBlobSize == 0 {
                 return Ok(None);
             }
+            if credential.CredentialBlobSize > CRED_MAX_CREDENTIAL_BLOB_SIZE {
+                return Err("The stored API key exceeds the Credential Manager limit.".into());
+            }
             let bytes = unsafe {
                 std::slice::from_raw_parts(
                     credential.CredentialBlob,

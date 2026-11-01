@@ -843,16 +843,22 @@ unsafe fn save_provider_settings() {
         Some((
             get_text(state.endpoint),
             get_text(state.model),
-            get_text(state.api_key),
             state.api_key,
             state.status,
         ))
     });
-    let Some((endpoint, model, key, key_control, status_control)) = snapshot else {
+    let Some((endpoint, model, key_control, status_control)) = snapshot else {
         return;
     };
     let config = match ProviderConfig::new(endpoint, model) {
         Ok(config) => config,
+        Err(error) => {
+            set_text(status_control, &error.to_string());
+            return;
+        }
+    };
+    let target = match config.credential_target() {
+        Ok(target) => target,
         Err(error) => {
             set_text(status_control, &error.to_string());
             return;
@@ -863,6 +869,7 @@ unsafe fn save_provider_settings() {
         return;
     }
 
+    let mut key = get_secret_text(key_control).into_bytes();
     if key.is_empty() {
         set_text(
             status_control,
@@ -870,14 +877,6 @@ unsafe fn save_provider_settings() {
         );
         return;
     }
-    let target = match config.credential_target() {
-        Ok(target) => target,
-        Err(error) => {
-            set_text(status_control, &error.to_string());
-            return;
-        }
-    };
-    let mut key = key.into_bytes();
     let saved = save_api_key(&target, &mut key);
     key.fill(0);
     match saved {
@@ -946,13 +945,13 @@ unsafe fn begin_provider_request(hwnd: HWND) {
         Some((
             get_text(state.endpoint),
             get_text(state.model),
-            get_text(state.api_key),
+            GetWindowTextLengthW(state.api_key) > 0,
             get_text(state.original),
             state.provider_worker.is_some(),
             state.status,
         ))
     });
-    let Some((endpoint, model, unsaved_key, source, worker_available, status_control)) = snapshot
+    let Some((endpoint, model, has_unsaved_key, source, worker_available, status_control)) = snapshot
     else {
         return;
     };
@@ -970,7 +969,7 @@ unsafe fn begin_provider_request(hwnd: HWND) {
         );
         return;
     }
-    if !unsaved_key.is_empty() {
+    if has_unsaved_key {
         set_text(
             status_control,
             "Save the provider settings and API key before making a request.",
@@ -1198,6 +1197,15 @@ unsafe fn get_text(hwnd: HWND) -> String {
     let mut buffer = vec![0u16; length + 1];
     let written = GetWindowTextW(hwnd, &mut buffer).max(0) as usize;
     String::from_utf16_lossy(&buffer[..written])
+}
+
+unsafe fn get_secret_text(hwnd: HWND) -> String {
+    let length = GetWindowTextLengthW(hwnd).max(0) as usize;
+    let mut buffer = vec![0u16; length + 1];
+    let written = GetWindowTextW(hwnd, &mut buffer).max(0) as usize;
+    let secret = String::from_utf16_lossy(&buffer[..written]);
+    buffer.fill(0);
+    secret
 }
 
 unsafe fn set_text(hwnd: HWND, text: &str) {
