@@ -1,4 +1,4 @@
-# SwiftSlate 1.1 security and privacy baseline
+# SwiftSlate 1.2 security and privacy baseline
 
 SwiftSlate handles text from arbitrary applications and may transmit user-reviewed text to a configured provider. Its security model is explicit action, minimal persistence, bounded processing, and refusal to bypass platform protections.
 
@@ -9,6 +9,8 @@ SwiftSlate handles text from arbitrary applications and may transmit user-review
 - Shortcut capture or display alone never starts a request. A verified physical inline command is an explicit activation, but still cannot send before endpoint/model session consent.
 - Only one bounded built-in instruction for the visible command and the reviewed input are sent.
 - Provider output is never pasted or applied automatically.
+- **Fetch models** and **Test provider** are explicit user actions. They transmit no user text; they send only a bounded `GET` and the saved host-scoped credential when required.
+- Fetched model catalogs are bounded, sanitized, session-only, and not persisted unless the user selects a model and chooses **Save**.
 - Sensitive in-process buffers are overwritten when practical.
 
 ## Windows capture
@@ -62,7 +64,7 @@ There is no silent provider fallback on either platform.
 - Provider error text is stripped of controls and capped before display.
 - TLS certificate verification uses Windows trust through WinHTTP or Linux native TLS/platform roots.
 
-Real loopback socket tests run in CI on both platforms to verify POST behavior and redirect refusal. Windows additionally tests body-limit enforcement.
+Real loopback socket tests run in CI on both platforms to verify POST behavior and redirect refusal. Windows additionally tests bounded model-catalog GET behavior and body-limit enforcement.
 
 ## Secret storage
 

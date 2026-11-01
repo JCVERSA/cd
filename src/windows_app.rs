@@ -10,13 +10,13 @@ use std::mem::size_of;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use crate::windows_config::{load_provider_config, save_provider_config, DEFAULT_ENDPOINT};
-use crate::windows_provider::{ProviderWorker, WM_PROVIDER_COMPLETE};
+use crate::windows_provider::{ProviderOutput, ProviderWorker, WM_PROVIDER_COMPLETE};
 use crate::windows_secrets::{delete_api_key, read_api_key, save_api_key};
 use crate::windows_selection::{CaptureOutcome, SelectionWorker, WM_SELECTION_CAPTURED};
 use swiftslate::commands::{command_by_id, command_by_index, triggers, COMMANDS};
 use swiftslate::preview::improve_preview;
 use swiftslate::provider::ProviderConfig;
-use swiftslate::providers::{preset_for_endpoint, PRESETS};
+use swiftslate::providers::{models_endpoint_for, preset_for_endpoint, PRESETS};
 use swiftslate::trigger::{InputEvent, InputOrigin, TriggerDetector};
 use windows::core::{w, Error, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
@@ -65,14 +65,19 @@ const ID_COPY: usize = 203;
 const ID_HIDE: usize = 204;
 const ID_SAVE_PROVIDER: usize = 205;
 const ID_REMOVE_KEY: usize = 206;
+const ID_FETCH_MODELS: usize = 207;
+const ID_TEST_PROVIDER: usize = 208;
 
 // These edit-control messages are stable across supported Windows versions.
 const EM_SETSEL: u32 = 0x00B1;
 const EM_SETLIMITTEXT: u32 = 0x00C5;
+const CB_LIMITTEXT: u32 = 0x0141;
 const CB_ADDSTRING: u32 = 0x0143;
 const CB_GETCURSEL: u32 = 0x0147;
+const CB_RESETCONTENT: u32 = 0x014B;
 const CB_SETCURSEL: u32 = 0x014E;
 const CBN_SELCHANGE: usize = 1;
+const CBS_DROPDOWN: u32 = 0x0002;
 const CBS_DROPDOWNLIST: u32 = 0x0003;
 const RI_KEY_BREAK: u16 = 0x0001;
 const TO_UNICODE_NO_STATE_CHANGE: u32 = 0x0004;
@@ -81,6 +86,13 @@ const PROVIDER_TIMER_ID: usize = 2;
 const CAPTURE_TIMEOUT_MS: u32 = 1_500;
 const PROVIDER_TIMEOUT_MS: u32 = 45_000;
 const DEFAULT_MODEL: &str = "gpt-4o-mini";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProviderAction {
+    Completion,
+    FetchModels,
+    Test,
+}
 
 struct UiState {
     original: HWND,
@@ -105,6 +117,7 @@ struct UiState {
     latest_provider_id: u64,
     provider_busy: bool,
     provider_response_expected: bool,
+    provider_action: Option<ProviderAction>,
     provider_source: String,
     consented_provider: Option<String>,
 }
@@ -235,6 +248,8 @@ unsafe fn window_proc_inner(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LP
                 ID_COPY => copy_result(),
                 ID_SAVE_PROVIDER => save_provider_settings(),
                 ID_REMOVE_KEY => remove_provider_key(),
+                ID_FETCH_MODELS => begin_provider_utility(hwnd, ProviderAction::FetchModels),
+                ID_TEST_PROVIDER => begin_provider_utility(hwnd, ProviderAction::Test),
                 ID_PROVIDER if notification == CBN_SELCHANGE => apply_provider_preset(),
                 ID_HIDE => {
                     let _ = ShowWindow(hwnd, SW_HIDE);
@@ -265,7 +280,6 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
             .expect("the built-in provider configuration is valid")
     });
     let endpoint_text = wide(&initial_config.endpoint);
-    let model_text = wide(&initial_config.model);
 
     let intro = create_control(
         WINDOW_EX_STYLE(0),
@@ -452,13 +466,17 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
     )?;
     let model = create_control(
         WS_EX_CLIENTEDGE,
-        w!("EDIT"),
-        PCWSTR(model_text.as_ptr()),
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
+        w!("COMBOBOX"),
+        w!(""),
+        WS_CHILD
+            | WS_VISIBLE
+            | WS_TABSTOP
+            | WS_VSCROLL
+            | WINDOW_STYLE(CBS_DROPDOWN),
         70,
         306,
         180,
-        25,
+        250,
         hwnd,
         ID_MODEL,
         instance,
@@ -522,13 +540,40 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         instance,
     )?;
 
+    let fetch_models = create_control(
+        WINDOW_EX_STYLE(0),
+        w!("BUTTON"),
+        w!("Fetch models"),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        20,
+        340,
+        120,
+        29,
+        hwnd,
+        ID_FETCH_MODELS as isize,
+        instance,
+    )?;
+    let test_provider = create_control(
+        WINDOW_EX_STYLE(0),
+        w!("BUTTON"),
+        w!("Test provider"),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP,
+        150,
+        340,
+        120,
+        29,
+        hwnd,
+        ID_TEST_PROVIDER as isize,
+        instance,
+    )?;
+
     let result_label = create_control(
         WINDOW_EX_STYLE(0),
         w!("STATIC"),
         w!("Review result"),
         WS_CHILD | WS_VISIBLE,
         20,
-        347,
+        382,
         200,
         20,
         hwnd,
@@ -547,9 +592,9 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
             | WS_VSCROLL
             | WINDOW_STYLE((ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_READONLY) as u32),
         20,
-        368,
+        403,
         680,
-        145,
+        140,
         hwnd,
         ID_RESULT,
         instance,
@@ -561,7 +606,7 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         w!("Copy result"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP,
         20,
-        525,
+        555,
         120,
         32,
         hwnd,
@@ -575,7 +620,7 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         w!("Hide"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP,
         150,
-        525,
+        555,
         90,
         32,
         hwnd,
@@ -589,9 +634,9 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         w!("Starting SwiftSlate…"),
         WS_CHILD | WS_VISIBLE,
         20,
-        571,
+        601,
         680,
-        55,
+        60,
         hwnd,
         0,
         instance,
@@ -617,6 +662,8 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         api_key,
         save_provider,
         remove_key,
+        fetch_models,
+        test_provider,
         result_label,
         result,
         copy,
@@ -628,8 +675,10 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
     SendMessageW(original, EM_SETLIMITTEXT, WPARAM(32_768), LPARAM(0));
     SendMessageW(result, EM_SETLIMITTEXT, WPARAM(32_768), LPARAM(0));
     SendMessageW(endpoint, EM_SETLIMITTEXT, WPARAM(2_048), LPARAM(0));
-    SendMessageW(model, EM_SETLIMITTEXT, WPARAM(128), LPARAM(0));
+    SendMessageW(model, CB_LIMITTEXT, WPARAM(128), LPARAM(0));
     SendMessageW(api_key, EM_SETLIMITTEXT, WPARAM(2_560), LPARAM(0));
+    add_combo_item(model, &initial_config.model);
+    set_text(model, &initial_config.model);
 
     for preset in PRESETS {
         add_combo_item(provider, preset.name);
@@ -686,6 +735,7 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
             latest_provider_id: 0,
             provider_busy: false,
             provider_response_expected: false,
+            provider_action: None,
             provider_source: String::new(),
             consented_provider: None,
         });
@@ -741,6 +791,14 @@ unsafe fn add_combo_item(combo: HWND, text: &str) {
     );
 }
 
+unsafe fn replace_model_choices(combo: HWND, models: &[String], selected: &str) {
+    SendMessageW(combo, CB_RESETCONTENT, WPARAM(0), LPARAM(0));
+    for model in models {
+        add_combo_item(combo, model);
+    }
+    set_text(combo, selected);
+}
+
 unsafe fn selected_combo_index(combo: HWND) -> usize {
     let index = SendMessageW(combo, CB_GETCURSEL, WPARAM(0), LPARAM(0)).0;
     if index < 0 {
@@ -760,6 +818,8 @@ unsafe fn apply_provider_preset() {
             .get(selected_combo_index(state.provider))
             .unwrap_or(&PRESETS[PRESETS.len() - 1]);
         if preset.id == "custom" {
+            let current_model = get_text(state.model);
+            replace_model_choices(state.model, &[], &current_model);
             set_text(
                 state.status,
                 "Custom provider selected. Enter an HTTPS endpoint (or exact loopback HTTP) and model.",
@@ -767,7 +827,7 @@ unsafe fn apply_provider_preset() {
             return;
         }
         set_text(state.endpoint, preset.endpoint);
-        set_text(state.model, preset.model);
+        replace_model_choices(state.model, &[preset.model.to_owned()], preset.model);
         set_text(
             state.status,
             if preset.endpoint.starts_with("http://127.0.0.1") {
@@ -962,6 +1022,7 @@ unsafe fn show_text_palette(hwnd: HWND, text: &str, status: &str) {
             return;
         };
         state.provider_response_expected = false;
+        state.provider_action = None;
         state.provider_source.clear();
         set_text(state.original, text);
         set_text(state.result, "");
@@ -982,6 +1043,7 @@ unsafe fn show_palette_from_clipboard(hwnd: HWND, status: &str) {
             return;
         };
         state.provider_response_expected = false;
+        state.provider_action = None;
         state.provider_source.clear();
         set_text(state.original, "");
         SendMessageW(state.original, WM_PASTE, WPARAM(0), LPARAM(0));
@@ -1010,6 +1072,7 @@ unsafe fn run_local_preview(hwnd: HWND) {
             return;
         };
         state.provider_response_expected = false;
+        state.provider_action = None;
         state.provider_source.clear();
         let original = get_text(state.original);
         let result = improve_preview(&original);
@@ -1120,6 +1183,100 @@ unsafe fn remove_provider_key() {
             );
         }
         Err(error) => set_text(status_control, &error),
+    }
+}
+
+unsafe fn begin_provider_utility(hwnd: HWND, action: ProviderAction) {
+    let snapshot = UI.with(|slot| {
+        let state = slot.borrow();
+        let state = state.as_ref()?;
+        if state.provider_busy {
+            set_text(
+                state.status,
+                "A provider operation is already running. Please wait.",
+            );
+            return None;
+        }
+        Some((
+            get_text(state.endpoint),
+            get_text(state.model),
+            GetWindowTextLengthW(state.api_key) > 0,
+            state.provider_worker.is_some(),
+            state.status,
+        ))
+    });
+    let Some((endpoint, model, has_unsaved_key, worker_available, status_control)) = snapshot else {
+        return;
+    };
+    if !worker_available {
+        set_text(status_control, "The provider worker is unavailable.");
+        return;
+    }
+    if has_unsaved_key {
+        set_text(
+            status_control,
+            "Save the provider settings and API key before contacting the provider.",
+        );
+        return;
+    }
+    let Some(models_endpoint) = models_endpoint_for(&endpoint) else {
+        set_text(status_control, "Enter a valid provider endpoint first.");
+        return;
+    };
+    let probe_model = if model.trim().is_empty() {
+        "catalog-probe".to_owned()
+    } else {
+        model
+    };
+    let config = match ProviderConfig::new(models_endpoint, probe_model) {
+        Ok(config) => config,
+        Err(error) => {
+            set_text(status_control, &error.to_string());
+            return;
+        }
+    };
+
+    let sent = UI.with(|slot| {
+        let mut state = slot.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return false;
+        };
+        state.latest_provider_id = state.latest_provider_id.wrapping_add(1).max(1);
+        let request_id = state.latest_provider_id;
+        let sent = state.provider_worker.as_ref().is_some_and(|worker| match action {
+            ProviderAction::FetchModels => worker.fetch_models(request_id, config).is_ok(),
+            ProviderAction::Test => worker.test(request_id, config).is_ok(),
+            ProviderAction::Completion => false,
+        });
+        if sent {
+            state.provider_busy = true;
+            state.provider_response_expected = true;
+            state.provider_action = Some(action);
+            state.provider_source.clear();
+            set_text(
+                state.status,
+                match action {
+                    ProviderAction::FetchModels => {
+                        "Fetching the provider model catalog on the background worker…"
+                    }
+                    ProviderAction::Test => {
+                        "Testing provider connectivity and the saved credential…"
+                    }
+                    ProviderAction::Completion => "Starting provider request…",
+                },
+            );
+        }
+        sent
+    });
+    if !sent {
+        set_text(status_control, "Could not queue the provider operation.");
+        return;
+    }
+    if SetTimer(hwnd, PROVIDER_TIMER_ID, PROVIDER_TIMEOUT_MS, None) == 0 {
+        set_text(
+            status_control,
+            "The provider operation is running, but the UI timeout could not be started.",
+        );
     }
 }
 
@@ -1257,6 +1414,7 @@ unsafe fn begin_provider_request(hwnd: HWND) {
         if sent {
             state.provider_busy = true;
             state.provider_response_expected = true;
+            state.provider_action = Some(ProviderAction::Completion);
             state.provider_source = source;
             set_text(state.result, "");
             set_text(
@@ -1291,7 +1449,7 @@ unsafe fn finish_provider_request(hwnd: HWND) {
     });
 
     for response in responses {
-        let action = UI.with(|slot| {
+        let pending = UI.with(|slot| {
             let mut state = slot.borrow_mut();
             let state = state.as_mut()?;
             if !state.provider_busy || response.request_id != state.latest_provider_id {
@@ -1302,11 +1460,15 @@ unsafe fn finish_provider_request(hwnd: HWND) {
                 return None;
             }
             state.provider_response_expected = false;
-            let source_unchanged = get_text(state.original) == state.provider_source;
+            let action = state.provider_action.take()?;
+            let source_unchanged = action != ProviderAction::Completion
+                || get_text(state.original) == state.provider_source;
             state.provider_source.clear();
-            Some((source_unchanged, state.result, state.status))
+            Some((action, source_unchanged, state.result, state.model, state.status))
         });
-        let Some((source_unchanged, result_control, status_control)) = action else {
+        let Some((action, source_unchanged, result_control, model_control, status_control)) =
+            pending
+        else {
             continue;
         };
         let _ = KillTimer(hwnd, PROVIDER_TIMER_ID);
@@ -1317,15 +1479,46 @@ unsafe fn finish_provider_request(hwnd: HWND) {
             );
             continue;
         }
-        match response.result {
-            Ok(result) => {
+        match (action, response.result) {
+            (ProviderAction::Completion, Ok(ProviderOutput::Completion(result))) => {
                 set_text(result_control, &result);
                 set_text(
                     status_control,
                     "Provider response ready. Review it, then explicitly choose Copy result.",
                 );
             }
-            Err(error) => set_text(status_control, &error),
+            (ProviderAction::FetchModels, Ok(ProviderOutput::Models(models))) => {
+                if models.is_empty() {
+                    set_text(
+                        status_control,
+                        "The provider connection succeeded, but no selectable models were returned.",
+                    );
+                } else {
+                    let current = get_text(model_control);
+                    let selected = if current.trim().is_empty() {
+                        models[0].as_str()
+                    } else {
+                        current.as_str()
+                    };
+                    replace_model_choices(model_control, &models, selected);
+                    set_text(
+                        status_control,
+                        &format!(
+                            "Loaded {} models. Open the Model list, choose one, then Save.",
+                            models.len()
+                        ),
+                    );
+                }
+            }
+            (ProviderAction::Test, Ok(ProviderOutput::TestSucceeded)) => set_text(
+                status_control,
+                "Provider test succeeded. The endpoint and saved credential were accepted.",
+            ),
+            (_, Err(error)) => set_text(status_control, &error),
+            _ => set_text(
+                status_control,
+                "The provider returned an unexpected operation result; it was discarded.",
+            ),
         }
     }
 }
@@ -1340,10 +1533,11 @@ unsafe fn provider_request_timed_out(hwnd: HWND) {
             return false;
         }
         state.provider_response_expected = false;
+        state.provider_action = None;
         state.provider_source.clear();
         set_text(
             state.status,
-            "The provider request exceeded the UI wait limit. Any late response will be discarded.",
+            "The provider operation exceeded the UI wait limit. Any late response will be discarded.",
         );
         true
     });

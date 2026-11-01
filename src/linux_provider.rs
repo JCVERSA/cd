@@ -55,7 +55,7 @@ fn send_request(
         .timeout_global(Some(NETWORK_DEADLINE))
         .timeout_per_read(Some(Duration::from_secs(10)))
         .timeout_per_write(Some(Duration::from_secs(10)))
-        .user_agent("SwiftSlate/1.1")
+        .user_agent("SwiftSlate/1.2")
         .accept("application/json");
     if !endpoint.secure {
         builder = builder.proxy(None);

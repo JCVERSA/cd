@@ -5,6 +5,7 @@ pub struct ProviderPreset {
     pub id: &'static str,
     pub name: &'static str,
     pub endpoint: &'static str,
+    pub models_endpoint: &'static str,
     pub model: &'static str,
 }
 
@@ -13,54 +14,70 @@ pub const PRESETS: &[ProviderPreset] = &[
         id: "openai",
         name: "OpenAI",
         endpoint: "https://api.openai.com/v1/chat/completions",
+        models_endpoint: "https://api.openai.com/v1/models",
         model: "gpt-4o-mini",
     },
     ProviderPreset {
         id: "gemini",
         name: "Google Gemini",
         endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        models_endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/models",
         model: "gemini-2.5-flash",
     },
     ProviderPreset {
         id: "groq",
         name: "Groq",
         endpoint: "https://api.groq.com/openai/v1/chat/completions",
+        models_endpoint: "https://api.groq.com/openai/v1/models",
         model: "llama-3.3-70b-versatile",
+    },
+    ProviderPreset {
+        id: "nvidia-nim",
+        name: "NVIDIA NIM",
+        endpoint: "https://integrate.api.nvidia.com/v1/chat/completions",
+        models_endpoint: "https://integrate.api.nvidia.com/v1/models",
+        model: "nvidia/nemotron-3-super-120b-a12b",
     },
     ProviderPreset {
         id: "openrouter",
         name: "OpenRouter",
         endpoint: "https://openrouter.ai/api/v1/chat/completions",
-        model: "openai/gpt-4o-mini",
+        models_endpoint: "https://openrouter.ai/api/v1/models",
+        model: "openrouter/free",
     },
     ProviderPreset {
         id: "mistral",
         name: "Mistral AI",
         endpoint: "https://api.mistral.ai/v1/chat/completions",
+        models_endpoint: "https://api.mistral.ai/v1/models",
         model: "mistral-small-latest",
     },
     ProviderPreset {
         id: "deepseek",
         name: "DeepSeek",
         endpoint: "https://api.deepseek.com/chat/completions",
+        models_endpoint: "https://api.deepseek.com/models",
         model: "deepseek-chat",
     },
     ProviderPreset {
         id: "ollama",
         name: "Ollama (local)",
         endpoint: "http://127.0.0.1:11434/v1/chat/completions",
+        models_endpoint: "http://127.0.0.1:11434/v1/models",
         model: "llama3.2",
     },
     ProviderPreset {
         id: "lm-studio",
         name: "LM Studio (local)",
         endpoint: "http://127.0.0.1:1234/v1/chat/completions",
+        models_endpoint: "http://127.0.0.1:1234/v1/models",
         model: "local-model",
     },
     ProviderPreset {
         id: "custom",
         name: "Custom endpoint",
         endpoint: "",
+        models_endpoint: "",
         model: "",
     },
 ];
@@ -74,6 +91,24 @@ pub fn preset_for_endpoint(endpoint: &str) -> usize {
         .unwrap_or(PRESETS.len() - 1)
 }
 
+/// Resolves the explicit `/models` endpoint for a preset, or derives the
+/// OpenAI-compatible sibling path for a custom chat-completions URL.
+pub fn models_endpoint_for(chat_endpoint: &str) -> Option<String> {
+    let endpoint = chat_endpoint.trim();
+    if let Some(preset) = PRESETS
+        .iter()
+        .find(|preset| preset.endpoint.eq_ignore_ascii_case(endpoint))
+    {
+        return (!preset.models_endpoint.is_empty()).then(|| preset.models_endpoint.to_owned());
+    }
+
+    let without_query = endpoint.split_once('?').map_or(endpoint, |(path, _)| path);
+    let base = without_query
+        .strip_suffix("/chat/completions")
+        .unwrap_or_else(|| without_query.trim_end_matches('/'));
+    (!base.is_empty()).then(|| format!("{base}/models"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,6 +120,7 @@ mod tests {
             assert!(!preset.id.is_empty());
             assert!(!preset.name.is_empty());
             ProviderConfig::new(preset.endpoint, preset.model).unwrap();
+            ProviderConfig::new(preset.models_endpoint, preset.model).unwrap();
         }
     }
 
@@ -98,6 +134,22 @@ mod tests {
         assert_eq!(
             preset_for_endpoint("https://example.com/v1"),
             PRESETS.len() - 1
+        );
+    }
+
+    #[test]
+    fn includes_nvidia_and_derives_custom_model_catalog_paths() {
+        let nvidia = PRESETS
+            .iter()
+            .find(|preset| preset.id == "nvidia-nim")
+            .unwrap();
+        assert_eq!(
+            models_endpoint_for(nvidia.endpoint).as_deref(),
+            Some(nvidia.models_endpoint)
+        );
+        assert_eq!(
+            models_endpoint_for("https://example.com/v1/chat/completions?mode=fast").as_deref(),
+            Some("https://example.com/v1/models")
         );
     }
 }

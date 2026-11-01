@@ -9,7 +9,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use swiftslate::provider::{
-    build_command_request, parse_chat_response, ProviderConfig, MAX_PROVIDER_RESPONSE_BYTES,
+    build_command_request, parse_chat_response, parse_model_catalog, ProviderConfig,
+    MAX_PROVIDER_RESPONSE_BYTES,
 };
 use windows::core::{Error as WindowsError, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
@@ -30,9 +31,16 @@ const MAX_RESPONSE_HEADERS_BYTES: u32 = 32 * 1024;
 const NETWORK_DEADLINE: Duration = Duration::from_secs(45);
 
 #[derive(Debug)]
+pub enum ProviderOutput {
+    Completion(String),
+    Models(Vec<String>),
+    TestSucceeded,
+}
+
+#[derive(Debug)]
 pub struct ProviderResponse {
     pub request_id: u64,
-    pub result: Result<String, String>,
+    pub result: Result<ProviderOutput, String>,
 }
 
 struct ProviderRequest {
@@ -42,8 +50,20 @@ struct ProviderRequest {
     input: String,
 }
 
+enum UtilityKind {
+    FetchModels,
+    Test,
+}
+
+struct UtilityRequest {
+    request_id: u64,
+    config: ProviderConfig,
+    kind: UtilityKind,
+}
+
 enum WorkerCommand {
     Request(ProviderRequest),
+    Utility(UtilityRequest),
     Stop,
 }
 
@@ -84,6 +104,29 @@ impl ProviderWorker {
             .map_err(|_| ())
     }
 
+    pub fn fetch_models(&self, request_id: u64, config: ProviderConfig) -> Result<(), ()> {
+        self.utility(request_id, config, UtilityKind::FetchModels)
+    }
+
+    pub fn test(&self, request_id: u64, config: ProviderConfig) -> Result<(), ()> {
+        self.utility(request_id, config, UtilityKind::Test)
+    }
+
+    fn utility(
+        &self,
+        request_id: u64,
+        config: ProviderConfig,
+        kind: UtilityKind,
+    ) -> Result<(), ()> {
+        self.command_tx
+            .send(WorkerCommand::Utility(UtilityRequest {
+                request_id,
+                config,
+                kind,
+            }))
+            .map_err(|_| ())
+    }
+
     pub fn try_responses(&self) -> Vec<ProviderResponse> {
         self.response_rx.try_iter().collect()
     }
@@ -99,13 +142,22 @@ fn worker_main(
     response_tx: Sender<ProviderResponse>,
 ) {
     while let Ok(command) = command_rx.recv() {
-        let request = match command {
-            WorkerCommand::Request(request) => request,
+        let response = match command {
+            WorkerCommand::Request(request) => ProviderResponse {
+                request_id: request.request_id,
+                result: perform_request(&request.config, &request.instruction, &request.input)
+                    .map(ProviderOutput::Completion),
+            },
+            WorkerCommand::Utility(request) => ProviderResponse {
+                request_id: request.request_id,
+                result: match request.kind {
+                    UtilityKind::FetchModels => perform_model_fetch(&request.config)
+                        .map(ProviderOutput::Models),
+                    UtilityKind::Test => perform_provider_test(&request.config)
+                        .map(|()| ProviderOutput::TestSucceeded),
+                },
+            },
             WorkerCommand::Stop => break,
-        };
-        let response = ProviderResponse {
-            request_id: request.request_id,
-            result: perform_request(&request.config, &request.instruction, &request.input),
         };
         if response_tx.send(response).is_err() {
             break;
@@ -120,6 +172,48 @@ fn perform_request(
     instruction: &str,
     input: &str,
 ) -> Result<String, String> {
+    let (endpoint, mut headers) = request_headers(config, true)?;
+    let mut body = SensitiveBytes(build_command_request(config, instruction, input));
+
+    let response = unsafe { send_winhttp(&endpoint, &headers.0, &body.0) };
+    headers.0.fill(0);
+    body.0.fill(0);
+    let (status, mut response_body) = response?;
+    let parsed = parse_chat_response(status, &response_body).map_err(|error| error.to_string());
+    response_body.fill(0);
+    parsed
+}
+
+fn perform_model_fetch(config: &ProviderConfig) -> Result<Vec<String>, String> {
+    let (endpoint, mut headers) = request_headers(config, false)?;
+    let response = unsafe { send_winhttp_get(&endpoint, &headers.0) };
+    headers.0.fill(0);
+    let (status, mut body) = response?;
+    let models = parse_model_catalog(status, &body).map_err(|error| error.to_string());
+    body.fill(0);
+    models
+}
+
+fn perform_provider_test(config: &ProviderConfig) -> Result<(), String> {
+    let (endpoint, mut headers) = request_headers(config, false)?;
+    let response = unsafe { send_winhttp_get(&endpoint, &headers.0) };
+    headers.0.fill(0);
+    let (status, mut body) = response?;
+    let result = if (200..300).contains(&status) {
+        Ok(())
+    } else {
+        parse_model_catalog(status, &body)
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    };
+    body.fill(0);
+    result
+}
+
+fn request_headers(
+    config: &ProviderConfig,
+    include_content_type: bool,
+) -> Result<(swiftslate::provider::EndpointParts, SensitiveWide), String> {
     let endpoint = config.endpoint_parts().map_err(|error| error.to_string())?;
     let target = config
         .credential_target()
@@ -129,12 +223,12 @@ fn perform_request(
         return Err("No API key is saved for this provider host.".into());
     }
 
-    let mut body = SensitiveBytes(build_command_request(config, instruction, input));
-    let mut headers = SensitiveWide(
+    let initial = if include_content_type {
         "Content-Type: application/json\r\nAccept: application/json\r\n"
-            .encode_utf16()
-            .collect(),
-    );
+    } else {
+        "Accept: application/json\r\n"
+    };
+    let mut headers = SensitiveWide(initial.encode_utf16().collect());
     if let Some(api_key) = api_key.as_ref() {
         let api_key = api_key.as_utf8()?;
         if api_key.is_empty()
@@ -148,14 +242,7 @@ fn perform_request(
         headers.0.extend(api_key.encode_utf16());
         headers.0.extend("\r\n".encode_utf16());
     }
-
-    let response = unsafe { send_winhttp(&endpoint, &headers.0, &body.0) };
-    headers.0.fill(0);
-    body.0.fill(0);
-    let (status, mut response_body) = response?;
-    let parsed = parse_chat_response(status, &response_body).map_err(|error| error.to_string());
-    response_body.fill(0);
-    parsed
+    Ok((endpoint, headers))
 }
 
 unsafe fn send_winhttp(
@@ -163,8 +250,24 @@ unsafe fn send_winhttp(
     headers: &[u16],
     body: &[u8],
 ) -> Result<(u32, Vec<u8>), String> {
+    send_winhttp_method(endpoint, "POST", headers, body)
+}
+
+unsafe fn send_winhttp_get(
+    endpoint: &swiftslate::provider::EndpointParts,
+    headers: &[u16],
+) -> Result<(u32, Vec<u8>), String> {
+    send_winhttp_method(endpoint, "GET", headers, &[])
+}
+
+unsafe fn send_winhttp_method(
+    endpoint: &swiftslate::provider::EndpointParts,
+    method: &str,
+    headers: &[u16],
+    body: &[u8],
+) -> Result<(u32, Vec<u8>), String> {
     let started = Instant::now();
-    let agent = wide("SwiftSlate/1.1");
+    let agent = wide("SwiftSlate/1.2");
     let access_type = if endpoint.secure {
         WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY
     } else {
@@ -196,7 +299,7 @@ unsafe fn send_winhttp(
     let connection = WinHttpConnect(session.0, PCWSTR(host.as_ptr()), endpoint.port, 0);
     let connection = InternetHandle::new(connection, "connect to the provider")?;
 
-    let method = wide("POST");
+    let method = wide(method);
     let path = wide(&endpoint.path_and_query);
     let flags = if endpoint.secure {
         WINHTTP_FLAG_SECURE
@@ -222,10 +325,11 @@ unsafe fn send_winhttp(
 
     let body_length =
         u32::try_from(body.len()).map_err(|_| "The request is too large.".to_owned())?;
+    let optional_body = (!body.is_empty()).then(|| body.as_ptr().cast());
     WinHttpSendRequest(
         request.0,
         Some(headers),
-        Some(body.as_ptr().cast()),
+        optional_body,
         body_length,
         body_length,
         0,
@@ -440,6 +544,18 @@ mod tests {
         let request = String::from_utf8_lossy(&request);
         assert!(request.starts_with("POST /v1/chat/completions HTTP/1.1\r\n"));
         assert!(request.contains("Authorization: Bearer test-key\r\n"));
+        server.handle.join().unwrap();
+    }
+
+    #[test]
+    fn winhttp_gets_model_catalogs_without_a_request_body() {
+        let response = br#"{"data":[{"id":"model-a"}]}"#.to_vec();
+        let server = spawn_server("200 OK", &[("Content-Type", "application/json")], response);
+        let (status, body) = unsafe { send_winhttp_get(&endpoint(server.port), &headers()) }.unwrap();
+        assert_eq!(parse_model_catalog(status, &body), Ok(vec!["model-a".into()]));
+        let request = server.request_rx.recv().unwrap();
+        let request = String::from_utf8_lossy(&request);
+        assert!(request.starts_with("GET /v1/chat/completions HTTP/1.1\r\n"));
         server.handle.join().unwrap();
     }
 

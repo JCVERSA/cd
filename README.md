@@ -1,6 +1,6 @@
 # SwiftSlate
 
-SwiftSlate 1.1 is a lightweight, system-wide AI writing assistant for Windows and Linux. It keeps capture, provider access, and review explicit: text is never sent merely because it was selected or typed, and provider output is never pasted automatically.
+SwiftSlate 1.2 is a lightweight, system-wide AI writing assistant for Windows and Linux. It keeps capture, provider access, and review explicit: text is never sent merely because it was selected or typed, and provider output is never pasted automatically.
 
 ## Platforms
 
@@ -10,7 +10,8 @@ The Windows application is a native Win32 executable with no browser, WebView, E
 
 - Global `Ctrl+Alt+Space` shortcut.
 - System-wide typed commands: `?improve`, `?fix`, `?shorten`, `?expand`, `?formal`, `?casual`, `?human`, `?reply`, and `?translate:fr`.
-- Visible command selector and provider presets for OpenAI, Google Gemini, Groq, OpenRouter, Mistral AI, DeepSeek, Ollama, LM Studio, and Custom.
+- Visible command selector and provider presets for OpenAI, Google Gemini, Groq, **NVIDIA NIM**, OpenRouter, Mistral AI, DeepSeek, Ollama, LM Studio, and Custom.
+- Explicit **Fetch models** action that loads a bounded live `/models` catalog into an editable model selector, plus **Test provider** for credential/connectivity validation without sending user text.
 - Protected selection and inline-field capture through UI Automation on a dedicated COM worker.
 - Fail-closed password checks, foreground/focus revalidation, physical-input filtering, and bounded capture.
 - Existing-clipboard fallback only for explicit shortcut capture of unsupported, non-protected controls; inline commands never use clipboard fallback.
@@ -50,11 +51,12 @@ See [`docs/SECURITY.md`](docs/SECURITY.md) for the complete threat model and res
 
 1. Download and extract `swiftslate-windows-x64.zip` from the latest successful CI run.
 2. Run `swiftslate.exe`.
-3. Choose a provider preset and command. Adjust the model if needed, enter the provider API key, and choose **Save**. Ollama and LM Studio on exact loopback may run without a key.
-4. Either select text in another application and press `Ctrl+Alt+Space`, or type a supported command after text in an editable field—for example, `This needs grammar help?fix`.
-5. SwiftSlate revalidates the target, opens the captured text for review, and asks for endpoint/model session consent before the first request.
-6. Review the response and explicitly choose **Copy result**. SwiftSlate intentionally leaves the source field and typed trigger unchanged.
-7. Use **Local preview** for an offline deterministic transform.
+3. Choose a provider preset and command, enter the API key, and choose **Save**. NVIDIA NIM uses keys from NVIDIA Build. Ollama and LM Studio on exact loopback may run without a key.
+4. Choose **Test provider** to verify the saved endpoint/key, or **Fetch models** to load the provider's current catalog and select a model from the editable **Model** list; choose **Save** after selecting it.
+5. Either select text in another application and press `Ctrl+Alt+Space`, or type a supported command after text in an editable field—for example, `This needs grammar help?fix`.
+6. SwiftSlate revalidates the target, opens the captured text for review, and asks for endpoint/model session consent before the first request.
+7. Review the response and explicitly choose **Copy result**. SwiftSlate intentionally leaves the source field and typed trigger unchanged.
+8. Use **Local preview** for an offline deterministic transform.
 
 Typed commands activate as soon as their final character is physically typed. They require a UI Automation-compatible editable field, are disabled in password/protected fields, inspect at most 32,768 UTF-16 units, reject synthetic input, and never fall back to clipboard contents. The key field clears after Credential Manager accepts it. **Remove key** deletes the credential for the current host and port.
 
@@ -109,7 +111,9 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo build --locked --release
 ```
 
-CI performs Linux and Windows tests, warnings-denied Clippy, formatting, release builds, loopback transport tests, package measurement, hashing, and artifact upload. This repository intentionally avoids intermediate public builds; downloadable artifacts are produced only after the consolidated 1.1 state passes both platform jobs.
+CI performs Linux and Windows tests, warnings-denied Clippy, formatting, release builds, loopback transport tests, package measurement, hashing, and artifact upload. Model fetching and testing use an explicit bounded `GET` to the provider's `/models` endpoint, with the same host-scoped credential, timeout, redirect, HTTPS/loopback, and response-size policies. The fetched catalog is session-only; only the model selected and saved by the user is persisted.
+
+This repository intentionally avoids intermediate public builds; downloadable artifacts are produced only after the consolidated 1.2 state passes both platform jobs.
 
 Additional design documents:
 

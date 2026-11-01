@@ -223,16 +223,22 @@ pub fn build_command_request(config: &ProviderConfig, instruction: &str, input: 
     } else {
         instruction
     };
-    json!({
+    let mut request = json!({
         "model": config.model,
         "messages": [
             { "role": "system", "content": instruction },
             { "role": "user", "content": input }
         ],
         "stream": false
-    })
-    .to_string()
-    .into_bytes()
+    });
+    if config
+        .model
+        .to_ascii_lowercase()
+        .contains("nemotron-3-super")
+    {
+        request["chat_template_kwargs"] = json!({ "enable_thinking": false });
+    }
+    request.to_string().into_bytes()
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -262,21 +268,7 @@ impl fmt::Display for ResponseError {
 }
 
 pub fn parse_chat_response(status: u32, body: &[u8]) -> Result<String, ResponseError> {
-    if body.len() > MAX_PROVIDER_RESPONSE_BYTES {
-        return Err(ResponseError::OutputTooLong);
-    }
-    if !(200..300).contains(&status) {
-        let message = serde_json::from_slice::<Value>(body)
-            .ok()
-            .and_then(|value| {
-                value
-                    .pointer("/error/message")
-                    .and_then(Value::as_str)
-                    .map(sanitize_provider_message)
-            })
-            .unwrap_or_default();
-        return Err(ResponseError::Http { status, message });
-    }
+    validate_response(status, body)?;
 
     let value: Value = serde_json::from_slice(body).map_err(|_| ResponseError::InvalidJson)?;
     let content = value
@@ -290,6 +282,70 @@ pub fn parse_chat_response(status: u32, body: &[u8]) -> Result<String, ResponseE
         return Err(ResponseError::OutputTooLong);
     }
     Ok(content.to_owned())
+}
+
+pub fn parse_model_catalog(status: u32, body: &[u8]) -> Result<Vec<String>, ResponseError> {
+    validate_response(status, body)?;
+    let value: Value = serde_json::from_slice(body).map_err(|_| ResponseError::InvalidJson)?;
+    let mut models = Vec::new();
+    let mut add = |candidate: Option<&str>| {
+        let Some(candidate) = candidate.map(str::trim) else {
+            return;
+        };
+        if !candidate.is_empty()
+            && candidate.len() <= MAX_MODEL_LENGTH
+            && !candidate.chars().any(char::is_control)
+            && models.len() < 1_000
+            && !models.iter().any(|model| model == candidate)
+        {
+            models.push(candidate.to_owned());
+        }
+    };
+
+    if let Some(entries) = value.get("data").and_then(Value::as_array) {
+        for entry in entries {
+            add(entry
+                .get("id")
+                .or_else(|| entry.get("name"))
+                .or_else(|| entry.get("model"))
+                .and_then(Value::as_str));
+        }
+    }
+    if let Some(entries) = value.get("models").and_then(Value::as_array) {
+        for entry in entries {
+            if let Some(candidate) = entry.as_str() {
+                add(Some(candidate));
+            } else {
+                add(entry
+                    .get("name")
+                    .or_else(|| entry.get("id"))
+                    .or_else(|| entry.get("model"))
+                    .and_then(Value::as_str));
+            }
+        }
+    }
+    Ok(models)
+}
+
+fn validate_response(status: u32, body: &[u8]) -> Result<(), ResponseError> {
+    if body.len() > MAX_PROVIDER_RESPONSE_BYTES {
+        return Err(ResponseError::OutputTooLong);
+    }
+    if (200..300).contains(&status) {
+        return Ok(());
+    }
+    let message = serde_json::from_slice::<Value>(body)
+        .ok()
+        .and_then(|value| match value.get("error") {
+            Some(Value::String(message)) => Some(sanitize_provider_message(message)),
+            Some(error) => error
+                .get("message")
+                .and_then(Value::as_str)
+                .map(sanitize_provider_message),
+            None => None,
+        })
+        .unwrap_or_default();
+    Err(ResponseError::Http { status, message })
 }
 
 fn sanitize_provider_message(message: &str) -> String {
@@ -409,9 +465,48 @@ mod tests {
     }
 
     #[test]
+    fn nvidia_nemotron_requests_disable_unneeded_reasoning() {
+        let config = ProviderConfig::new(
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            "nvidia/nemotron-3-super-120b-a12b",
+        )
+        .unwrap();
+        let body = build_command_request(&config, "Fix grammar.", "sample");
+        let parsed: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            parsed["chat_template_kwargs"]["enable_thinking"],
+            false
+        );
+    }
+
+    #[test]
     fn parses_chat_completion_content() {
         let body = br#"{"choices":[{"message":{"content":"Revised text."}}]}"#;
         assert_eq!(parse_chat_response(200, body), Ok("Revised text.".into()));
+    }
+
+    #[test]
+    fn parses_and_bounds_openai_and_local_model_catalogs() {
+        let openai = br#"{"data":[{"id":"model-b"},{"id":"model-a"},{"id":"model-b"}]}"#;
+        assert_eq!(
+            parse_model_catalog(200, openai),
+            Ok(vec!["model-b".into(), "model-a".into()])
+        );
+        let local = br#"{"models":[{"name":"llama3.2:latest"},"qwen2.5"]}"#;
+        assert_eq!(
+            parse_model_catalog(200, local),
+            Ok(vec!["llama3.2:latest".into(), "qwen2.5".into()])
+        );
+    }
+
+    #[test]
+    fn model_catalog_rejects_invalid_json_and_sanitizes_entries() {
+        assert_eq!(
+            parse_model_catalog(200, b"not json"),
+            Err(ResponseError::InvalidJson)
+        );
+        let body = br#"{"data":[{"id":"valid"},{"id":"bad\nmodel"},{"id":""}]}"#;
+        assert_eq!(parse_model_catalog(200, body), Ok(vec!["valid".into()]));
     }
 
     #[test]

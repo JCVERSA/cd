@@ -1,4 +1,4 @@
-# SwiftSlate 1.1 release qualification
+# SwiftSlate 1.2 release qualification
 
 This document defines the consolidated release gate. Intermediate phase builds are not user acceptance points; CI produces complete Windows and Linux artifacts from the same branch state.
 
@@ -10,7 +10,8 @@ This document defines the consolidated release gate. Intermediate phase builds a
 | Endpoint validation | HTTPS/loopback, authority, port, and credential-scope tests |
 | Correct JSON | Escaping, completion parsing, missing output, errors, and output bounds |
 | Windows selection limits | Range/count/focus/protection core tests plus Windows compilation |
-| Provider and command catalogs | Unique trigger tests and endpoint validation for every noncustom preset |
+| Provider and command catalogs | NVIDIA NIM coverage, unique trigger tests, and chat/models endpoint validation for every noncustom preset |
+| Live model discovery | OpenAI/local catalog-shape parsing, de-duplication, entry bounds, and real WinHTTP GET test |
 | Typed inline command safety | Bounded detector tests, synthetic-input rejection, protected UIA path, and Windows compilation |
 | Windows network isolation | Dedicated-worker architecture and warnings-denied build |
 | Windows HTTP behavior | Real loopback POST, redirect-refusal, and oversized-body tests |
@@ -28,7 +29,8 @@ This document defines the consolidated release gate. Intermediate phase builds a
 
 - Native Win32 application starts without a bundled runtime.
 - `Ctrl+Alt+Space` opens the palette after selection capture.
-- The provider selector visibly offers OpenAI, Google Gemini, Groq, OpenRouter, Mistral AI, DeepSeek, Ollama, LM Studio, and Custom.
+- The provider selector visibly offers OpenAI, Google Gemini, Groq, NVIDIA NIM, OpenRouter, Mistral AI, DeepSeek, Ollama, LM Studio, and Custom.
+- **Fetch models** loads a bounded live catalog into the editable model selector; **Test provider** validates connectivity and the saved host credential without transmitting user text.
 - The command selector visibly offers all nine built-ins and their typed triggers.
 - Physical `?fix`/other built-in suffixes in external compatible fields queue bounded whole-field capture and the matching command.
 - Password, synthetic-input, trigger mismatch, target change, and focus-race checks fail closed.
@@ -77,7 +79,7 @@ This document defines the consolidated release gate. Intermediate phase builds a
 
 - Windows offers the complete graphical selection/settings/review workflow.
 - Linux offers a complete secure request/config/secret CLI and best-effort primary-selection adapters. A universal Wayland global-selection GUI would require compositor capabilities that do not exist as a common standard.
-- Automatic replacement remains intentionally excluded from 1.1 because it would weaken cross-application and cross-compositor safety guarantees.
+- Automatic replacement remains intentionally excluded from 1.2 because it would weaken cross-application and cross-compositor safety guarantees.
 - Artifacts are portable and currently unsigned.
 
 ## Release decision

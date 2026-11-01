@@ -218,7 +218,7 @@ fn print_text(text: &str) -> Result<(), String> {
 
 fn print_help() {
     println!(
-        "SwiftSlate 1.1 — lightweight AI text improvement\n\n\
+        "SwiftSlate 1.2 — lightweight AI text improvement\n\n\
 Usage:\n\
   swiftslate configure [--endpoint URL] [--model NAME]\n\
   printf '%s' 'API_KEY' | swiftslate set-key --stdin\n\

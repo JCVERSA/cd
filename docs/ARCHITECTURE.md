@@ -1,4 +1,4 @@
-# SwiftSlate 1.1 architecture
+# SwiftSlate 1.2 architecture
 
 ## Product invariants
 
@@ -18,7 +18,7 @@ src/
 ├── lib.rs                  portable safe-Rust boundary
 ├── trigger.rs              bounded physical-input suffix detector
 ├── commands.rs             built-in commands, triggers, and instructions
-├── providers.rs            major-provider endpoint/model presets
+├── providers.rs            provider chat/catalog endpoints and model presets
 ├── replacement.rs          stale-result guard model
 ├── selection.rs            shared capture limits and assembly
 ├── preview.rs              deterministic offline transform
@@ -82,7 +82,11 @@ Only the maximum trigger-length suffix is retained by the detector; normal typed
 
 ### Provider worker
 
+- Exposes one serialized background queue for generation, live model-catalog fetches, and provider tests.
 - Reads the key for the endpoint's canonical host/port from Credential Manager.
+- Includes presets for OpenAI, Gemini, Groq, NVIDIA NIM, OpenRouter, Mistral, DeepSeek, Ollama, LM Studio, and Custom.
+- Fetch/test actions use an explicit `GET` to the preset `/models` URL or the derived OpenAI-compatible sibling of a custom chat URL; they send no selected/user text.
+- Model catalogs accept common OpenAI and local-server JSON shapes, de-duplicate entries, cap IDs at 128 characters and catalogs at 1,000 entries, and remain in process memory only until the user selects and saves one.
 - Builds request JSON with `serde_json` rather than string concatenation.
 - Uses WinHTTP with redirects disabled.
 - Uses 5-second resolution, 8-second connect, 10-second send/receive, and a 45-second total worker deadline.
