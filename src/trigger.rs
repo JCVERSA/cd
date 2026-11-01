@@ -187,10 +187,8 @@ mod tests {
 
     #[test]
     fn longest_trigger_wins() {
-        let mut detector = TriggerDetector::new(vec![
-            trigger("short", "?go"),
-            trigger("long", "?go-now"),
-        ]);
+        let mut detector =
+            TriggerDetector::new(vec![trigger("short", "?go"), trigger("long", "?go-now")]);
         assert_eq!(type_text(&mut detector, "?go-now").unwrap().id, "long");
     }
 

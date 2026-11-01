@@ -12,7 +12,9 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use swiftslate::preview::improve_preview;
 use windows::core::{w, Error, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::Graphics::Gdi::{GetStockObject, GetSysColorBrush, COLOR_WINDOW, DEFAULT_GUI_FONT};
+use windows::Win32::Graphics::Gdi::{
+    GetStockObject, GetSysColorBrush, COLOR_WINDOW, DEFAULT_GUI_FONT,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     RegisterHotKey, SetFocus, UnregisterHotKey, HOT_KEY_MODIFIERS, VK_SPACE,
@@ -23,14 +25,13 @@ use windows::Win32::UI::Input::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
-    GetWindowTextLengthW, GetWindowTextW, HMENU, IDC_ARROW, LoadCursorW, MB_ICONERROR, MB_OK,
-    MSG, MessageBoxW, PostQuitMessage, RegisterClassW, SendMessageW, SetForegroundWindow,
-    SetWindowTextW, ShowWindow, TranslateMessage, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE,
-    WM_COMMAND, WM_COPY, WM_CREATE, WM_DESTROY, WM_HOTKEY, WM_INPUT, WM_PASTE, WM_SETFONT,
-    WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX,
-    WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL, BS_DEFPUSHBUTTON,
-    ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY, ES_WANTRETURN, SW_HIDE, SW_RESTORE,
-    SW_SHOWNORMAL,
+    GetWindowTextLengthW, GetWindowTextW, LoadCursorW, MessageBoxW, PostQuitMessage,
+    RegisterClassW, SendMessageW, SetForegroundWindow, SetWindowTextW, ShowWindow,
+    TranslateMessage, BS_DEFPUSHBUTTON, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY, ES_WANTRETURN,
+    HMENU, IDC_ARROW, MB_ICONERROR, MB_OK, MSG, SW_HIDE, SW_RESTORE, SW_SHOWNORMAL,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_COPY, WM_CREATE, WM_DESTROY, WM_HOTKEY,
+    WM_INPUT, WM_PASTE, WM_SETFONT, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE,
+    WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE, WS_VSCROLL,
 };
 
 const CLASS_NAME: PCWSTR = w!("SwiftSlatePrototypeWindow");
@@ -133,16 +134,13 @@ unsafe extern "system" fn window_proc(
     .unwrap_or_else(|_| DefWindowProcW(hwnd, message, wparam, lparam))
 }
 
-unsafe fn window_proc_inner(
-    hwnd: HWND,
-    message: u32,
-    wparam: WPARAM,
-    lparam: LPARAM,
-) -> LRESULT {
+unsafe fn window_proc_inner(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match message {
         WM_CREATE => {
             if let Err(error) = initialize_window(hwnd) {
-                let text = wide(&format!("The prototype UI could not be initialized.\n\n{error}"));
+                let text = wide(&format!(
+                    "The prototype UI could not be initialized.\n\n{error}"
+                ));
                 MessageBoxW(
                     Some(hwnd),
                     PCWSTR(text.as_ptr()),
@@ -280,9 +278,7 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
             | WS_TABSTOP
             | WS_BORDER
             | WS_VSCROLL
-            | WINDOW_STYLE(
-                (ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_READONLY) as u32,
-            ),
+            | WINDOW_STYLE((ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | ES_READONLY) as u32),
         20,
         309,
         665,
@@ -346,21 +342,11 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         hide,
         status,
     ] {
-        SendMessageW(
-            control,
-            WM_SETFONT,
-            WPARAM(font.0 as usize),
-            LPARAM(1),
-        );
+        SendMessageW(control, WM_SETFONT, WPARAM(font.0 as usize), LPARAM(1));
     }
 
-    let hotkey_registered = RegisterHotKey(
-        Some(hwnd),
-        HOTKEY_ID,
-        HOTKEY_MODIFIERS,
-        VK_SPACE.0 as u32,
-    )
-    .is_ok();
+    let hotkey_registered =
+        RegisterHotKey(Some(hwnd), HOTKEY_ID, HOTKEY_MODIFIERS, VK_SPACE.0 as u32).is_ok();
 
     let raw_input = RAWINPUTDEVICE {
         usUsagePage: 0x01,
@@ -461,7 +447,10 @@ unsafe fn run_local_preview() {
         let result = improve_preview(&original);
         set_text(state.result, &result);
         if result.is_empty() {
-            set_text(state.status, "Enter or paste text before running the preview.");
+            set_text(
+                state.status,
+                "Enter or paste text before running the preview.",
+            );
         } else {
             set_text(
                 state.status,
@@ -483,7 +472,10 @@ unsafe fn copy_result() {
         }
         SendMessageW(state.result, EM_SETSEL, WPARAM(0), LPARAM(-1));
         SendMessageW(state.result, WM_COPY, WPARAM(0), LPARAM(0));
-        set_text(state.status, "Result copied. Paste it only after reviewing it.");
+        set_text(
+            state.status,
+            "Result copied. Paste it only after reviewing it.",
+        );
     });
 }
 
@@ -546,10 +538,7 @@ unsafe fn shut_down(hwnd: HWND) {
                     dwFlags: RIDEV_REMOVE,
                     hwndTarget: HWND::default(),
                 };
-                let _ = RegisterRawInputDevices(
-                    &[removal],
-                    size_of::<RAWINPUTDEVICE>() as u32,
-                );
+                let _ = RegisterRawInputDevices(&[removal], size_of::<RAWINPUTDEVICE>() as u32);
             }
         }
         *slot.borrow_mut() = None;

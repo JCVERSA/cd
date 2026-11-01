@@ -28,7 +28,10 @@ mod tests {
 
     #[test]
     fn normalizes_whitespace_and_punctuation() {
-        assert_eq!(improve_preview("  hello   swift slate  "), "Hello swift slate.");
+        assert_eq!(
+            improve_preview("  hello   swift slate  "),
+            "Hello swift slate."
+        );
     }
 
     #[test]
