@@ -1443,9 +1443,7 @@ unsafe fn handle_raw_input(hwnd: HWND, lparam: LPARAM) {
         let mut state = slot.borrow_mut();
         let state = state.as_mut()?;
         if !physical {
-            state
-                .trigger_detector
-                .feed(InputEvent::Reset, InputOrigin::Synthetic);
+            state.trigger_detector.reset();
             return None;
         }
         if foreground.is_invalid() || foreground == hwnd {

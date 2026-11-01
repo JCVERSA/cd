@@ -110,6 +110,11 @@ impl TriggerDetector {
         self.sensitive
     }
 
+    /// Forgets the observed suffix after focus, navigation, or untrusted input changes.
+    pub fn reset(&mut self) {
+        self.suffix.clear();
+    }
+
     /// Applies one edit and returns the longest matching trigger, if any.
     pub fn feed(&mut self, event: InputEvent, origin: InputOrigin) -> Option<TriggerMatch> {
         if self.sensitive || origin == InputOrigin::SwiftSlate {
