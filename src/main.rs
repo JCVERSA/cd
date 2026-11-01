@@ -2,6 +2,8 @@
 
 #[cfg(windows)]
 mod windows_app;
+#[cfg(windows)]
+mod windows_selection;
 
 #[cfg(windows)]
 fn main() {
@@ -10,5 +12,5 @@ fn main() {
 
 #[cfg(not(windows))]
 fn main() {
-    eprintln!("SwiftSlate's first prototype runs on Windows. Core tests are cross-platform.");
+    eprintln!("SwiftSlate's current prototype runs on Windows. Core tests are cross-platform.");
 }

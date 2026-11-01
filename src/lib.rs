@@ -7,4 +7,5 @@
 
 pub mod preview;
 pub mod replacement;
+pub mod selection;
 pub mod trigger;

@@ -1,8 +1,8 @@
-# Prototype definition
+# Windows 0.2 prototype definition
 
 ## Purpose
 
-The first prototype is a risk-reduction build. It validates the lightweight Windows foundation before API keys, network traffic, or automatic text replacement are allowed into the application.
+The 0.2 prototype validates protected Windows selection capture while API keys, network traffic, synthetic copy, and automatic text replacement remain disabled.
 
 ## Included acceptance checks
 
@@ -11,6 +11,13 @@ The first prototype is a risk-reduction build. It validates the lightweight Wind
 | Native lightweight UI | Direct Win32 controls |
 | Global shortcut | `RegisterHotKey`, `Ctrl+Alt+Space` |
 | Background input mechanism | Raw Input with `RIDEV_INPUTSINK` |
+| Automatic selection capture | UI Automation `TextPattern` |
+| Password rejection | Fail-closed `IsPassword` checks before and after capture |
+| Accessibility-provider isolation | Dedicated multithreaded COM worker |
+| UI responsiveness | 1.5-second shell timeout; late results ignored |
+| Capture limits | 8 ranges and 32,768 UTF-16 code units |
+| Focus race protection | Foreground window and focused element revalidated |
+| Unsupported-control behavior | Clearly labelled existing-clipboard fallback |
 | Bounded trigger memory | Longest-trigger-sized `VecDeque<char>` |
 | Protected-mode behavior | Detector clears and suspends in sensitive mode |
 | Feedback-loop prevention | SwiftSlate-origin events are ignored |
@@ -29,12 +36,28 @@ The first prototype is a risk-reduction build. It validates the lightweight Wind
 - [ ] Closing the title bar exits the process.
 - [ ] Hiding the window leaves the process idle.
 
-### Global shortcut
+### Global shortcut and selection
 
-- [ ] `Ctrl+Alt+Space` opens/restores SwiftSlate from Notepad.
-- [ ] It opens from Chrome or Edge.
-- [ ] It opens from VS Code.
-- [ ] A shortcut conflict is reported without crashing.
+For each supported application, select a short phrase and press `Ctrl+Alt+Space`:
+
+- [ ] Notepad
+- [ ] Chrome
+- [ ] Edge
+- [ ] Microsoft Word
+- [ ] Outlook
+- [ ] VS Code
+- [ ] A native Win32 edit control
+- [ ] An Electron application
+
+Record whether capture used UI Automation, clipboard fallback, or failed safely.
+
+### Protected fields
+
+- [ ] A browser password field is rejected.
+- [ ] A native Windows password edit is rejected.
+- [ ] Existing clipboard text is not loaded after protected-field rejection.
+- [ ] Moving focus during capture cancels the result.
+- [ ] A stalled provider times out without freezing SwiftSlate.
 
 ### Raw Input
 
@@ -45,8 +68,9 @@ The first prototype is a risk-reduction build. It validates the lightweight Wind
 
 ### Review workflow
 
-- [ ] Copying plain text and pressing the shortcut loads the clipboard.
-- [ ] Empty or non-text clipboard data is handled safely.
+- [ ] Captured text appears without an automatic network request.
+- [ ] Empty selection is handled safely.
+- [ ] Oversized selection is rejected.
 - [ ] Local preview clearly says no network request occurred.
 - [ ] Copy result places only the reviewed result on the clipboard.
 
@@ -62,6 +86,6 @@ Record on an ordinary Windows 10 or Windows 11 machine:
 
 ## Exit criteria
 
-The prototype is accepted when CI is green, the executable runs on Windows 10/11, the hotkey and Raw Input checks pass, and no security or resource regression blocks the next phase.
+The phase is accepted when CI is green and manual Windows testing confirms that selection works in representative native, browser, Office, and Electron applications while password fields and focus races fail closed.
 
-The next phase adds UI Automation inspection and selection capture. AI networking remains behind a separate security gate.
+The next security gate introduces provider configuration, Credential Manager storage, and an explicit request-consent screen. Automatic replacement remains disabled until target revalidation is tested interactively.

@@ -9,6 +9,12 @@ SwiftSlate interacts with text from arbitrary applications. The default must the
 - No text history or analytics are written.
 - No telemetry is present.
 - Raw Input records only an in-memory event count in the native shell.
+- UI Automation selection capture runs on a dedicated COM worker.
+- Password status is checked before and after capture; an unavailable status fails closed.
+- Foreground window and focused-element identity are revalidated before text is accepted.
+- Capture is limited to 8 ranges and 32,768 UTF-16 code units.
+- The shell times out after 1.5 seconds and ignores late accessibility responses.
+- Protected fields never use the clipboard fallback.
 - The portable trigger detector retains at most the longest trigger.
 - Synthetic SwiftSlate input is ignored by trigger detection.
 - The review result is never pasted automatically.

@@ -16,9 +16,11 @@ src/
 ├── lib.rs                 portable, safe Rust only
 ├── trigger.rs             bounded suffix detector
 ├── replacement.rs         stale-result replacement guards
+├── selection.rs           accessibility selection limits and assembly
 ├── preview.rs             deterministic offline prototype transform
 ├── main.rs                platform entry point
-└── windows_app.rs         native Win32 prototype shell
+├── windows_app.rs         native Win32 prototype shell
+└── windows_selection.rs   dedicated UI Automation capture worker
 ```
 
 The portable library forbids unsafe Rust. Win32 calls and their callback boundary are isolated in `windows_app.rs`.
@@ -54,6 +56,20 @@ The portable library forbids unsafe Rust. Win32 calls and their callback boundar
 - SwiftSlate-generated input is tagged and excluded from trigger detection.
 
 The current UI increments a Raw Input event counter but does not translate or store keys. Keyboard-layout-aware text translation is a separate compatibility milestone.
+
+## Current selection capture
+
+The Windows 0.2 prototype captures selection on a dedicated multithreaded COM worker:
+
+1. Preserve the foreground target before showing SwiftSlate.
+2. Query the focused UI Automation element.
+3. Fail closed if `IsPassword` is true or unavailable.
+4. Probe the focused element and a bounded number of ancestors for `TextPattern`.
+5. Limit captures to 8 ranges and 32,768 UTF-16 code units.
+6. Recheck foreground window, focus identity, and password status.
+7. Deliver the text to the UI only if every check still passes.
+
+The window thread stops waiting after 1.5 seconds. Late worker responses are ignored. Unsupported controls may use the existing clipboard as a clearly labelled fallback; protected controls never do.
 
 ## Selection and replacement strategy
 
