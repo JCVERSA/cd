@@ -79,24 +79,60 @@ jobs:
         shell: pwsh
         run: choco install innosetup --no-progress -y
 
-      - name: Build and smoke-test SwiftSlate
+      - name: Run Windows Python tests
+        working-directory: desktop
+        run: python -m unittest discover -s tests -v
+
+      - name: Build and test interface on Windows
+        working-directory: desktop/ui
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm audit --audit-level=moderate
+          npm run build
+
+      - name: Install Python packaging dependencies
+        working-directory: desktop
+        run: python -m pip install --disable-pip-version-check -r requirements-build.txt
+
+      - name: Build one-directory application
+        working-directory: desktop
+        run: python -m PyInstaller --clean --noconfirm SwiftSlate.spec
+
+      - name: Smoke-test packaged application
         shell: pwsh
         run: |
-          try {
-            & ./desktop/build_windows.ps1 *>&1 | Tee-Object -FilePath windows-build.log
-            if (-not $?) { throw 'Windows build script failed.' }
-          } catch {
-            $tail = ((Get-Content windows-build.log -Tail 160 -ErrorAction SilentlyContinue) -join "`n")
-            @"
-          ## Windows build failure
-          ```text
-          $tail
-          ```
-          "@ | Add-Content $env:GITHUB_STEP_SUMMARY
-            $escaped = $tail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
-            Write-Output "::error title=Windows build failed::$escaped"
-            throw
+          $process = Start-Process './desktop/build/SwiftSlate/SwiftSlate.exe' -ArgumentList '--self-test' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Packaged self-test exited with $($process.ExitCode)." }
+
+      - name: Download and verify WebView2 bootstrapper
+        shell: pwsh
+        run: |
+          $path = './desktop/packaging/MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $path
+          $signature = Get-AuthenticodeSignature -FilePath $path
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft') {
+            throw 'The WebView2 bootstrapper signature is not valid.'
           }
+
+      - name: Compile Inno Setup installer
+        shell: pwsh
+        run: |
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw 'ISCC.exe was not found.' }
+          & $iscc './desktop/packaging/SwiftSlate.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with $LASTEXITCODE." }
+
+      - name: Write installer hash
+        shell: pwsh
+        run: |
+          $path = './desktop/release/SwiftSlate-Setup-x64.exe'
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $path).Hash.ToLowerInvariant()
+          "$hash  SwiftSlate-Setup-x64.exe" | Set-Content -Encoding ascii './desktop/release/SwiftSlate-Setup-x64.exe.sha256'
 
       - name: Install, verify, and uninstall package
         shell: pwsh
