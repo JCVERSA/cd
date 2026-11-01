@@ -91,9 +91,7 @@ fn read_string(value_name: &str, max_utf16_units: usize) -> Result<Option<String
                 status.0
             ));
         }
-        if byte_count < 2
-            || byte_count % 2 != 0
-            || byte_count as usize > (max_utf16_units + 1) * 2
+        if byte_count < 2 || byte_count % 2 != 0 || byte_count as usize > (max_utf16_units + 1) * 2
         {
             return Err("SwiftSlate settings contain an invalid or oversized string.".into());
         }

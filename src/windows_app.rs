@@ -951,7 +951,8 @@ unsafe fn begin_provider_request(hwnd: HWND) {
             state.status,
         ))
     });
-    let Some((endpoint, model, has_unsaved_key, source, worker_available, status_control)) = snapshot
+    let Some((endpoint, model, has_unsaved_key, source, worker_available, status_control)) =
+        snapshot
     else {
         return;
     };

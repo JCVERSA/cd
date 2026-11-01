@@ -51,10 +51,10 @@ impl ProviderConfig {
 
     pub fn credential_target(&self) -> Result<String, ConfigError> {
         let endpoint = self.endpoint_parts()?;
-        let canonical_host = endpoint
-            .host
-            .parse::<std::net::IpAddr>()
-            .map_or_else(|_| endpoint.host.to_ascii_lowercase(), |address| address.to_string());
+        let canonical_host = endpoint.host.parse::<std::net::IpAddr>().map_or_else(
+            |_| endpoint.host.to_ascii_lowercase(),
+            |address| address.to_string(),
+        );
         let host = if canonical_host.contains(':') {
             format!("[{canonical_host}]")
         } else {

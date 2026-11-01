@@ -18,8 +18,8 @@ use windows::Win32::Networking::WinHttp::{
     WinHttpReadData, WinHttpReceiveResponse, WinHttpSendRequest, WinHttpSetOption,
     WinHttpSetTimeouts, WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_ACCESS_TYPE_NO_PROXY,
     WINHTTP_DISABLE_REDIRECTS, WINHTTP_FLAG_SECURE, WINHTTP_OPEN_REQUEST_FLAGS,
-    WINHTTP_OPTION_DISABLE_FEATURE,
-    WINHTTP_OPTION_MAX_RESPONSE_HEADER_SIZE, WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE,
+    WINHTTP_OPTION_DISABLE_FEATURE, WINHTTP_OPTION_MAX_RESPONSE_HEADER_SIZE,
+    WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_QUERY_STATUS_CODE,
 };
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_APP};
 
@@ -245,10 +245,7 @@ unsafe fn query_status(request: *mut c_void) -> Result<u32, String> {
     Ok(status)
 }
 
-unsafe fn read_bounded_body(
-    request: *mut c_void,
-    started: Instant,
-) -> Result<Vec<u8>, String> {
+unsafe fn read_bounded_body(request: *mut c_void, started: Instant) -> Result<Vec<u8>, String> {
     let mut response = Vec::new();
     let mut chunk = [0u8; 8 * 1024];
     loop {
