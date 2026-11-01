@@ -326,6 +326,7 @@ mod tests {
     use std::io::{Read, Write};
     use std::net::TcpListener;
     use std::sync::mpsc;
+    use swiftslate::provider::EndpointParts;
 
     struct TestServer {
         port: u16,
