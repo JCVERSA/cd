@@ -35,31 +35,22 @@ jobs:
           cargo test --all-targets 2>&1 | tee cargo-test.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
+            log=$(tail -n 200 cargo-test.log)
             {
               echo '## Linux test failure'
               echo '```text'
-              tail -n 200 cargo-test.log
+              echo "$log"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            escaped=${log//'%'/'%25'}
+            escaped=${escaped//$'\n'/'%0A'}
+            escaped=${escaped//$'\r'/'%0D'}
+            echo "::error title=Linux cargo test failed::$escaped"
           fi
           exit "$status"
 
       - name: Run Clippy
         run: cargo clippy --all-targets -- -D warnings
-
-      - name: Check formatting
-        shell: bash
-        run: |
-          cargo fmt --all
-          if ! git diff --quiet; then
-            {
-              echo '## Rustfmt changes required'
-              echo '```diff'
-              git diff --no-ext-diff
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 1
-          fi
 
       - name: Upload generated dependency lock
         uses: actions/upload-artifact@v7
@@ -68,6 +59,25 @@ jobs:
           path: Cargo.lock
           if-no-files-found: error
           retention-days: 7
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          cargo fmt --all
+          if ! git diff --quiet; then
+            diff=$(git diff --no-ext-diff)
+            {
+              echo '## Rustfmt changes required'
+              echo '```diff'
+              echo "$diff"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            escaped=${diff//'%'/'%25'}
+            escaped=${escaped//$'\n'/'%0A'}
+            escaped=${escaped//$'\r'/'%0D'}
+            echo "::error title=Rustfmt changes required::$escaped"
+            exit 1
+          fi
 
   windows:
     name: Prototype / Windows x64
@@ -88,12 +98,15 @@ jobs:
           cargo test --all-targets 2>&1 | Tee-Object -FilePath cargo-test.log
           $status = $LASTEXITCODE
           if ($status -ne 0) {
+            $log = (Get-Content cargo-test.log -Tail 250) -join "`n"
             @"
           ## Windows test/build failure
           ```text
-          $((Get-Content cargo-test.log -Tail 250) -join "`n")
+          $log
           ```
           "@ | Add-Content $env:GITHUB_STEP_SUMMARY
+            $escaped = $log.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Windows cargo test failed::$escaped"
           }
           exit $status
 
