@@ -29,11 +29,11 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageW, GetWindowTextLengthW, GetWindowTextW, KillTimer, LoadCursorW, MessageBoxW,
     PostQuitMessage, RegisterClassW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowTextW,
     ShowWindow, TranslateMessage, BS_DEFPUSHBUTTON, ES_AUTOVSCROLL, ES_MULTILINE, ES_READONLY,
-    ES_WANTRETURN, HMENU, IDC_ARROW, MB_ICONERROR, MB_OK, MSG, SW_HIDE, SW_RESTORE,
-    SW_SHOWNORMAL, WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_COPY, WM_CREATE,
-    WM_DESTROY, WM_HOTKEY, WM_INPUT, WM_PASTE, WM_SETFONT, WM_TIMER, WNDCLASSW, WS_BORDER,
-    WS_CAPTION, WS_CHILD, WS_EX_CLIENTEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP,
-    WS_VISIBLE, WS_VSCROLL,
+    ES_WANTRETURN, HMENU, IDC_ARROW, MB_ICONERROR, MB_OK, MSG, SW_HIDE, SW_RESTORE, SW_SHOWNORMAL,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_COPY, WM_CREATE, WM_DESTROY, WM_HOTKEY,
+    WM_INPUT, WM_PASTE, WM_SETFONT, WM_TIMER, WNDCLASSW, WS_BORDER, WS_CAPTION, WS_CHILD,
+    WS_EX_CLIENTEDGE, WS_MINIMIZEBOX, WS_OVERLAPPED, WS_SYSMENU, WS_TABSTOP, WS_VISIBLE,
+    WS_VSCROLL,
 };
 
 const CLASS_NAME: PCWSTR = w!("SwiftSlatePrototypeWindow");
@@ -444,11 +444,15 @@ unsafe fn begin_selection_capture(hwnd: HWND) {
         };
         state.latest_capture_id = state.latest_capture_id.wrapping_add(1).max(1);
         state.capture_pending = true;
-        set_text(state.status, "Inspecting the selected text with UI Automation…");
-        state
-            .selection_worker
-            .as_ref()
-            .is_some_and(|worker| worker.request(state.latest_capture_id, source_window).is_ok())
+        set_text(
+            state.status,
+            "Inspecting the selected text with UI Automation…",
+        );
+        state.selection_worker.as_ref().is_some_and(|worker| {
+            worker
+                .request(state.latest_capture_id, source_window)
+                .is_ok()
+        })
     });
 
     if sent && SetTimer(hwnd, CAPTURE_TIMER_ID, CAPTURE_TIMEOUT_MS, None) != 0 {
@@ -707,10 +711,7 @@ unsafe fn shut_down(hwnd: HWND) {
                         dwFlags: RIDEV_REMOVE,
                         hwndTarget: HWND::default(),
                     };
-                    let _ = RegisterRawInputDevices(
-                        &[removal],
-                        size_of::<RAWINPUTDEVICE>() as u32,
-                    );
+                    let _ = RegisterRawInputDevices(&[removal], size_of::<RAWINPUTDEVICE>() as u32);
                 }
                 if let Some(worker) = state.selection_worker.as_ref() {
                     worker.stop();

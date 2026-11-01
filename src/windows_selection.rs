@@ -17,12 +17,9 @@ use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
 };
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern,
-    UIA_TextPatternId,
+    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern, UIA_TextPatternId,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetForegroundWindow, PostMessageW, WM_APP,
-};
+use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, PostMessageW, WM_APP};
 
 pub const WM_SELECTION_CAPTURED: u32 = WM_APP + 17;
 
@@ -68,12 +65,7 @@ impl SelectionWorker {
         thread::Builder::new()
             .name("swiftslate-uia".into())
             .spawn(move || {
-                worker_main(
-                    notification_window,
-                    command_rx,
-                    response_tx,
-                    ready_tx,
-                );
+                worker_main(notification_window, command_rx, response_tx, ready_tx);
             })
             .map_err(|error| format!("could not create UI Automation worker: {error}"))?;
 
@@ -119,16 +111,17 @@ fn worker_main(
         return;
     }
 
-    let automation: IUIAutomation = match unsafe {
-        CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)
-    } {
-        Ok(automation) => automation,
-        Err(error) => {
-            let _ = ready_tx.send(Err(format!("could not create UI Automation client: {error}")));
-            unsafe { CoUninitialize() };
-            return;
-        }
-    };
+    let automation: IUIAutomation =
+        match unsafe { CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) } {
+            Ok(automation) => automation,
+            Err(error) => {
+                let _ = ready_tx.send(Err(format!(
+                    "could not create UI Automation client: {error}"
+                )));
+                unsafe { CoUninitialize() };
+                return;
+            }
+        };
 
     if ready_tx.send(Ok(())).is_err() {
         unsafe { CoUninitialize() };
