@@ -131,6 +131,8 @@ jobs:
             sha256 = $hash
           } | ConvertTo-Json | Set-Content 'artifacts/measurements.json'
 
+          Write-Output "::notice title=Windows prototype measurements::EXE $($exe.Length) bytes; distribution ZIP $($zip.Length) bytes; SHA-256 $hash"
+
       - name: Upload Windows prototype
         uses: actions/upload-artifact@v7
         with:
