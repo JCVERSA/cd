@@ -468,11 +468,7 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         WS_EX_CLIENTEDGE,
         w!("COMBOBOX"),
         w!(""),
-        WS_CHILD
-            | WS_VISIBLE
-            | WS_TABSTOP
-            | WS_VSCROLL
-            | WINDOW_STYLE(CBS_DROPDOWN),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | WINDOW_STYLE(CBS_DROPDOWN),
         70,
         306,
         180,
@@ -1205,7 +1201,8 @@ unsafe fn begin_provider_utility(hwnd: HWND, action: ProviderAction) {
             state.status,
         ))
     });
-    let Some((endpoint, model, has_unsaved_key, worker_available, status_control)) = snapshot else {
+    let Some((endpoint, model, has_unsaved_key, worker_available, status_control)) = snapshot
+    else {
         return;
     };
     if !worker_available {
@@ -1243,11 +1240,14 @@ unsafe fn begin_provider_utility(hwnd: HWND, action: ProviderAction) {
         };
         state.latest_provider_id = state.latest_provider_id.wrapping_add(1).max(1);
         let request_id = state.latest_provider_id;
-        let sent = state.provider_worker.as_ref().is_some_and(|worker| match action {
-            ProviderAction::FetchModels => worker.fetch_models(request_id, config).is_ok(),
-            ProviderAction::Test => worker.test(request_id, config).is_ok(),
-            ProviderAction::Completion => false,
-        });
+        let sent = state
+            .provider_worker
+            .as_ref()
+            .is_some_and(|worker| match action {
+                ProviderAction::FetchModels => worker.fetch_models(request_id, config).is_ok(),
+                ProviderAction::Test => worker.test(request_id, config).is_ok(),
+                ProviderAction::Completion => false,
+            });
         if sent {
             state.provider_busy = true;
             state.provider_response_expected = true;
@@ -1464,7 +1464,13 @@ unsafe fn finish_provider_request(hwnd: HWND) {
             let source_unchanged = action != ProviderAction::Completion
                 || get_text(state.original) == state.provider_source;
             state.provider_source.clear();
-            Some((action, source_unchanged, state.result, state.model, state.status))
+            Some((
+                action,
+                source_unchanged,
+                state.result,
+                state.model,
+                state.status,
+            ))
         });
         let Some((action, source_unchanged, result_control, model_control, status_control)) =
             pending

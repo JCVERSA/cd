@@ -151,8 +151,9 @@ fn worker_main(
             WorkerCommand::Utility(request) => ProviderResponse {
                 request_id: request.request_id,
                 result: match request.kind {
-                    UtilityKind::FetchModels => perform_model_fetch(&request.config)
-                        .map(ProviderOutput::Models),
+                    UtilityKind::FetchModels => {
+                        perform_model_fetch(&request.config).map(ProviderOutput::Models)
+                    }
                     UtilityKind::Test => perform_provider_test(&request.config)
                         .map(|()| ProviderOutput::TestSucceeded),
                 },
@@ -551,8 +552,12 @@ mod tests {
     fn winhttp_gets_model_catalogs_without_a_request_body() {
         let response = br#"{"data":[{"id":"model-a"}]}"#.to_vec();
         let server = spawn_server("200 OK", &[("Content-Type", "application/json")], response);
-        let (status, body) = unsafe { send_winhttp_get(&endpoint(server.port), &headers()) }.unwrap();
-        assert_eq!(parse_model_catalog(status, &body), Ok(vec!["model-a".into()]));
+        let (status, body) =
+            unsafe { send_winhttp_get(&endpoint(server.port), &headers()) }.unwrap();
+        assert_eq!(
+            parse_model_catalog(status, &body),
+            Ok(vec!["model-a".into()])
+        );
         let request = server.request_rx.recv().unwrap();
         let request = String::from_utf8_lossy(&request);
         assert!(request.starts_with("GET /v1/chat/completions HTTP/1.1\r\n"));

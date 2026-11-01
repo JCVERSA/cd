@@ -473,10 +473,7 @@ mod tests {
         .unwrap();
         let body = build_command_request(&config, "Fix grammar.", "sample");
         let parsed: Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(
-            parsed["chat_template_kwargs"]["enable_thinking"],
-            false
-        );
+        assert_eq!(parsed["chat_template_kwargs"]["enable_thinking"], false);
     }
 
     #[test]
