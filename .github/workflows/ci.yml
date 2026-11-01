@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - arena/33e46336-cd
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  core:
+    name: Core / Linux
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Run tests
+        run: cargo test --all-targets
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Upload generated dependency lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Prototype / Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Run tests
+        run: cargo test --all-targets
+
+      - name: Run Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build optimized prototype
+        run: cargo build --release
+
+      - name: Package artifact and record measurements
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $package = 'artifacts/swiftslate-windows-x64'
+          New-Item -ItemType Directory -Force -Path $package | Out-Null
+          Copy-Item 'target/release/swiftslate.exe' "$package/swiftslate.exe"
+          Copy-Item 'README.md' "$package/README.md"
+          Copy-Item 'LICENSE' "$package/LICENSE"
+          Compress-Archive -Path "$package/*" -DestinationPath 'artifacts/swiftslate-windows-x64.zip' -Force
+
+          $exe = Get-Item "$package/swiftslate.exe"
+          $zip = Get-Item 'artifacts/swiftslate-windows-x64.zip'
+          $hash = (Get-FileHash "$package/swiftslate.exe" -Algorithm SHA256).Hash
+          @"
+          ## Windows prototype measurements
+
+          | Metric | Value |
+          |---|---:|
+          | Release EXE | $($exe.Length) bytes |
+          | Distribution ZIP | $($zip.Length) bytes |
+          | SHA-256 | ``$hash`` |
+          "@ | Add-Content $env:GITHUB_STEP_SUMMARY
+
+          @{
+            executable_bytes = $exe.Length
+            zip_bytes = $zip.Length
+            sha256 = $hash
+          } | ConvertTo-Json | Set-Content 'artifacts/measurements.json'
+
+      - name: Upload Windows prototype
+        uses: actions/upload-artifact@v4
+        with:
+          name: swiftslate-windows-x64
+          path: |
+            artifacts/swiftslate-windows-x64.zip
+            artifacts/measurements.json
+          if-no-files-found: error
+          retention-days: 14

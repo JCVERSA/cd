@@ -1,0 +1,10 @@
+/target
+*.pdb
+*.ilk
+*.obj
+*.exe
+*.zip
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
