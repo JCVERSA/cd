@@ -38,8 +38,17 @@ Remove-Item -Recurse -Force -ErrorAction SilentlyContinue build, release
 & python -m PyInstaller --clean --noconfirm SwiftSlate.spec
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed.' }
 
-$smoke = Start-Process -FilePath (Join-Path $root 'build\SwiftSlate\SwiftSlate.exe') -ArgumentList '--self-test' -Wait -PassThru
-if ($smoke.ExitCode -ne 0) { throw "Packaged SwiftSlate self-test failed with exit code $($smoke.ExitCode)." }
+$selfTestLog = Join-Path $env:TEMP 'SwiftSlate-self-test.log'
+Remove-Item -Force -ErrorAction SilentlyContinue $selfTestLog
+$smoke = Start-Process -FilePath (Join-Path $root 'build\SwiftSlate\SwiftSlate.exe') -ArgumentList '--self-test' -PassThru
+if (-not $smoke.WaitForExit(60000)) {
+    $smoke.Kill()
+    throw 'Packaged SwiftSlate self-test did not exit within 60 seconds.'
+}
+if ($smoke.ExitCode -ne 0) {
+    $detail = Get-Content $selfTestLog -Raw -ErrorAction SilentlyContinue
+    throw "Packaged SwiftSlate self-test failed with exit code $($smoke.ExitCode): $detail"
+}
 
 $bootstrapper = Join-Path $root 'packaging\MicrosoftEdgeWebview2Setup.exe'
 if (-not (Test-Path $bootstrapper)) {

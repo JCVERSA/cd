@@ -2841,7 +2841,21 @@ def main():
 if __name__ == "__main__":
     try:
         if "--self-test" in sys.argv:
-            raise SystemExit(self_test())
+            try:
+                raise SystemExit(self_test())
+            except SystemExit:
+                raise
+            except Exception:
+                # Windowed PyInstaller executables otherwise show a modal traceback dialog,
+                # which would hang unattended installer validation. Keep the diagnostic local.
+                error_path = os.path.join(tempfile.gettempdir(), "SwiftSlate-self-test.log")
+                try:
+                    import traceback
+                    with open(error_path, "w", encoding="utf-8") as error_file:
+                        traceback.print_exc(file=error_file)
+                except OSError:
+                    pass
+                raise SystemExit(1)
         if "--ui" in sys.argv:
             from ui_host import main as ui_main
             raise SystemExit(ui_main())

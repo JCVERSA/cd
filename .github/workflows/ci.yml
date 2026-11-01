@@ -103,8 +103,19 @@ jobs:
       - name: Smoke-test packaged application
         shell: pwsh
         run: |
-          $process = Start-Process './desktop/build/SwiftSlate/SwiftSlate.exe' -ArgumentList '--self-test' -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw "Packaged self-test exited with $($process.ExitCode)." }
+          $errorLog = Join-Path $env:TEMP 'SwiftSlate-self-test.log'
+          Remove-Item -Force -ErrorAction SilentlyContinue $errorLog
+          $process = Start-Process './desktop/build/SwiftSlate/SwiftSlate.exe' -ArgumentList '--self-test' -PassThru
+          if (-not $process.WaitForExit(60000)) {
+            $process.Kill()
+            throw 'Packaged self-test did not exit within 60 seconds.'
+          }
+          if ($process.ExitCode -ne 0) {
+            $detail = (Get-Content $errorLog -Raw -ErrorAction SilentlyContinue)
+            $escaped = ($detail ?? 'No self-test error log was produced.').Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Packaged self-test failed::$escaped"
+            throw "Packaged self-test exited with $($process.ExitCode)."
+          }
 
       - name: Download and verify WebView2 bootstrapper
         shell: pwsh
@@ -142,8 +153,15 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP 'SwiftSlateInstalled'
           $install = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$installDir") -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "Installer exited with $($install.ExitCode)." }
-          $smoke = Start-Process (Join-Path $installDir 'SwiftSlate.exe') -ArgumentList '--self-test' -Wait -PassThru
-          if ($smoke.ExitCode -ne 0) { throw "Installed application self-test exited with $($smoke.ExitCode)." }
+          $smoke = Start-Process (Join-Path $installDir 'SwiftSlate.exe') -ArgumentList '--self-test' -PassThru
+          if (-not $smoke.WaitForExit(60000)) {
+            $smoke.Kill()
+            throw 'Installed application self-test did not exit within 60 seconds.'
+          }
+          if ($smoke.ExitCode -ne 0) {
+            $detail = Get-Content (Join-Path $env:TEMP 'SwiftSlate-self-test.log') -Raw -ErrorAction SilentlyContinue
+            throw "Installed application self-test exited with $($smoke.ExitCode): $detail"
+          }
           $uninstaller = Join-Path $installDir 'unins000.exe'
           $uninstall = Start-Process $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
           if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with $($uninstall.ExitCode)." }
