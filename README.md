@@ -1,6 +1,6 @@
 # SwiftSlate
 
-SwiftSlate 1.0 is a lightweight, system-wide AI writing assistant for Windows and Linux. It keeps capture, provider access, and review explicit: text is never sent merely because it was selected, and provider output is never pasted automatically.
+SwiftSlate 1.1 is a lightweight, system-wide AI writing assistant for Windows and Linux. It keeps capture, provider access, and review explicit: text is never sent merely because it was selected or typed, and provider output is never pasted automatically.
 
 ## Platforms
 
@@ -9,10 +9,12 @@ SwiftSlate 1.0 is a lightweight, system-wide AI writing assistant for Windows an
 The Windows application is a native Win32 executable with no browser, WebView, Electron, GUI runtime, or async runtime.
 
 - Global `Ctrl+Alt+Space` shortcut.
-- Protected selection capture through UI Automation on a dedicated COM worker.
-- Fail-closed password checks, focus revalidation, and bounded capture.
-- Existing-clipboard fallback only for unsupported, non-protected controls.
-- Native provider settings, session consent, asynchronous WinHTTP requests, review, and explicit copy.
+- System-wide typed commands: `?improve`, `?fix`, `?shorten`, `?expand`, `?formal`, `?casual`, `?human`, `?reply`, and `?translate:fr`.
+- Visible command selector and provider presets for OpenAI, Google Gemini, Groq, OpenRouter, Mistral AI, DeepSeek, Ollama, LM Studio, and Custom.
+- Protected selection and inline-field capture through UI Automation on a dedicated COM worker.
+- Fail-closed password checks, foreground/focus revalidation, physical-input filtering, and bounded capture.
+- Existing-clipboard fallback only for explicit shortcut capture of unsupported, non-protected controls; inline commands never use clipboard fallback.
+- Native provider settings, endpoint/model session consent, asynchronous WinHTTP requests, review, and explicit copy.
 - Endpoint/model in `HKCU\Software\SwiftSlate`.
 - Host/port-scoped API keys in Windows Credential Manager.
 
@@ -48,13 +50,13 @@ See [`docs/SECURITY.md`](docs/SECURITY.md) for the complete threat model and res
 
 1. Download and extract `swiftslate-windows-x64.zip` from the latest successful CI run.
 2. Run `swiftslate.exe`.
-3. Enter an OpenAI-compatible chat-completions endpoint, model, and API key, then choose **Save**.
-4. Select text in another application and press `Ctrl+Alt+Space`.
-5. Verify **Original text**, choose **Improve with AI**, and accept the endpoint/model disclosure.
-6. Review the response and explicitly choose **Copy result**.
+3. Choose a provider preset and command. Adjust the model if needed, enter the provider API key, and choose **Save**. Ollama and LM Studio on exact loopback may run without a key.
+4. Either select text in another application and press `Ctrl+Alt+Space`, or type a supported command after text in an editable field—for example, `This needs grammar help?fix`.
+5. SwiftSlate revalidates the target, opens the captured text for review, and asks for endpoint/model session consent before the first request.
+6. Review the response and explicitly choose **Copy result**. SwiftSlate intentionally leaves the source field and typed trigger unchanged.
 7. Use **Local preview** for an offline deterministic transform.
 
-The key field clears after Credential Manager accepts it. **Remove key** deletes the credential for the current host and port.
+Typed commands activate as soon as their final character is physically typed. They require a UI Automation-compatible editable field, are disabled in password/protected fields, inspect at most 32,768 UTF-16 units, reject synthetic input, and never fall back to clipboard contents. The key field clears after Credential Manager accepts it. **Remove key** deletes the credential for the current host and port.
 
 ## Linux usage
 
@@ -92,8 +94,8 @@ For a global Linux shortcut, bind `swiftslate capture-selection` or a terminal c
 SwiftSlate sends a JSON `POST` compatible with OpenAI's chat-completions shape:
 
 - configured `model`;
-- one fixed system editing instruction;
-- one user message containing only the reviewed input;
+- one bounded built-in system instruction for the visibly selected command;
+- one user message containing only the reviewed/captured input;
 - `stream: false`.
 
 It reads `choices[0].message.content` and sends `Authorization: Bearer <API key>`.
@@ -107,7 +109,7 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo build --locked --release
 ```
 
-CI performs Linux and Windows tests, warnings-denied Clippy, formatting, release builds, loopback transport tests, package measurement, hashing, and artifact upload. This repository intentionally avoids intermediate public builds; the downloadable artifacts are produced from the consolidated 1.0 branch state.
+CI performs Linux and Windows tests, warnings-denied Clippy, formatting, release builds, loopback transport tests, package measurement, hashing, and artifact upload. This repository intentionally avoids intermediate public builds; downloadable artifacts are produced only after the consolidated 1.1 state passes both platform jobs.
 
 Additional design documents:
 

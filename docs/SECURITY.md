@@ -1,4 +1,4 @@
-# SwiftSlate 1.0 security and privacy baseline
+# SwiftSlate 1.1 security and privacy baseline
 
 SwiftSlate handles text from arbitrary applications and may transmit user-reviewed text to a configured provider. Its security model is explicit action, minimal persistence, bounded processing, and refusal to bypass platform protections.
 
@@ -6,8 +6,8 @@ SwiftSlate handles text from arbitrary applications and may transmit user-review
 
 - No text history, prompt history, model-output history, analytics, or telemetry.
 - Request text, response text, keystrokes, and API keys are not logged.
-- Capturing or displaying text never starts a network request.
-- Only one fixed editing instruction and the reviewed input are sent.
+- Shortcut capture or display alone never starts a request. A verified physical inline command is an explicit activation, but still cannot send before endpoint/model session consent.
+- Only one bounded built-in instruction for the visible command and the reviewed input are sent.
 - Provider output is never pasted or applied automatically.
 - Sensitive in-process buffers are overwritten when practical.
 
@@ -19,7 +19,9 @@ SwiftSlate handles text from arbitrary applications and may transmit user-review
 - Capture is limited to eight ranges and 32,768 UTF-16 code units.
 - The shell stops waiting after 1.5 seconds and rejects late results.
 - Protected fields never use the clipboard fallback.
-- Raw Input stores only an in-memory key-down count, not key content.
+- Raw Input is registered as a background keyboard sink, but retains only the bounded suffix needed to recognize built-in triggers. It rejects injected-origin messages, resets at foreground/control boundaries, and uses the foreground keyboard layout.
+- A matched trigger is not trusted by itself: UI Automation must revalidate a non-password focused element, stable foreground/focus identity, bounded whole-field text, and the exact trailing trigger.
+- Inline capture never uses clipboard fallback and never synthesizes deletion, paste, or replacement input.
 
 ## Linux capture
 
@@ -71,6 +73,7 @@ Real loopback socket tests run in CI on both platforms to verify POST behavior a
 - Keys never enter the registry, command line, environment, or logs.
 - The password-style edit clears after a successful save.
 - **Remove key** explicitly deletes the current host's credential.
+- Exact-loopback Ollama/LM Studio requests may omit authorization; if a loopback key is configured, it is still read from Credential Manager and sent as a bearer token.
 
 ### Linux
 
@@ -93,6 +96,8 @@ Windows accepts a worker response only when its request ID is current and **Orig
 - Code running as the same user may be able to ask the operating-system credential service for a key.
 - Linux depends on the security of installed `secret-tool`, selection helpers, native TLS, and desktop services.
 - Clipboard fallback and manual copy have normal operating-system clipboard exposure.
+- Some applications expose incomplete or nonstandard UI Automation text. Inline commands fail closed there and remain visible in the source field.
+- Raw Input sees physical keyboard events system-wide while SwiftSlate runs; the detector intentionally retains only a short in-memory suffix and does not persist or log it.
 - There is no certificate pinning; platform trust stores determine certificate acceptance.
 - Unsigned portable artifacts may trigger operating-system reputation warnings.
 - The project cannot perform interactive compatibility checks on every application or compositor in CI; unsupported environments fail to explicit stdin/manual-copy paths.

@@ -17,7 +17,8 @@ use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
 };
 use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern, UIA_TextPatternId,
+    CUIAutomation, IUIAutomation, IUIAutomationElement, IUIAutomationTextPattern,
+    IUIAutomationValuePattern, UIA_TextPatternId, UIA_ValuePatternId,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, PostMessageW, WM_APP};
 
@@ -43,6 +44,12 @@ pub struct CaptureResponse {
 struct CaptureRequest {
     request_id: u64,
     source_window: isize,
+    mode: CaptureMode,
+}
+
+enum CaptureMode {
+    Selection,
+    Inline(String),
 }
 
 enum WorkerCommand {
@@ -84,6 +91,25 @@ impl SelectionWorker {
             .send(WorkerCommand::Capture(CaptureRequest {
                 request_id,
                 source_window: source_window.0 as isize,
+                mode: CaptureMode::Selection,
+            }))
+            .map_err(|_| ())
+    }
+
+    pub fn request_inline(
+        &self,
+        request_id: u64,
+        source_window: HWND,
+        trigger: &str,
+    ) -> Result<(), ()> {
+        if trigger.is_empty() || trigger.len() > 64 || !trigger.is_ascii() {
+            return Err(());
+        }
+        self.command_tx
+            .send(WorkerCommand::Capture(CaptureRequest {
+                request_id,
+                source_window: source_window.0 as isize,
+                mode: CaptureMode::Inline(trigger.to_owned()),
             }))
             .map_err(|_| ())
     }
@@ -133,9 +159,17 @@ fn worker_main(
             WorkerCommand::Capture(request) => request,
             WorkerCommand::Stop => break,
         };
+        let outcome = match &request.mode {
+            CaptureMode::Selection => unsafe { capture_selection(&automation, &request) },
+            CaptureMode::Inline(trigger) => {
+                // WM_INPUT can arrive before the target control has committed the key.
+                thread::sleep(Duration::from_millis(50));
+                unsafe { capture_inline(&automation, &request, trigger) }
+            }
+        };
         let response = CaptureResponse {
             request_id: request.request_id,
-            outcome: unsafe { capture_selection(&automation, &request) },
+            outcome,
         };
         if response_tx.send(response).is_err() {
             break;
@@ -198,6 +232,90 @@ unsafe fn capture_selection(
         CaptureOutcome::TargetChanged
     } else {
         CaptureOutcome::Unsupported
+    }
+}
+
+unsafe fn capture_inline(
+    automation: &IUIAutomation,
+    request: &CaptureRequest,
+    trigger: &str,
+) -> CaptureOutcome {
+    let source_window = HWND(request.source_window as *mut c_void);
+    if source_window.is_invalid() || GetForegroundWindow() != source_window {
+        return CaptureOutcome::TargetChanged;
+    }
+
+    let focused = match automation.GetFocusedElement() {
+        Ok(element) => element,
+        Err(_) => return CaptureOutcome::Unavailable,
+    };
+    if is_protected(&focused) {
+        return CaptureOutcome::Protected;
+    }
+
+    let walker = automation.ControlViewWalker().ok();
+    let mut candidate = Some(focused.clone());
+    for _ in 0..8 {
+        let Some(element) = candidate.take() else {
+            break;
+        };
+        if is_protected(&element) {
+            return CaptureOutcome::Protected;
+        }
+
+        let text_pattern: windows::core::Result<IUIAutomationTextPattern> =
+            element.GetCurrentPatternAs(UIA_TextPatternId);
+        if let Ok(pattern) = text_pattern {
+            let outcome = match pattern.DocumentRange() {
+                Ok(range) => match range.GetText((MAX_SELECTION_UTF16 + trigger.len() + 1) as i32)
+                {
+                    Ok(text) => inline_text_outcome(
+                        String::from_utf16_lossy(text.as_wide()),
+                        trigger,
+                    ),
+                    Err(_) => CaptureOutcome::Unavailable,
+                },
+                Err(_) => CaptureOutcome::Unavailable,
+            };
+            return verify_target(automation, &focused, &element, source_window, outcome);
+        }
+
+        let value_pattern: windows::core::Result<IUIAutomationValuePattern> =
+            element.GetCurrentPatternAs(UIA_ValuePatternId);
+        if let Ok(pattern) = value_pattern {
+            let outcome = match pattern.CurrentValue() {
+                Ok(value) => {
+                    inline_text_outcome(String::from_utf16_lossy(value.as_wide()), trigger)
+                }
+                Err(_) => CaptureOutcome::Unavailable,
+            };
+            return verify_target(automation, &focused, &element, source_window, outcome);
+        }
+
+        candidate = walker
+            .as_ref()
+            .and_then(|walker| walker.GetParentElement(&element).ok());
+    }
+
+    if GetForegroundWindow() != source_window {
+        CaptureOutcome::TargetChanged
+    } else {
+        CaptureOutcome::Unsupported
+    }
+}
+
+fn inline_text_outcome(mut text: String, trigger: &str) -> CaptureOutcome {
+    if !text.ends_with(trigger) {
+        return CaptureOutcome::TargetChanged;
+    }
+    text.truncate(text.len() - trigger.len());
+    let utf16_len = text.encode_utf16().count();
+    if utf16_len > MAX_SELECTION_UTF16 {
+        CaptureOutcome::TooLarge
+    } else if text.is_empty() {
+        CaptureOutcome::Empty
+    } else {
+        CaptureOutcome::Selected(text)
     }
 }
 
@@ -268,4 +386,34 @@ unsafe fn is_protected(element: &IUIAutomationElement) -> bool {
         .CurrentIsPassword()
         .map(|is_password| is_password.as_bool())
         .unwrap_or(true)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn inline_capture_requires_and_removes_the_exact_suffix() {
+        match inline_text_outcome("Please fix this?fix".into(), "?fix") {
+            CaptureOutcome::Selected(text) => assert_eq!(text, "Please fix this"),
+            outcome => panic!("unexpected outcome: {outcome:?}"),
+        }
+        assert!(matches!(
+            inline_text_outcome("Please fix this?shorten".into(), "?fix"),
+            CaptureOutcome::TargetChanged
+        ));
+    }
+
+    #[test]
+    fn inline_capture_enforces_empty_and_size_limits() {
+        assert!(matches!(
+            inline_text_outcome("?fix".into(), "?fix"),
+            CaptureOutcome::Empty
+        ));
+        let oversized = format!("{}?fix", "x".repeat(MAX_SELECTION_UTF16 + 1));
+        assert!(matches!(
+            inline_text_outcome(oversized, "?fix"),
+            CaptureOutcome::TooLarge
+        ));
+    }
 }

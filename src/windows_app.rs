@@ -13,8 +13,11 @@ use crate::windows_config::{load_provider_config, save_provider_config, DEFAULT_
 use crate::windows_provider::{ProviderWorker, WM_PROVIDER_COMPLETE};
 use crate::windows_secrets::{delete_api_key, read_api_key, save_api_key};
 use crate::windows_selection::{CaptureOutcome, SelectionWorker, WM_SELECTION_CAPTURED};
+use swiftslate::commands::{command_by_id, command_by_index, triggers, COMMANDS};
 use swiftslate::preview::improve_preview;
 use swiftslate::provider::ProviderConfig;
+use swiftslate::providers::{preset_for_endpoint, PRESETS};
+use swiftslate::trigger::{InputEvent, InputOrigin, TriggerDetector};
 use windows::core::{w, Error, PCWSTR};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -22,16 +25,20 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    RegisterHotKey, SetFocus, UnregisterHotKey, HOT_KEY_MODIFIERS, VK_SPACE,
+    GetKeyboardLayout, GetKeyboardState, RegisterHotKey, SetFocus, ToUnicodeEx, UnregisterHotKey,
+    HOT_KEY_MODIFIERS, VK_BACK, VK_CAPITAL, VK_DELETE, VK_END, VK_ESCAPE, VK_HOME, VK_LEFT,
+    VK_RETURN, VK_RIGHT, VK_SPACE, VK_TAB,
 };
 use windows::Win32::UI::Input::{
-    GetRawInputData, RegisterRawInputDevices, HRAWINPUT, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER,
-    RIDEV_INPUTSINK, RIDEV_REMOVE, RID_INPUT, RIM_TYPEKEYBOARD,
+    GetCurrentInputMessageSource, GetRawInputData, RegisterRawInputDevices, HRAWINPUT,
+    INPUT_MESSAGE_SOURCE, RAWINPUT, RAWINPUTDEVICE, RAWINPUTHEADER, RIDEV_INPUTSINK, RIDEV_REMOVE,
+    RID_INPUT, RIM_TYPEKEYBOARD, IMO_INJECTED,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetForegroundWindow,
-    GetMessageW, GetWindowTextLengthW, GetWindowTextW, KillTimer, LoadCursorW, MessageBoxW,
-    PostQuitMessage, RegisterClassW, SendMessageW, SetForegroundWindow, SetTimer, SetWindowTextW,
+    GetMessageW, GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, KillTimer,
+    LoadCursorW, MessageBoxW, PostQuitMessage, RegisterClassW, SendMessageW, SetForegroundWindow,
+    SetTimer, SetWindowTextW,
     ShowWindow, TranslateMessage, BS_DEFPUSHBUTTON, ES_AUTOHSCROLL, ES_AUTOVSCROLL, ES_MULTILINE,
     ES_PASSWORD, ES_READONLY, ES_WANTRETURN, HMENU, IDC_ARROW, IDYES, MB_DEFBUTTON2, MB_ICONERROR,
     MB_ICONWARNING, MB_OK, MB_YESNO, MSG, SW_HIDE, SW_RESTORE, SW_SHOWNORMAL, WINDOW_EX_STYLE,
@@ -50,6 +57,8 @@ const ID_RESULT: isize = 102;
 const ID_ENDPOINT: isize = 103;
 const ID_MODEL: isize = 104;
 const ID_API_KEY: isize = 105;
+const ID_PROVIDER: usize = 106;
+const ID_COMMAND: usize = 107;
 const ID_AI_IMPROVE: usize = 201;
 const ID_LOCAL_PREVIEW: usize = 202;
 const ID_COPY: usize = 203;
@@ -60,7 +69,13 @@ const ID_REMOVE_KEY: usize = 206;
 // These edit-control messages are stable across supported Windows versions.
 const EM_SETSEL: u32 = 0x00B1;
 const EM_SETLIMITTEXT: u32 = 0x00C5;
+const CB_ADDSTRING: u32 = 0x0143;
+const CB_GETCURSEL: u32 = 0x0147;
+const CB_SETCURSEL: u32 = 0x014E;
+const CBN_SELCHANGE: usize = 1;
+const CBS_DROPDOWNLIST: u32 = 0x0003;
 const RI_KEY_BREAK: u16 = 0x0001;
+const TO_UNICODE_NO_STATE_CHANGE: u32 = 0x0004;
 const CAPTURE_TIMER_ID: usize = 1;
 const PROVIDER_TIMER_ID: usize = 2;
 const CAPTURE_TIMEOUT_MS: u32 = 1_500;
@@ -70,16 +85,22 @@ const DEFAULT_MODEL: &str = "gpt-4o-mini";
 struct UiState {
     original: HWND,
     result: HWND,
+    provider: HWND,
+    command: HWND,
     endpoint: HWND,
     model: HWND,
     api_key: HWND,
     status: HWND,
-    raw_key_down_events: u64,
     hotkey_registered: bool,
     raw_input_registered: bool,
+    trigger_detector: TriggerDetector,
+    raw_foreground: HWND,
+    keyboard_state: [u8; 256],
+    keyboard_state_ready: bool,
     selection_worker: Option<SelectionWorker>,
     latest_capture_id: u64,
     capture_pending: bool,
+    pending_inline_command: Option<usize>,
     provider_worker: Option<ProviderWorker>,
     latest_provider_id: u64,
     provider_busy: bool,
@@ -201,23 +222,20 @@ unsafe fn window_proc_inner(hwnd: HWND, message: u32, wparam: WPARAM, lparam: LP
             LRESULT(0)
         }
         WM_INPUT => {
-            if raw_key_down(lparam) {
-                UI.with(|slot| {
-                    if let Some(state) = slot.borrow_mut().as_mut() {
-                        state.raw_key_down_events = state.raw_key_down_events.saturating_add(1);
-                    }
-                });
-            }
+            handle_raw_input(hwnd, lparam);
             // WM_INPUT must reach DefWindowProcW so Windows can perform cleanup.
             DefWindowProcW(hwnd, message, wparam, lparam)
         }
         WM_COMMAND => {
-            match wparam.0 & 0xffff {
+            let control_id = wparam.0 & 0xffff;
+            let notification = (wparam.0 >> 16) & 0xffff;
+            match control_id {
                 ID_AI_IMPROVE => begin_provider_request(hwnd),
                 ID_LOCAL_PREVIEW => run_local_preview(hwnd),
                 ID_COPY => copy_result(),
                 ID_SAVE_PROVIDER => save_provider_settings(),
                 ID_REMOVE_KEY => remove_provider_key(),
+                ID_PROVIDER if notification == CBN_SELCHANGE => apply_provider_preset(),
                 ID_HIDE => {
                     let _ = ShowWindow(hwnd, SW_HIDE);
                 }
@@ -252,7 +270,7 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
     let intro = create_control(
         WINDOW_EX_STYLE(0),
         w!("STATIC"),
-        w!("Select text, then press Ctrl+Alt+Space from any app to open SwiftSlate."),
+        w!("Select text + Ctrl+Alt+Space, or type ?fix / ?shorten in an editable field."),
         WS_CHILD | WS_VISIBLE,
         20,
         16,
@@ -296,12 +314,39 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         instance,
     )?;
 
+    let command_label = create_control(
+        WINDOW_EX_STYLE(0),
+        w!("STATIC"),
+        w!("Command"),
+        WS_CHILD | WS_VISIBLE,
+        20,
+        211,
+        65,
+        22,
+        hwnd,
+        0,
+        instance,
+    )?;
+    let command = create_control(
+        WS_EX_CLIENTEDGE,
+        w!("COMBOBOX"),
+        w!(""),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(CBS_DROPDOWNLIST),
+        88,
+        205,
+        245,
+        240,
+        hwnd,
+        ID_COMMAND as isize,
+        instance,
+    )?;
+
     let ai_improve = create_control(
         WINDOW_EX_STYLE(0),
         w!("BUTTON"),
-        w!("Improve with AI"),
+        w!("Run with AI"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(BS_DEFPUSHBUTTON as u32),
-        20,
+        345,
         205,
         150,
         32,
@@ -315,7 +360,7 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         w!("BUTTON"),
         w!("Local preview"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP,
-        180,
+        505,
         205,
         130,
         32,
@@ -338,12 +383,39 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         instance,
     )?;
 
+    let preset_label = create_control(
+        WINDOW_EX_STYLE(0),
+        w!("STATIC"),
+        w!("Provider"),
+        WS_CHILD | WS_VISIBLE,
+        20,
+        276,
+        65,
+        22,
+        hwnd,
+        0,
+        instance,
+    )?;
+    let provider = create_control(
+        WS_EX_CLIENTEDGE,
+        w!("COMBOBOX"),
+        w!(""),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | WINDOW_STYLE(CBS_DROPDOWNLIST),
+        88,
+        272,
+        215,
+        270,
+        hwnd,
+        ID_PROVIDER as isize,
+        instance,
+    )?;
+
     let endpoint_label = create_control(
         WINDOW_EX_STYLE(0),
         w!("STATIC"),
         w!("Endpoint"),
         WS_CHILD | WS_VISIBLE,
-        20,
+        315,
         276,
         65,
         22,
@@ -356,9 +428,9 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         w!("EDIT"),
         PCWSTR(endpoint_text.as_ptr()),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_BORDER | WINDOW_STYLE(ES_AUTOHSCROLL as u32),
-        88,
+        380,
         272,
-        612,
+        320,
         25,
         hwnd,
         ID_ENDPOINT,
@@ -530,9 +602,13 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         intro,
         original_label,
         original,
+        command_label,
+        command,
         ai_improve,
         local_preview,
         provider_label,
+        preset_label,
+        provider,
         endpoint_label,
         endpoint,
         model_label,
@@ -555,6 +631,23 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
     SendMessageW(model, EM_SETLIMITTEXT, WPARAM(128), LPARAM(0));
     SendMessageW(api_key, EM_SETLIMITTEXT, WPARAM(2_560), LPARAM(0));
 
+    for preset in PRESETS {
+        add_combo_item(provider, preset.name);
+    }
+    SendMessageW(
+        provider,
+        CB_SETCURSEL,
+        WPARAM(preset_for_endpoint(&initial_config.endpoint)),
+        LPARAM(0),
+    );
+    for definition in COMMANDS {
+        add_combo_item(
+            command,
+            &format!("{}   ({})", definition.label, definition.trigger),
+        );
+    }
+    SendMessageW(command, CB_SETCURSEL, WPARAM(0), LPARAM(0));
+
     let hotkey_registered =
         RegisterHotKey(hwnd, HOTKEY_ID, HOTKEY_MODIFIERS, VK_SPACE.0 as u32).is_ok();
 
@@ -573,16 +666,22 @@ unsafe fn initialize_window(hwnd: HWND) -> windows::core::Result<()> {
         *slot.borrow_mut() = Some(UiState {
             original,
             result,
+            provider,
+            command,
             endpoint,
             model,
             api_key,
             status,
-            raw_key_down_events: 0,
             hotkey_registered,
             raw_input_registered,
+            trigger_detector: TriggerDetector::new(triggers()),
+            raw_foreground: HWND::default(),
+            keyboard_state: [0; 256],
+            keyboard_state_ready: false,
             selection_worker,
             latest_capture_id: 0,
             capture_pending: false,
+            pending_inline_command: None,
             provider_worker,
             latest_provider_id: 0,
             provider_busy: false,
@@ -632,6 +731,54 @@ unsafe fn create_control(
     )
 }
 
+unsafe fn add_combo_item(combo: HWND, text: &str) {
+    let text = wide(text);
+    SendMessageW(
+        combo,
+        CB_ADDSTRING,
+        WPARAM(0),
+        LPARAM(text.as_ptr() as isize),
+    );
+}
+
+unsafe fn selected_combo_index(combo: HWND) -> usize {
+    let index = SendMessageW(combo, CB_GETCURSEL, WPARAM(0), LPARAM(0)).0;
+    if index < 0 {
+        0
+    } else {
+        index as usize
+    }
+}
+
+unsafe fn apply_provider_preset() {
+    UI.with(|slot| {
+        let state = slot.borrow();
+        let Some(state) = state.as_ref() else {
+            return;
+        };
+        let preset = PRESETS
+            .get(selected_combo_index(state.provider))
+            .unwrap_or(&PRESETS[PRESETS.len() - 1]);
+        if preset.id == "custom" {
+            set_text(
+                state.status,
+                "Custom provider selected. Enter an HTTPS endpoint (or exact loopback HTTP) and model.",
+            );
+            return;
+        }
+        set_text(state.endpoint, preset.endpoint);
+        set_text(state.model, preset.model);
+        set_text(
+            state.status,
+            if preset.endpoint.starts_with("http://127.0.0.1") {
+                "Local provider selected. Start it locally; an API key is optional."
+            } else {
+                "Provider preset applied. Enter its API key, then choose Save."
+            },
+        );
+    });
+}
+
 unsafe fn begin_selection_capture(hwnd: HWND) {
     let source_window = GetForegroundWindow();
     if source_window.is_invalid() || source_window == hwnd {
@@ -649,6 +796,7 @@ unsafe fn begin_selection_capture(hwnd: HWND) {
         };
         state.latest_capture_id = state.latest_capture_id.wrapping_add(1).max(1);
         state.capture_pending = true;
+        state.pending_inline_command = None;
         set_text(
             state.status,
             "Inspecting the selected text with UI Automation…",
@@ -687,20 +835,22 @@ unsafe fn finish_selection_capture(hwnd: HWND) {
     for response in responses {
         let accepted = UI.with(|slot| {
             let mut state = slot.borrow_mut();
-            let Some(state) = state.as_mut() else {
-                return false;
-            };
+            let state = state.as_mut()?;
             if !state.capture_pending || response.request_id != state.latest_capture_id {
-                return false;
+                return None;
             }
             state.capture_pending = false;
-            true
+            Some(state.pending_inline_command.take())
         });
-        if !accepted {
+        let Some(inline_command) = accepted else {
             continue;
-        }
+        };
 
         let _ = KillTimer(hwnd, CAPTURE_TIMER_ID);
+        if let Some(command_index) = inline_command {
+            finish_inline_capture(hwnd, command_index, response.outcome);
+            continue;
+        }
         match response.outcome {
             CaptureOutcome::Selected(text) => show_text_palette(
                 hwnd,
@@ -735,6 +885,57 @@ unsafe fn finish_selection_capture(hwnd: HWND) {
     }
 }
 
+unsafe fn finish_inline_capture(
+    hwnd: HWND,
+    command_index: usize,
+    outcome: CaptureOutcome,
+) {
+    match outcome {
+        CaptureOutcome::Selected(text) => {
+            UI.with(|slot| {
+                if let Some(state) = slot.borrow().as_ref() {
+                    SendMessageW(
+                        state.command,
+                        CB_SETCURSEL,
+                        WPARAM(command_index),
+                        LPARAM(0),
+                    );
+                }
+            });
+            let command = command_by_index(command_index);
+            show_text_palette(
+                hwnd,
+                &text,
+                &format!(
+                    "Inline command {} detected. Confirm network consent to run {}.",
+                    command.trigger, command.label
+                ),
+            );
+            begin_provider_request(hwnd);
+        }
+        CaptureOutcome::Protected => show_empty_palette(
+            hwnd,
+            "Inline commands are disabled for password or protected fields. Nothing was captured.",
+        ),
+        CaptureOutcome::TooLarge => show_empty_palette(
+            hwnd,
+            "The text before the inline command exceeds the safe capture limit.",
+        ),
+        CaptureOutcome::Empty => show_empty_palette(
+            hwnd,
+            "Type text before the inline command. Nothing was sent.",
+        ),
+        CaptureOutcome::TargetChanged => show_empty_palette(
+            hwnd,
+            "The target field changed before the inline command could be verified. Nothing was sent.",
+        ),
+        CaptureOutcome::Unsupported | CaptureOutcome::Unavailable => show_empty_palette(
+            hwnd,
+            "This field does not expose text safely to UI Automation. Nothing was captured or sent.",
+        ),
+    }
+}
+
 unsafe fn selection_capture_timed_out(hwnd: HWND) {
     let timed_out = UI.with(|slot| {
         let mut state = slot.borrow_mut();
@@ -745,6 +946,7 @@ unsafe fn selection_capture_timed_out(hwnd: HWND) {
             return false;
         }
         state.capture_pending = false;
+        state.pending_inline_command = None;
         true
     });
     if timed_out {
@@ -767,13 +969,7 @@ unsafe fn show_text_palette(hwnd: HWND, text: &str, status: &str) {
         state.provider_source.clear();
         set_text(state.original, text);
         set_text(state.result, "");
-        set_text(
-            state.status,
-            &format!(
-                "{status} Raw Input observed {} key-down events; no keys were stored.",
-                state.raw_key_down_events
-            ),
-        );
+        set_text(state.status, status);
         show_and_focus(hwnd, state.original);
     });
 }
@@ -947,12 +1143,20 @@ unsafe fn begin_provider_request(hwnd: HWND) {
             get_text(state.model),
             GetWindowTextLengthW(state.api_key) > 0,
             get_text(state.original),
+            selected_combo_index(state.command),
             state.provider_worker.is_some(),
             state.status,
         ))
     });
-    let Some((endpoint, model, has_unsaved_key, source, worker_available, status_control)) =
-        snapshot
+    let Some((
+        endpoint,
+        model,
+        has_unsaved_key,
+        source,
+        command_index,
+        worker_available,
+        status_control,
+    )) = snapshot
     else {
         return;
     };
@@ -991,8 +1195,13 @@ unsafe fn begin_provider_request(hwnd: HWND) {
             return;
         }
     };
+    let requires_key = config
+        .endpoint_parts()
+        .map(|endpoint| endpoint.secure)
+        .unwrap_or(true);
     match read_api_key(&target) {
         Ok(Some(_)) => {}
+        Ok(None) if !requires_key => {}
         Ok(None) => {
             set_text(
                 status_control,
@@ -1006,6 +1215,8 @@ unsafe fn begin_provider_request(hwnd: HWND) {
         }
     }
 
+    let command = command_by_index(command_index);
+    let instruction = command.instruction.to_owned();
     let consent_key = config.consent_key();
     let already_consented = UI.with(|slot| {
         slot.borrow()
@@ -1015,8 +1226,8 @@ unsafe fn begin_provider_request(hwnd: HWND) {
     });
     if !already_consented {
         let consent = wide(&format!(
-            "Send the current Original text and a fixed editing instruction to:\n\n{}\n\nModel: {}\n\nThe API key remains in Windows Credential Manager. The result will only be shown for review; SwiftSlate will not replace text automatically.\n\nAllow requests to this endpoint and model for this session?",
-            config.endpoint, config.model
+            "Send the current Original text and the selected '{}' instruction to:\n\n{}\n\nModel: {}\n\nThe API key remains in Windows Credential Manager. The result will only be shown for review; SwiftSlate will not replace text automatically.\n\nAllow requests to this endpoint and model for this session?",
+            command.label, config.endpoint, config.model
         ));
         let choice = MessageBoxW(
             hwnd,
@@ -1045,7 +1256,11 @@ unsafe fn begin_provider_request(hwnd: HWND) {
         let sent = state
             .provider_worker
             .as_ref()
-            .is_some_and(|worker| worker.request(request_id, config, source.clone()).is_ok());
+            .is_some_and(|worker| {
+                worker
+                    .request(request_id, config, instruction, source.clone())
+                    .is_ok()
+            });
         if sent {
             state.provider_busy = true;
             state.provider_response_expected = true;
@@ -1176,7 +1391,7 @@ unsafe fn refresh_startup_status() {
             state.provider_worker.is_some(),
         ) {
             (true, true, true, true) => {
-                "Ready: protected selection capture and the background provider worker are active."
+                "Ready: Ctrl+Alt+Space and system-wide inline commands are active. Choose a provider, command, and Save."
             }
             (false, _, _, _) => {
                 "Ctrl+Alt+Space is already used by another application; the global hotkey is unavailable."
@@ -1214,7 +1429,127 @@ unsafe fn set_text(hwnd: HWND, text: &str) {
     let _ = SetWindowTextW(hwnd, PCWSTR(text.as_ptr()));
 }
 
-unsafe fn raw_key_down(lparam: LPARAM) -> bool {
+unsafe fn handle_raw_input(hwnd: HWND, lparam: LPARAM) {
+    let mut origin = INPUT_MESSAGE_SOURCE::default();
+    let physical = GetCurrentInputMessageSource(&mut origin)
+        .map(|_| origin.originId != IMO_INJECTED)
+        .unwrap_or(true);
+    let Some(raw_keyboard) = read_raw_keyboard(lparam) else {
+        return;
+    };
+    let foreground = GetForegroundWindow();
+
+    let matched = UI.with(|slot| {
+        let mut state = slot.borrow_mut();
+        let state = state.as_mut()?;
+        if !physical {
+            state
+                .trigger_detector
+                .feed(InputEvent::Reset, InputOrigin::Synthetic);
+            return None;
+        }
+        if foreground.is_invalid() || foreground == hwnd {
+            state.trigger_detector.reset();
+            state.raw_foreground = foreground;
+            return None;
+        }
+        if state.raw_foreground != foreground {
+            state.trigger_detector.reset();
+            state.raw_foreground = foreground;
+            state.keyboard_state_ready = false;
+        }
+        if !state.keyboard_state_ready {
+            let ready = GetKeyboardState(&mut state.keyboard_state).is_ok();
+            state.keyboard_state_ready = ready;
+        }
+
+        let virtual_key = raw_keyboard.VKey as usize;
+        if virtual_key >= state.keyboard_state.len() || virtual_key == 0xff {
+            state.trigger_detector.reset();
+            return None;
+        }
+        let released = raw_keyboard.Flags & RI_KEY_BREAK != 0;
+        if released {
+            state.keyboard_state[virtual_key] &= 0x7f;
+            return None;
+        }
+
+        if virtual_key == VK_CAPITAL.0 as usize
+            && state.keyboard_state[virtual_key] & 0x80 == 0
+        {
+            state.keyboard_state[virtual_key] ^= 0x01;
+        }
+        state.keyboard_state[virtual_key] |= 0x80;
+
+        if virtual_key == VK_BACK.0 as usize {
+            return state
+                .trigger_detector
+                .feed(InputEvent::Backspace, InputOrigin::Physical)
+                .and_then(|matched| inline_command_index(&matched.id));
+        }
+        if [
+            VK_DELETE.0,
+            VK_END.0,
+            VK_ESCAPE.0,
+            VK_HOME.0,
+            VK_LEFT.0,
+            VK_RETURN.0,
+            VK_RIGHT.0,
+            VK_TAB.0,
+        ]
+        .contains(&(virtual_key as u16))
+        {
+            state.trigger_detector.reset();
+            return None;
+        }
+
+        let thread_id = GetWindowThreadProcessId(foreground, None);
+        let layout = GetKeyboardLayout(thread_id);
+        let mut translated = [0u16; 8];
+        let count = ToUnicodeEx(
+            virtual_key as u32,
+            raw_keyboard.MakeCode as u32,
+            &state.keyboard_state,
+            &mut translated,
+            TO_UNICODE_NO_STATE_CHANGE,
+            layout,
+        );
+        if count <= 0 {
+            return None;
+        }
+        let text = String::from_utf16_lossy(&translated[..count as usize]);
+        for character in text.chars() {
+            if character.is_control() {
+                state.trigger_detector.reset();
+                continue;
+            }
+            if let Some(matched) = state
+                .trigger_detector
+                .feed(InputEvent::Text(character), InputOrigin::Physical)
+            {
+                if let Some(index) = inline_command_index(&matched.id) {
+                    return Some(index);
+                }
+            }
+        }
+        None
+    });
+
+    if let Some(command_index) = matched {
+        begin_inline_capture(hwnd, foreground, command_index);
+    }
+}
+
+fn inline_command_index(id: &str) -> Option<usize> {
+    let command = command_by_id(id)?;
+    COMMANDS
+        .iter()
+        .position(|candidate| candidate.id == command.id)
+}
+
+unsafe fn read_raw_keyboard(
+    lparam: LPARAM,
+) -> Option<windows::Win32::UI::Input::RAWKEYBOARD> {
     let mut raw = RAWINPUT::default();
     let mut size = size_of::<RAWINPUT>() as u32;
     let read = GetRawInputData(
@@ -1224,10 +1559,46 @@ unsafe fn raw_key_down(lparam: LPARAM) -> bool {
         &mut size,
         size_of::<RAWINPUTHEADER>() as u32,
     );
-    read != u32::MAX
-        && read >= size_of::<RAWINPUT>() as u32
-        && raw.header.dwType == RIM_TYPEKEYBOARD.0
-        && raw.data.keyboard.Flags & RI_KEY_BREAK == 0
+    if read == u32::MAX
+        || read < size_of::<RAWINPUT>() as u32
+        || raw.header.dwType != RIM_TYPEKEYBOARD.0
+    {
+        None
+    } else {
+        Some(raw.data.keyboard)
+    }
+}
+
+unsafe fn begin_inline_capture(hwnd: HWND, source_window: HWND, command_index: usize) {
+    let sent = UI.with(|slot| {
+        let mut state = slot.borrow_mut();
+        let Some(state) = state.as_mut() else {
+            return false;
+        };
+        let command = command_by_index(command_index);
+        state.latest_capture_id = state.latest_capture_id.wrapping_add(1).max(1);
+        state.capture_pending = true;
+        state.pending_inline_command = Some(command_index);
+        state.selection_worker.as_ref().is_some_and(|worker| {
+            worker
+                .request_inline(state.latest_capture_id, source_window, command.trigger)
+                .is_ok()
+        })
+    });
+
+    if sent && SetTimer(hwnd, CAPTURE_TIMER_ID, CAPTURE_TIMEOUT_MS, None) != 0 {
+        return;
+    }
+    UI.with(|slot| {
+        if let Some(state) = slot.borrow_mut().as_mut() {
+            state.capture_pending = false;
+            state.pending_inline_command = None;
+        }
+    });
+    show_empty_palette(
+        hwnd,
+        "The inline command could not be verified safely. Nothing was captured or sent.",
+    );
 }
 
 unsafe fn shut_down(hwnd: HWND) {

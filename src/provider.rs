@@ -12,8 +12,9 @@ pub const MAX_MODEL_LENGTH: usize = 128;
 pub const MAX_PROVIDER_RESPONSE_BYTES: usize = 256 * 1024;
 pub const MAX_PROVIDER_OUTPUT_UTF16: usize = 32_768;
 
-const SYSTEM_PROMPT: &str =
+pub const DEFAULT_INSTRUCTION: &str =
     "Improve the user's writing while preserving its meaning. Return only the revised text.";
+pub const MAX_INSTRUCTION_LENGTH: usize = 5_000;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderConfig {
@@ -210,10 +211,26 @@ impl fmt::Display for ConfigError {
 }
 
 pub fn build_chat_request(config: &ProviderConfig, input: &str) -> Vec<u8> {
+    build_command_request(config, DEFAULT_INSTRUCTION, input)
+}
+
+pub fn build_command_request(
+    config: &ProviderConfig,
+    instruction: &str,
+    input: &str,
+) -> Vec<u8> {
+    let instruction = if instruction.trim().is_empty()
+        || instruction.len() > MAX_INSTRUCTION_LENGTH
+        || instruction.chars().any(char::is_control)
+    {
+        DEFAULT_INSTRUCTION
+    } else {
+        instruction
+    };
     json!({
         "model": config.model,
         "messages": [
-            { "role": "system", "content": SYSTEM_PROMPT },
+            { "role": "system", "content": instruction },
             { "role": "user", "content": input }
         ],
         "stream": false
@@ -382,6 +399,17 @@ mod tests {
         let parsed: Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(parsed["messages"][1]["content"], "quote: \" and newline\n");
         assert_eq!(parsed["stream"], false);
+    }
+
+    #[test]
+    fn command_request_uses_a_bounded_instruction() {
+        let body = build_command_request(&config(), "Fix grammar only.", "sample");
+        let parsed: Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(parsed["messages"][0]["content"], "Fix grammar only.");
+
+        let fallback = build_command_request(&config(), "bad\ninstruction", "sample");
+        let parsed: Value = serde_json::from_slice(&fallback).unwrap();
+        assert_eq!(parsed["messages"][0]["content"], DEFAULT_INSTRUCTION);
     }
 
     #[test]

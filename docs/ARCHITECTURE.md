@@ -1,11 +1,11 @@
-# SwiftSlate 1.0 architecture
+# SwiftSlate 1.1 architecture
 
 ## Product invariants
 
 1. Idle work is event-driven; there is no polling loop.
 2. Typed text, selections, prompts, and model output are not persisted.
 3. Protected or ambiguous capture fails closed where the platform exposes protection metadata.
-4. Capture never triggers a network request by itself.
+4. Shortcut capture never triggers a request; a recognized physical inline command may request only after the same endpoint/model session consent.
 5. Provider access requires explicit endpoint/model consent.
 6. Accessibility and network blocking never occur on the Windows window thread.
 7. Provider output is review-only; SwiftSlate does not synthesize replacement input.
@@ -16,11 +16,13 @@
 ```text
 src/
 ├── lib.rs                  portable safe-Rust boundary
-├── trigger.rs              bounded suffix detector
+├── trigger.rs              bounded physical-input suffix detector
+├── commands.rs             built-in commands, triggers, and instructions
+├── providers.rs            major-provider endpoint/model presets
 ├── replacement.rs          stale-result guard model
 ├── selection.rs            shared capture limits and assembly
 ├── preview.rs              deterministic offline transform
-├── provider.rs             endpoint policy and OpenAI-compatible JSON
+├── provider.rs             endpoint policy and command-specific JSON
 ├── main.rs                 target entry point
 ├── windows_app.rs          native settings, consent, review, and copy UI
 ├── windows_selection.rs    dedicated MTA UI Automation worker
@@ -39,14 +41,15 @@ The portable library forbids unsafe Rust. Unsafe calls are confined to direct Wi
 ## Windows runtime
 
 ```text
-Global hotkey
+Global hotkey + selected text
+  OR physical Raw Input suffix + whole field before `?command`
   → preserve foreground window
   → MTA UI Automation worker
-  → password/focus/range validation
-  → native Original text review
-  → explicit Improve with AI
+  → password/focus/range/trigger validation
+  → native Original text review + visible command/provider selectors
+  → explicit Run with AI, or verified inline-command activation
   → endpoint/model session consent
-  → WinHTTP worker + Credential Manager key
+  → WinHTTP worker + optional exact-loopback / Credential Manager key
   → bounded OpenAI-compatible response parsing
   → exact source-text revalidation
   → read-only result
@@ -63,7 +66,19 @@ Global hotkey
 6. Recheck foreground window, focus identity, and password status.
 7. Deliver text only if every check still passes.
 
-The UI stops waiting after 1.5 seconds and ignores late results. An unsupported non-protected control may load the existing clipboard as a labelled fallback. Protected controls never do.
+The UI stops waiting after 1.5 seconds and ignores late results. An unsupported non-protected control may load the existing clipboard as a labelled fallback only for the explicit shortcut path. Protected controls and inline commands never do.
+
+### Inline command path
+
+1. A Raw Input keyboard sink receives physical keyboard events while SwiftSlate is in the background.
+2. The foreground window boundary resets a bounded suffix detector; synthetic-origin input is rejected.
+3. `ToUnicodeEx` translates the key using the foreground thread's active keyboard layout. Backspace is modeled; navigation and control keys reset the detector.
+4. A recognized built-in suffix queues UI Automation after a short key-commit delay.
+5. The worker rejects password fields, requires stable foreground/focus identity, reads at most the field limit, verifies that the exact suffix is still present, and removes only the suffix from the review copy.
+6. SwiftSlate opens the review window. If endpoint/model consent is not yet active, it asks before sending; otherwise the physical typed command is the explicit activation.
+7. No source keystrokes are synthesized. The original external field, including its trigger, remains untouched until the user reviews and explicitly copies the result.
+
+Only the maximum trigger-length suffix is retained by the detector; normal typed text is neither retained nor logged. Built-ins are `?improve`, `?fix`, `?shorten`, `?expand`, `?formal`, `?casual`, `?human`, `?reply`, and `?translate:fr`.
 
 ### Provider worker
 

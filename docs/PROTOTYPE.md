@@ -1,4 +1,4 @@
-# SwiftSlate 1.0 release qualification
+# SwiftSlate 1.1 release qualification
 
 This document defines the consolidated release gate. Intermediate phase builds are not user acceptance points; CI produces complete Windows and Linux artifacts from the same branch state.
 
@@ -10,6 +10,8 @@ This document defines the consolidated release gate. Intermediate phase builds a
 | Endpoint validation | HTTPS/loopback, authority, port, and credential-scope tests |
 | Correct JSON | Escaping, completion parsing, missing output, errors, and output bounds |
 | Windows selection limits | Range/count/focus/protection core tests plus Windows compilation |
+| Provider and command catalogs | Unique trigger tests and endpoint validation for every noncustom preset |
+| Typed inline command safety | Bounded detector tests, synthetic-input rejection, protected UIA path, and Windows compilation |
 | Windows network isolation | Dedicated-worker architecture and warnings-denied build |
 | Windows HTTP behavior | Real loopback POST, redirect-refusal, and oversized-body tests |
 | Linux HTTP behavior | Real loopback POST, authorization, completion, and redirect-refusal tests |
@@ -26,9 +28,12 @@ This document defines the consolidated release gate. Intermediate phase builds a
 
 - Native Win32 application starts without a bundled runtime.
 - `Ctrl+Alt+Space` opens the palette after selection capture.
-- Password and focus-race checks fail closed.
-- Unsupported non-protected controls clearly label clipboard fallback.
-- Provider settings persist while keys remain in Credential Manager.
+- The provider selector visibly offers OpenAI, Google Gemini, Groq, OpenRouter, Mistral AI, DeepSeek, Ollama, LM Studio, and Custom.
+- The command selector visibly offers all nine built-ins and their typed triggers.
+- Physical `?fix`/other built-in suffixes in external compatible fields queue bounded whole-field capture and the matching command.
+- Password, synthetic-input, trigger mismatch, target change, and focus-race checks fail closed.
+- Unsupported non-protected controls clearly label clipboard fallback only for shortcut capture; inline capture never uses it.
+- Provider settings persist while keys remain in Credential Manager; exact-loopback providers may omit a key.
 - Remote HTTP is rejected; loopback HTTP is direct and proxy-free.
 - Consent defaults to No and is tied to endpoint/model.
 - The window remains responsive during DNS, connect, send, and receive.
@@ -72,7 +77,7 @@ This document defines the consolidated release gate. Intermediate phase builds a
 
 - Windows offers the complete graphical selection/settings/review workflow.
 - Linux offers a complete secure request/config/secret CLI and best-effort primary-selection adapters. A universal Wayland global-selection GUI would require compositor capabilities that do not exist as a common standard.
-- Automatic replacement is intentionally excluded from 1.0 because it would weaken cross-application and cross-compositor safety guarantees.
+- Automatic replacement remains intentionally excluded from 1.1 because it would weaken cross-application and cross-compositor safety guarantees.
 - Artifacts are portable and currently unsigned.
 
 ## Release decision
