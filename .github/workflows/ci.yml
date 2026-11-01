@@ -20,15 +20,15 @@ jobs:
         working-directory: desktop
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -58,10 +58,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.13'
           architecture: x64
@@ -69,7 +69,7 @@ jobs:
           cache-dependency-path: desktop/requirements-build.txt
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: npm
@@ -81,7 +81,22 @@ jobs:
 
       - name: Build and smoke-test SwiftSlate
         shell: pwsh
-        run: ./desktop/build_windows.ps1
+        run: |
+          try {
+            & ./desktop/build_windows.ps1 *>&1 | Tee-Object -FilePath windows-build.log
+            if (-not $?) { throw 'Windows build script failed.' }
+          } catch {
+            $tail = ((Get-Content windows-build.log -Tail 160 -ErrorAction SilentlyContinue) -join "`n")
+            @"
+          ## Windows build failure
+          ```text
+          $tail
+          ```
+          "@ | Add-Content $env:GITHUB_STEP_SUMMARY
+            $escaped = $tail.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Windows build failed::$escaped"
+            throw
+          }
 
       - name: Install, verify, and uninstall package
         shell: pwsh
