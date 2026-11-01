@@ -273,7 +273,7 @@ pub fn parse_chat_response(status: u32, body: &[u8]) -> Result<String, ResponseE
 fn sanitize_provider_message(message: &str) -> String {
     message
         .chars()
-        .filter(|character| !character.is_control() || *character == ' ')
+        .filter(|character| !character.is_control())
         .take(300)
         .collect::<String>()
         .trim()
