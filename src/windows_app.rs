@@ -537,7 +537,7 @@ unsafe fn shut_down(hwnd: HWND) {
     UI.with(|slot| {
         if let Some(state) = slot.borrow().as_ref() {
             if state.hotkey_registered {
-                let _ = UnregisterHotKey(Some(hwnd), HOTKEY_ID);
+                let _ = UnregisterHotKey(hwnd, HOTKEY_ID);
             }
             if state.raw_input_registered {
                 let removal = RAWINPUTDEVICE {
