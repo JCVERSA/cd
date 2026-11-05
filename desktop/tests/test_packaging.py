@@ -46,7 +46,9 @@ class DesktopPackagingTest(unittest.TestCase):
         self.assertIn("requirements-build-lock.txt", script)
         workflow = (ROOT.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("--require-hashes -r requirements-build-lock.txt", workflow)
-        self.assertIn("innosetup --version=7.1.1 --require-checksums", workflow)
+        self.assertIn("innosetup-7.1.1-x64.exe", workflow)
+        self.assertIn("8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0", workflow)
+        self.assertIn("Get-FileHash -Algorithm SHA256", workflow)
 
     def test_github_actions_are_pinned_to_commits(self):
         workflow = (ROOT.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")

@@ -75,9 +75,20 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/ui/package-lock.json
 
-      - name: Install Inno Setup
+      - name: Install checksum-pinned Inno Setup
         shell: pwsh
-        run: choco install innosetup --version=7.1.1 --require-checksums --no-progress -y
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.1-x64.exe'
+          $installDir = Join-Path $env:RUNNER_TEMP 'InnoSetup'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe' -OutFile $installer
+          $expected = '8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0'
+          $actual = (Get-FileHash -Algorithm SHA256 -Path $installer).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Inno Setup checksum mismatch: $actual" }
+          $install = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$installDir") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Inno Setup installer exited with $($install.ExitCode)." }
+          $iscc = Join-Path $installDir 'ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe was not installed.' }
+          "ISCC_PATH=$iscc" | Add-Content $env:GITHUB_ENV
 
       - name: Run Windows Python tests
         working-directory: desktop
@@ -131,9 +142,11 @@ jobs:
         shell: pwsh
         run: |
           $iscc = @(
+            $env:ISCC_PATH,
+            "${env:ProgramFiles}\Inno Setup 7\ISCC.exe",
             "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe",
             "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
           if (-not $iscc) { throw 'ISCC.exe was not found.' }
           & $iscc './desktop/packaging/SwiftSlate.iss'
           if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with $LASTEXITCODE." }
