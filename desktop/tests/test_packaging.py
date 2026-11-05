@@ -141,6 +141,26 @@ class DesktopPackagingTest(unittest.TestCase):
         self.assertNotIn("msvcrt.locking", source)
         self.assertIn("_processing_lock.acquire(blocking=False)", source)
 
+    def test_close_and_minimize_hide_to_tray_and_single_click_reopens(self):
+        from ui_host import _hide_to_tray
+
+        class FakeWindow:
+            destroyed = False
+
+            def destroy(self):
+                self.destroyed = True
+
+        window = FakeWindow()
+        _hide_to_tray(window)
+        self.assertTrue(window.destroyed)
+
+        source = (ROOT / "SwiftSlate.pyw").read_text(encoding="utf-8")
+        host = (ROOT / "ui_host.py").read_text(encoding="utf-8")
+        self.assertIn("tray_event = int(lparam) & 0xFFFF", source)
+        self.assertIn("WM_LBUTTONUP, WM_LBUTTONDBLCLK, NIN_SELECT, NIN_KEYSELECT", source)
+        self.assertIn("window.events.minimized += _hide_to_tray", host)
+        self.assertIn("window.destroy()", host)
+
     def test_windows_default_prefix_is_a_period(self):
         source = (ROOT / "SwiftSlate.pyw").read_text(encoding="utf-8")
         module = ast.parse(source)

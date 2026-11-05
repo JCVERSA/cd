@@ -2,7 +2,7 @@
 
 SwiftSlate is a lightweight system-wide writing assistant for Windows 10/11 x64. Type an inline command such as `.fix` at the end of text in another application and SwiftSlate replaces that text in place.
 
-The background runtime remains the original Python/Win32 engine: Raw Input for keyboard detection, clipboard and `SendInput` replacement, local commands and styles, DPAPI credential protection, hot reload, and a tray icon. The settings interface is a bundled React application hosted on demand in Microsoft Edge WebView2. Closing Settings destroys the WebView process while the small background engine stays running.
+The background runtime remains the original Python/Win32 engine: Raw Input for keyboard detection, clipboard and `SendInput` replacement, local commands and styles, DPAPI credential protection, hot reload, and a tray icon. The settings interface is a bundled React application hosted on demand in Microsoft Edge WebView2. Closing or minimizing Settings removes it from the taskbar and destroys the WebView process while the small background engine stays running. A single click on the tray icon opens it again.
 
 ## Install
 

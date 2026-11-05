@@ -15,6 +15,11 @@ def _message_box(title: str, message: str) -> None:
         pass
 
 
+def _hide_to_tray(window) -> None:
+    """Remove the on-demand settings host while the tray engine keeps running."""
+    window.destroy()
+
+
 def main() -> int:
     url = os.environ.pop("SWIFTSLATE_UI_URL", "")
     if not url.startswith("http://127.0.0.1:") or "#session=" not in url:
@@ -31,7 +36,7 @@ def main() -> int:
         if "ALLOW_DOWNLOADS" in webview.settings:
             webview.settings["ALLOW_DOWNLOADS"] = False
 
-        webview.create_window(
+        window = webview.create_window(
             "SwiftSlate Settings",
             url=url,
             width=1180,
@@ -41,6 +46,10 @@ def main() -> int:
             text_select=True,
             background_color="#0d0e12",
         )
+        # Closing the child window already leaves the parent tray engine alive.
+        # Treat Minimize the same way: remove the host from the taskbar and let a
+        # later tray activation launch a fresh, authenticated dashboard session.
+        window.events.minimized += _hide_to_tray
         storage_path = os.path.join(
             os.environ.get("LOCALAPPDATA", os.path.expanduser("~")),
             "SwiftSlate",

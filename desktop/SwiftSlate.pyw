@@ -59,8 +59,12 @@ NIIF_NOSOUND = 0x00000010
 NOTIFYICON_VERSION_4 = 4
 WM_TRAYICON = 0x8001
 WM_OPEN_DASHBOARD = 0x8002
+WM_CONTEXTMENU = 0x007B
+WM_LBUTTONUP = 0x0202
 WM_LBUTTONDBLCLK = 0x0203
 WM_RBUTTONUP = 0x0205
+NIN_SELECT = 0x0400
+NIN_KEYSELECT = 0x0401
 TPM_RETURNCMD = 0x0100
 TPM_RIGHTBUTTON = 0x0002
 MF_STRING = 0x0000
@@ -2723,7 +2727,11 @@ def wnd_proc(hwnd, msg, wparam, lparam):
             open_dashboard()
 
         elif msg == WM_TRAYICON:
-            if lparam == WM_RBUTTONUP:
+            # NOTIFYICON_VERSION_4 stores the event code in LOWORD(lParam) and
+            # the icon identifier in HIWORD(lParam). Masking also remains compatible
+            # with legacy shell callbacks that pass only the event code.
+            tray_event = int(lparam) & 0xFFFF
+            if tray_event in (WM_RBUTTONUP, WM_CONTEXTMENU):
                 # Context menu with the app's only exit path. SetForegroundWindow is
                 # required for the menu to dismiss when the user clicks elsewhere.
                 # Save the last app that received input before the tray menu
@@ -2761,8 +2769,10 @@ def wnd_proc(hwnd, msg, wparam, lparam):
                     elif cmd == MENU_ID_EXIT:
                         log("Exit requested from tray menu")
                         user32.DestroyWindow(hwnd)  # WM_DESTROY -> PostQuitMessage
-            elif lparam == WM_LBUTTONDBLCLK:
-                log(f"Tray double-click (running: {provider}, {model})")
+            elif tray_event in (WM_LBUTTONUP, WM_LBUTTONDBLCLK, NIN_SELECT, NIN_KEYSELECT):
+                # Open on one click. NIN_SELECT/NIN_KEYSELECT support version-4
+                # shell activation and keyboard activation of the notification icon.
+                log(f"Tray activation (running: {provider}, {model})")
                 open_dashboard()
 
         elif msg == WM_DESTROY:
