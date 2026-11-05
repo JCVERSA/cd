@@ -20,7 +20,7 @@ jobs:
         working-directory: desktop
     steps:
       - name: Check out repository
-        uses: actions/checkout@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -28,7 +28,7 @@ jobs:
           python-version: '3.13'
 
       - name: Set up Node
-        uses: actions/setup-node@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22'
           cache: npm
@@ -58,7 +58,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -69,7 +69,7 @@ jobs:
           cache-dependency-path: desktop/requirements-build-lock.txt
 
       - name: Set up Node
-        uses: actions/setup-node@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: '22'
           cache: npm

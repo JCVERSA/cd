@@ -50,11 +50,19 @@ class DesktopPackagingTest(unittest.TestCase):
 
     def test_github_actions_are_pinned_to_commits(self):
         workflow = (ROOT.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        expected = {
+            "actions/checkout": "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09",
+            "actions/setup-python": "ece7cb06caefa5fff74198d8649806c4678c61a1",
+            "actions/setup-node": "a0853c24544627f65ddf259abe73b1d18a591444",
+            "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+        }
         action_lines = [line.strip() for line in workflow.splitlines() if "uses:" in line]
         self.assertTrue(action_lines)
         for line in action_lines:
-            reference = line.split("@", 1)[1].split()[0]
+            action, reference = line.split("uses:", 1)[1].strip().split("@", 1)
+            reference = reference.split()[0]
             self.assertRegex(reference, r"^[0-9a-f]{40}$", line)
+            self.assertEqual(reference, expected[action], line)
 
     def test_engine_uses_shell_free_commands_and_kernel_singleton(self):
         source = (ROOT / "SwiftSlate.pyw").read_text(encoding="utf-8")
