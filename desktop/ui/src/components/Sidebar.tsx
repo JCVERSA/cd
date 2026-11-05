@@ -6,11 +6,11 @@ import {
   Gauge,
   Palette,
   Settings,
-  Sparkles,
   TerminalSquare,
 } from 'lucide-react'
 import { motion } from 'motion/react'
 import type { PageId } from '../types'
+import { BrandLogo } from './BrandLogo'
 import { cn } from './ui'
 
 const nav: Array<{ id: PageId; label: string; icon: typeof Gauge; section?: string }> = [
@@ -41,8 +41,8 @@ export function Sidebar({
       transition={{ type: 'spring', stiffness: 330, damping: 36 }}
     >
       <div className="brand">
-        <span className="brand-mark" aria-hidden="true">
-          <Sparkles size={18} />
+        <span className="brand-mark">
+          <BrandLogo size={34} />
         </span>
         <motion.div
           className="brand-copy"

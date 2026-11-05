@@ -61,12 +61,12 @@ if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notm
 
 $isccCandidates = @(@(
     $env:ISCC_PATH,
+    (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe'),
     (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 7\ISCC.exe'),
-    (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
     (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 7\ISCC.exe')
 ) | Where-Object { $_ -and (Test-Path $_) })
 if ($isccCandidates.Count -eq 0) {
-    throw 'Inno Setup 6 or newer is required (ISCC.exe was not found).'
+    throw 'Inno Setup 7.1.1 or newer is required (ISCC.exe was not found).'
 }
 
 & $isccCandidates[0] (Join-Path $root 'packaging\SwiftSlate.iss')

@@ -7,7 +7,7 @@ from provider_catalog import (
     fetch_models,
     join_endpoint,
     public_provider_records,
-    test_provider,
+    test_provider as probe_provider,
     validate_endpoint,
 )
 
@@ -70,7 +70,7 @@ class ProviderCatalogTests(unittest.TestCase):
 
     def test_provider_test_sends_only_a_fixed_probe(self):
         opener = _Opener({"choices": [{"message": {"content": "OK"}}]})
-        result = test_provider(
+        result = probe_provider(
             "openai", api_key="secret-value", model="gpt-test", opener=opener,
         )
         self.assertTrue(result["ok"])

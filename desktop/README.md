@@ -67,7 +67,7 @@ Requirements on Windows x64:
 
 - Python 3.13
 - Node.js 22
-- Inno Setup 7.1.1 recommended (the version fixed in CI; the script also supports Inno Setup 6)
+- Inno Setup 7.1.1 or newer (required for the branded dynamic light/dark wizard; CI is pinned to 7.1.1)
 
 Run:
 
@@ -123,5 +123,7 @@ Important files:
 - `ui_bundle/` — production interface assets bundled with the app
 - `ui_host.py` — on-demand Edge WebView2 host
 - `SwiftSlate.spec` — PyInstaller one-directory build
-- `packaging/SwiftSlate.iss` — per-user Inno Setup installer
+- `ui/src/assets/swiftslate-logo.png` — canonical full-colour desktop brand source
+- `packaging/SwiftSlate.ico` and `packaging/wizard/` — multi-resolution Windows icon and dynamic installer art
+- `packaging/SwiftSlate.iss` — branded per-user Inno Setup installer
 - `tests/` — Python and security regression tests

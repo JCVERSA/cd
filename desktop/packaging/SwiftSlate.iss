@@ -19,7 +19,17 @@ OutputDir=..\release
 OutputBaseFilename=SwiftSlate-Setup-x64
 Compression=lzma2/ultra64
 SolidCompression=yes
-WizardStyle=modern
+SetupIconFile=SwiftSlate.ico
+DisableWelcomePage=no
+WizardStyle=modern dynamic windows11 includetitlebar
+WizardImageFile=wizard\SwiftSlate-Wizard-Light.png
+WizardImageFileDynamicDark=wizard\SwiftSlate-Wizard-Dark.png
+WizardSmallImageFile=..\ui\src\assets\swiftslate-logo.png
+WizardSmallImageFileDynamicDark=..\ui\src\assets\swiftslate-logo.png
+WizardImageBackColor=#f7f5fb
+WizardImageBackColorDynamicDark=#09090d
+WizardSmallImageBackColor=#f7f5fb
+WizardSmallImageBackColorDynamicDark=#09090d
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no
@@ -52,6 +62,68 @@ Filename: "{sys}\taskkill.exe"; Parameters: "/IM SwiftSlate.exe /F"; Flags: runh
 [Code]
 var
   WebView2Required: Boolean;
+  BrandPage: TWizardPage;
+
+procedure AddBrandFeature(Page: TWizardPage; Top: Integer; const Heading, Detail: String);
+var
+  HeadingLabel: TNewStaticText;
+  DetailLabel: TNewStaticText;
+begin
+  HeadingLabel := TNewStaticText.Create(Page);
+  HeadingLabel.Parent := Page.Surface;
+  HeadingLabel.Left := 0;
+  HeadingLabel.Top := ScaleY(Top);
+  HeadingLabel.Width := Page.SurfaceWidth;
+  HeadingLabel.Height := ScaleY(18);
+  HeadingLabel.AutoSize := False;
+  HeadingLabel.Caption := Heading;
+  HeadingLabel.Font.Style := [fsBold];
+
+  DetailLabel := TNewStaticText.Create(Page);
+  DetailLabel.Parent := Page.Surface;
+  DetailLabel.Left := ScaleX(22);
+  DetailLabel.Top := ScaleY(Top + 22);
+  DetailLabel.Width := Page.SurfaceWidth - ScaleX(22);
+  DetailLabel.Height := ScaleY(34);
+  DetailLabel.AutoSize := False;
+  DetailLabel.WordWrap := True;
+  DetailLabel.Caption := Detail;
+end;
+
+procedure InitializeWizard;
+begin
+  WizardForm.WelcomeLabel1.Caption := 'Welcome to SwiftSlate';
+  WizardForm.WelcomeLabel2.Caption :=
+    'A lightweight, system-wide writing assistant for Windows.' + #13#10 + #13#10 +
+    'Setup installs SwiftSlate for your Windows account and keeps the dashboard available only when you open it.';
+  WizardForm.FinishedHeadingLabel.Caption := 'SwiftSlate is ready';
+  WizardForm.FinishedLabel.Caption :=
+    'Launch SwiftSlate to finish provider setup, then type an inline command such as .fix in any supported Windows app.';
+
+  BrandPage := CreateCustomPage(
+    wpWelcome,
+    'Designed to stay out of your way',
+    'Local-first behavior, protected credentials, and a lightweight background engine.'
+  );
+  AddBrandFeature(
+    BrandPage,
+    20,
+    'SYSTEM-WIDE INLINE COMMANDS',
+    'Transform selected text directly in the Windows app where you are already writing.'
+  );
+  AddBrandFeature(
+    BrandPage,
+    92,
+    'PROTECTED PROVIDER KEYS',
+    'Remote-provider credentials are encrypted for the current Windows user with DPAPI.'
+  );
+  AddBrandFeature(
+    BrandPage,
+    164,
+    'ON-DEMAND SETTINGS',
+    'The WebView2 dashboard closes completely when you return to the tray, keeping idle overhead low.'
+  );
+end;
 
 function EdgeUpdateContainsWebView2(RootKey: Integer; const BaseKey: String): Boolean;
 var

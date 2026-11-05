@@ -11,6 +11,7 @@ import {
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
+import { BrandLogo } from './components/BrandLogo'
 import { Onboarding } from './components/Onboarding'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
@@ -150,7 +151,7 @@ export default function App() {
   }
 
   if (error) {
-    return <div className="fatal-state"><SparklesFallback/><h1>SwiftSlate could not open</h1><p>{error}</p><Button variant="primary" onClick={() => window.location.reload()}>Try again</Button></div>
+    return <div className="fatal-state"><BrandFallback/><h1>SwiftSlate could not open</h1><p>{error}</p><Button variant="primary" onClick={() => window.location.reload()}>Try again</Button></div>
   }
 
   const theme = snapshot?.runtime.theme || 'lavender'
@@ -206,6 +207,6 @@ export default function App() {
   )
 }
 
-function SparklesFallback() {
-  return <span className="brand-mark"><Gauge size={20}/></span>
+function BrandFallback() {
+  return <span className="brand-mark brand-mark-large"><BrandLogo size={52}/></span>
 }

@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   Sparkles,
   TestTube2,
+  Wind,
+  Zap,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { ComponentType } from 'react'
@@ -22,22 +24,15 @@ import { Badge, Button, Field, Modal, SpotlightCard } from '../components/ui'
 
 const marks: Record<ProviderId, { letters: string; className: string; icon?: ComponentType<{ size?: number }> }> = {
   gemini: { letters: 'G', className: 'provider-gemini', icon: Sparkles },
-  groq: { letters: 'GQ', className: 'provider-groq', icon: ZapIcon },
+  groq: { letters: 'GQ', className: 'provider-groq', icon: Zap },
   openai: { letters: 'OA', className: 'provider-openai', icon: Bot },
   openrouter: { letters: 'OR', className: 'provider-openrouter', icon: Cloud },
-  mistral: { letters: 'M', className: 'provider-mistral', icon: WindIcon },
+  mistral: { letters: 'M', className: 'provider-mistral', icon: Wind },
   deepseek: { letters: 'DS', className: 'provider-deepseek', icon: Database },
   nvidia: { letters: 'NV', className: 'provider-nvidia', icon: Cpu },
   ollama: { letters: 'OL', className: 'provider-ollama', icon: Server },
   lmstudio: { letters: 'LM', className: 'provider-lmstudio', icon: Cpu },
   custom: { letters: '+', className: 'provider-custom', icon: Plus },
-}
-
-function ZapIcon({ size = 18 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m13 2-9 12h7l-1 8 9-12h-7l1-8Z" /></svg>
-}
-function WindIcon({ size = 18 }: { size?: number }) {
-  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 8h10a3 3 0 1 0-3-3"/><path d="M4 12h15a3 3 0 1 1-3 3"/><path d="M4 16h7"/></svg>
 }
 
 export function ProvidersScreen({

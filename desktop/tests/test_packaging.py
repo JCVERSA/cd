@@ -1,5 +1,8 @@
 import ast
+import hashlib
+import json
 from pathlib import Path
+import struct
 import unittest
 
 
@@ -12,7 +15,10 @@ class DesktopPackagingTest(unittest.TestCase):
             "SwiftSlate.pyw", "SwiftSlate.spec", "build_windows.ps1",
             "packaging/SwiftSlate.iss", "requirements-build.txt", "requirements-build-lock.txt",
             "dashboard_server.py", "provider_catalog.py", "ui_host.py",
-            "ui_bundle/index.html",
+            "ui_bundle/index.html", "ui/src/assets/swiftslate-logo.png",
+            "packaging/SwiftSlate.ico", "packaging/tray-mark.png",
+            "packaging/wizard/SwiftSlate-Wizard-Light.png",
+            "packaging/wizard/SwiftSlate-Wizard-Dark.png",
         )
         for name in expected:
             self.assertTrue((ROOT / name).is_file(), name)
@@ -29,6 +35,54 @@ class DesktopPackagingTest(unittest.TestCase):
         self.assertIn("RegDeleteValue(HKCU", script)
         self.assertNotIn("ValueType: none", script)
 
+    def test_brand_assets_and_dynamic_wizard_are_wired(self):
+        logo = ROOT / "ui" / "src" / "assets" / "swiftslate-logo.png"
+        self.assertEqual(
+            hashlib.sha256(logo.read_bytes()).hexdigest(),
+            "ba295e38089ddeeb6b897981ae637744f44b8c84a973e4e1895331ecce52d913",
+        )
+        self.assertEqual(struct.unpack(">II", logo.read_bytes()[16:24]), (512, 512))
+
+        ico = (ROOT / "packaging" / "SwiftSlate.ico").read_bytes()
+        reserved, image_type, count = struct.unpack("<HHH", ico[:6])
+        self.assertEqual((reserved, image_type, count), (0, 1, 7))
+        sizes = []
+        for index in range(count):
+            width, height = ico[6 + index * 16:8 + index * 16]
+            sizes.append((width or 256, height or 256))
+        self.assertEqual(sizes, [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+
+        for name in ("SwiftSlate-Wizard-Light.png", "SwiftSlate-Wizard-Dark.png"):
+            panel = (ROOT / "packaging" / "wizard" / name).read_bytes()
+            self.assertEqual(struct.unpack(">II", panel[16:24]), (534, 1022))
+
+        spec = (ROOT / "SwiftSlate.spec").read_text(encoding="utf-8")
+        source = (ROOT / "SwiftSlate.pyw").read_text(encoding="utf-8")
+        installer = (ROOT / "packaging" / "SwiftSlate.iss").read_text(encoding="utf-8")
+        self.assertIn("icon=str(root / 'packaging' / 'SwiftSlate.ico')", spec)
+        self.assertIn("(str(root / 'packaging' / 'SwiftSlate.ico'), 'assets')", spec)
+        self.assertIn("LoadImageW", source)
+        self.assertIn("nid.hIcon = _small_app_icon", source)
+        self.assertIn("SetupIconFile=SwiftSlate.ico", installer)
+        self.assertIn("WizardStyle=modern dynamic windows11 includetitlebar", installer)
+        self.assertIn("WizardImageFileDynamicDark=", installer)
+        self.assertIn("CreateCustomPage(", installer)
+
+    def test_frontend_uses_one_normalized_icon_system_and_the_brand_logo(self):
+        package = json.loads((ROOT / "ui" / "package.json").read_text(encoding="utf-8"))
+        dependencies = package["dependencies"]
+        all_packages = dependencies | package["devDependencies"]
+        self.assertEqual(dependencies["lucide-react"], "1.69.0")
+        self.assertFalse(any("hugeicon" in name.lower() for name in all_packages))
+        tsx_source = "".join(path.read_text(encoding="utf-8") for path in (ROOT / "ui" / "src").rglob("*.tsx"))
+        self.assertNotIn("<svg", tsx_source)
+        sidebar = (ROOT / "ui" / "src" / "components" / "Sidebar.tsx").read_text(encoding="utf-8")
+        onboarding = (ROOT / "ui" / "src" / "components" / "Onboarding.tsx").read_text(encoding="utf-8")
+        html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<BrandLogo", sidebar)
+        self.assertIn("<BrandLogo", onboarding)
+        self.assertIn("swiftslate-logo.png", html)
+
     def test_bundle_is_one_directory_and_contains_no_node_or_electron_runtime(self):
         spec = (ROOT / "SwiftSlate.spec").read_text(encoding="utf-8")
         requirements = (ROOT / "requirements-build.txt").read_text(encoding="utf-8").lower()
@@ -44,6 +98,8 @@ class DesktopPackagingTest(unittest.TestCase):
         self.assertGreaterEqual(lock.count("--hash=sha256:"), 15)
         self.assertIn("--require-hashes", script)
         self.assertIn("requirements-build-lock.txt", script)
+        self.assertIn("Inno Setup 7\\ISCC.exe", script)
+        self.assertNotIn("Inno Setup 6", script)
         workflow = (ROOT.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
         self.assertIn("--require-hashes -r requirements-build-lock.txt", workflow)
         self.assertIn("innosetup-7.1.1-x64.exe", workflow)

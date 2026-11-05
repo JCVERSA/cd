@@ -12,6 +12,7 @@ a = Analysis(
     datas=[
         (str(root / 'commands.json'), '.'),
         (str(root / 'ui_bundle'), 'ui_bundle'),
+        (str(root / 'packaging' / 'SwiftSlate.ico'), 'assets'),
     ] + webview_data,
     hiddenimports=[
         'clr',
@@ -54,6 +55,7 @@ exe = EXE(
     target_arch='x86_64',
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(root / 'packaging' / 'SwiftSlate.ico'),
     version=str(root / 'packaging' / 'version_info.txt'),
 )
 

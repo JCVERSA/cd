@@ -1,7 +1,8 @@
-import { ArrowLeft, ArrowRight, Bot, Check, Command, KeyRound, ShieldCheck, Sparkles, Zap } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Bot, Check, Command, KeyRound, ShieldCheck, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import type { Provider, ProviderId } from '../types'
+import { BrandLogo } from './BrandLogo'
 import { Button } from './ui'
 
 export function Onboarding({
@@ -93,7 +94,7 @@ export function Onboarding({
         <motion.div className="onboarding-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
           <motion.section ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="onboarding-title" className="onboarding-panel" initial={{ opacity: 0, y: 18, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }}>
             <div className="onboarding-art" aria-hidden="true">
-              <div className="onboarding-logo"><Sparkles size={27}/></div>
+              <div className="onboarding-logo"><BrandLogo size={58}/></div>
               <div className="onboarding-orbit orbit-one"/><div className="onboarding-orbit orbit-two"/>
               <div className="floating-command command-a"><span>Before</span><strong>can u review this pls .formal</strong></div>
               <motion.div className="transform-beam" animate={{ opacity: [0.25, 0.8, 0.25], scaleX: [0.7, 1, 0.7] }} transition={{ duration: 2.6, repeat: Infinity }}/>

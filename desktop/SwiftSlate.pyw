@@ -39,6 +39,8 @@ GMEM_MOVEABLE = 0x0002
 CF_UNICODETEXT = 13
 WS_OVERLAPPEDWINDOW = 0x00CF0000
 CW_USEDEFAULT = -2147483648  # 0x80000000 as signed c_int
+IMAGE_ICON = 1
+LR_LOADFROMFILE = 0x00000010
 
 # Notification constants
 NIM_ADD = 0x00000000
@@ -148,6 +150,10 @@ user32.DefWindowProcW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, wt.LPARAM]
 user32.DefWindowProcW.restype = LRESULT
 user32.RegisterClassExW.argtypes = [ctypes.c_void_p]
 user32.RegisterClassExW.restype = wt.ATOM
+user32.LoadImageW.argtypes = [wt.HINSTANCE, wt.LPCWSTR, wt.UINT, ctypes.c_int, ctypes.c_int, wt.UINT]
+user32.LoadImageW.restype = wt.HANDLE
+user32.DestroyIcon.argtypes = [wt.HICON]
+user32.DestroyIcon.restype = wt.BOOL
 user32.GetMessageW.argtypes = [ctypes.POINTER(wt.MSG), wt.HWND, wt.UINT, wt.UINT]
 user32.GetMessageW.restype = wt.BOOL
 user32.TranslateMessage.argtypes = [ctypes.POINTER(wt.MSG)]
@@ -276,6 +282,8 @@ internal_clipboard = None
 spinner_frames = "\u25D0\u25D3\u25D1\u25D2"
 spinner_mode = "animated"  # animated | static | off
 hwnd_main = None
+_large_app_icon = None
+_small_app_icon = None
 
 # Provider settings
 provider = "gemini"  # groq, gemini, custom
@@ -403,7 +411,21 @@ def log(msg):
         except (OSError, ValueError):
             pass
 
-# --- Notifications ---
+# --- Application icon and notifications ---
+def _load_app_icon(size):
+    """Load the bundled multi-resolution SwiftSlate icon at the requested size."""
+    candidates = (
+        os.path.join(resource_dir, "assets", "SwiftSlate.ico"),
+        os.path.join(script_dir, "packaging", "SwiftSlate.ico"),
+    )
+    for icon_path in candidates:
+        if os.path.isfile(icon_path):
+            icon = user32.LoadImageW(None, icon_path, IMAGE_ICON, size, size, LR_LOADFROMFILE)
+            if icon:
+                return icon
+    return None
+
+
 def _ensure_notify_icon():
     """Add the notification tray icon if not already present."""
     global _notify_icon_added
@@ -416,8 +438,7 @@ def _ensure_notify_icon():
     nid.uID = _NOTIFY_ID
     nid.uFlags = NIF_ICON | NIF_TIP | NIF_SHOWTIP | NIF_MESSAGE
     nid.uCallbackMessage = WM_TRAYICON
-    # Use default app icon (Python's icon shows in header, which is fine)
-    nid.hIcon = user32.LoadIconW(None, ctypes.cast(32512, wt.LPCWSTR))
+    nid.hIcon = _small_app_icon or user32.LoadIconW(None, ctypes.cast(32512, wt.LPCWSTR))
     nid.szTip = "SwiftSlate Desktop"
 
     if shell32.Shell_NotifyIconW(NIM_ADD, ctypes.byref(nid)):
@@ -2776,6 +2797,10 @@ def self_test():
     assets = os.path.join(resource_dir, "ui_bundle")
     if not os.path.isfile(os.path.join(assets, "index.html")):
         raise RuntimeError("Bundled dashboard assets are missing")
+    if getattr(sys, "frozen", False) and not os.path.isfile(
+        os.path.join(resource_dir, "assets", "SwiftSlate.ico")
+    ):
+        raise RuntimeError("Bundled application icon is missing")
     probe = "SwiftSlate-DPAPI-probe"
     if unprotect(protect(probe)) != probe:
         raise RuntimeError("DPAPI round trip failed")
@@ -2791,6 +2816,7 @@ def self_test():
 
 def main():
     global hwnd_main, cf_exclude, cf_no_history, cf_no_cloud, log_file
+    global _large_app_icon, _small_app_icon
 
     try:
         ensure_user_files()
@@ -2845,11 +2871,15 @@ def main():
 
     hinstance = kernel32.GetModuleHandleW(None)
     class_name = "SwiftSlateDesktop"
+    _large_app_icon = _load_app_icon(32)
+    _small_app_icon = _load_app_icon(16)
 
     wc = WNDCLASSEXW()
     wc.cbSize = ctypes.sizeof(WNDCLASSEXW)
     wc.lpfnWndProc = wnd_proc_cb
     wc.hInstance = hinstance
+    wc.hIcon = _large_app_icon
+    wc.hIconSm = _small_app_icon
     wc.lpszClassName = class_name
 
     if not user32.RegisterClassExW(ctypes.byref(wc)):
@@ -2918,6 +2948,11 @@ def main():
         _dashboard_server.server_close()
     if _ui_process is not None and _ui_process.poll() is None:
         _ui_process.terminate()
+    for icon in (_small_app_icon, _large_app_icon):
+        if icon:
+            user32.DestroyIcon(icon)
+    _small_app_icon = None
+    _large_app_icon = None
     if _mutex_handle:
         kernel32.CloseHandle(_mutex_handle)
     log("Shutting down")
