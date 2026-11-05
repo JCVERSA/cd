@@ -1,6 +1,6 @@
 import { ArrowLeft, ArrowRight, Bot, Check, Command, KeyRound, ShieldCheck, Sparkles, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Provider, ProviderId } from '../types'
 import { Button } from './ui'
 
@@ -18,7 +18,39 @@ export function Onboarding({
   const [key, setKey] = useState('')
   const [completing, setCompleting] = useState(false)
   const [error, setError] = useState('')
+  const panelRef = useRef<HTMLElement>(null)
   const choices = providers.filter((item) => ['gemini', 'groq', 'openai', 'ollama'].includes(item.id))
+
+  useEffect(() => {
+    if (!open) return
+    const panel = panelRef.current
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const selector = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    const focusFirst = window.requestAnimationFrame(() => panel?.querySelector<HTMLElement>(selector)?.focus())
+
+    function trapFocus(event: KeyboardEvent) {
+      if (event.key !== 'Tab' || !panel) return
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(selector))
+        .filter((element) => element.getClientRects().length > 0)
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', trapFocus)
+    return () => {
+      window.cancelAnimationFrame(focusFirst)
+      document.removeEventListener('keydown', trapFocus)
+      previousFocus?.focus()
+    }
+  }, [open])
 
   async function finish() {
     setCompleting(true)
@@ -59,7 +91,7 @@ export function Onboarding({
     <AnimatePresence>
       {open ? (
         <motion.div className="onboarding-backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <motion.section className="onboarding-panel" initial={{ opacity: 0, y: 18, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }}>
+          <motion.section ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="onboarding-title" className="onboarding-panel" initial={{ opacity: 0, y: 18, scale: 0.985 }} animate={{ opacity: 1, y: 0, scale: 1 }}>
             <div className="onboarding-art" aria-hidden="true">
               <div className="onboarding-logo"><Sparkles size={27}/></div>
               <div className="onboarding-orbit orbit-one"/><div className="onboarding-orbit orbit-two"/>
@@ -76,7 +108,7 @@ export function Onboarding({
               <AnimatePresence mode="wait">
                 <motion.div key={step} className="onboarding-step" initial={{ opacity: 0, x: 14 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }}>
                   <span className="section-kicker">{steps[step].eyebrow}</span>
-                  <h1>{steps[step].title}</h1>
+                  <h1 id="onboarding-title">{steps[step].title}</h1>
                   <p>{steps[step].copy}</p>
 
                   {step === 0 ? (

@@ -1,4 +1,4 @@
-import { Accessibility, Clock3, Keyboard, MonitorUp, Palette, RotateCcw, Save, Shield, Sparkles } from 'lucide-react'
+import { Accessibility, Keyboard, MonitorUp, Palette, RotateCcw, Save, Shield } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { RuntimeState, ThemeId } from '../types'
@@ -64,7 +64,7 @@ export function SettingsScreen({
           <div className="settings-card-heading"><span className="settings-heading-icon"><MonitorUp size={18}/></span><div><h3>Windows integration</h3><p>Choose when SwiftSlate starts and how it behaves in the tray.</p></div></div>
           <div className="setting-list">
             <div className="setting-row"><div><strong>Start at login</strong><span>Launch the background engine for this Windows user.</span></div><Switch checked={draft.launchAtStartup} onChange={(value) => setDraft({ ...draft, launchAtStartup: value })} label="Start at login"/></div>
-            <div className="setting-row"><div><strong>Close dashboard to tray</strong><span>Keep inline commands active after this window closes.</span></div><Switch checked onChange={() => undefined} label="Close dashboard to tray"/></div>
+            <div className="setting-row"><div><strong>Close dashboard to tray</strong><span>Keep inline commands active after this window closes.</span></div><Switch checked disabled onChange={() => undefined} label="Close dashboard to tray (always enabled)"/></div>
           </div>
         </SpotlightCard>
 

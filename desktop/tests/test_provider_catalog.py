@@ -43,6 +43,15 @@ class ProviderCatalogTests(unittest.TestCase):
         self.assertEqual(validate_endpoint("http://127.0.0.1:11434"), "http://127.0.0.1:11434")
         self.assertEqual(validate_endpoint("http://localhost:1234/v1"), "http://localhost:1234/v1")
 
+    def test_endpoint_rejects_embedded_credentials_query_and_fragment(self):
+        for endpoint in (
+            "https://user:secret@example.com/v1",
+            "https://example.com/v1?token=secret",
+            "https://example.com/v1#fragment",
+        ):
+            with self.subTest(endpoint=endpoint), self.assertRaises(ProviderError):
+                validate_endpoint(endpoint)
+
     def test_versioned_endpoints_are_joined_without_duplicate_v1(self):
         self.assertEqual(join_endpoint("https://example.com/v1", "/v1/models"), "https://example.com/v1/models")
         self.assertEqual(join_endpoint("https://example.com/v1", "/models"), "https://example.com/v1/models")

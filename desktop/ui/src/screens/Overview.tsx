@@ -1,5 +1,4 @@
 import {
-  Activity,
   ArrowRight,
   Bot,
   CheckCircle2,

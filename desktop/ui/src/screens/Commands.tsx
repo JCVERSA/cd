@@ -1,4 +1,4 @@
-import { Bot, Copy, MoreHorizontal, Pencil, Plus, Search, Sparkles, Trash2, Type, Wand2 } from 'lucide-react'
+import { Bot, Pencil, Plus, Search, Sparkles, Trash2, Type, Wand2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import type { Command, CommandType } from '../types'
@@ -67,8 +67,12 @@ export function CommandsScreen({
   }
 
   async function toggle(command: Command, enabled: boolean) {
-    const saved = await api.saveCommand({ ...command, enabled })
-    onChange(commands.map((item) => item.id === saved.id ? saved : item))
+    try {
+      const saved = await api.saveCommand({ ...command, enabled })
+      onChange(commands.map((item) => item.id === saved.id ? saved : item))
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Command state could not be changed.', 'danger')
+    }
   }
 
   return (

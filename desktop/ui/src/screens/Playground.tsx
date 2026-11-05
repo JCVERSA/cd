@@ -6,7 +6,7 @@ import { Badge, Button, SpotlightCard } from '../components/ui'
 
 const sample = 'hey team just wanted to check if we can move the meeting to tomorrow afternoon because the current time does not work well for everyone'
 
-export function Playground({ commands, notify }: { commands: CommandType[]; notify: (message: string) => void }) {
+export function Playground({ commands, notify }: { commands: CommandType[]; notify: (message: string, tone?: 'success' | 'danger') => void }) {
   const available = useMemo(() => commands.filter((command) => command.type === 'ai' || command.type === 'style'), [commands])
   const [selected, setSelected] = useState(available[0]?.trigger || 'fix')
   const [input, setInput] = useState(sample)
@@ -22,7 +22,7 @@ export function Playground({ commands, notify }: { commands: CommandType[]; noti
       setOutput(result.output)
       setDuration(result.durationMs)
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'The command could not be run.')
+      notify(error instanceof Error ? error.message : 'The command could not be run.', 'danger')
     } finally {
       setRunning(false)
     }
@@ -30,8 +30,13 @@ export function Playground({ commands, notify }: { commands: CommandType[]; noti
 
   async function copy() {
     if (!output) return
-    await navigator.clipboard?.writeText(output)
-    notify('Result copied to the clipboard.')
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard access is unavailable.')
+      await navigator.clipboard.writeText(output)
+      notify('Result copied to the clipboard.', 'success')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'The result could not be copied.', 'danger')
+    }
   }
 
   return (

@@ -42,15 +42,12 @@ Source: "MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterin
 Name: "{group}\SwiftSlate"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\SwiftSlate"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
-[Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "SwiftSlate"; Flags: uninsdeletevalue
-
 [Run]
 Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing Microsoft Edge WebView2 Runtime…"; Flags: runhidden waituntilterminated; Check: ShouldInstallWebView2
 Filename: "{app}\{#MyAppExeName}"; Description: "Launch SwiftSlate"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
-Filename: "{cmd}"; Parameters: "/C taskkill /IM SwiftSlate.exe /F >NUL 2>&1"; Flags: runhidden; RunOnceId: "StopSwiftSlate"
+Filename: "{sys}\taskkill.exe"; Parameters: "/IM SwiftSlate.exe /F"; Flags: runhidden; RunOnceId: "StopSwiftSlate"
 
 [Code]
 var
@@ -106,6 +103,15 @@ var
   ResultCode: Integer;
 begin
   { Stop a tray-resident previous version so one-directory files can be replaced. }
-  Exec(ExpandConstant('{cmd}'), '/C taskkill /IM SwiftSlate.exe /F >NUL 2>&1', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM SwiftSlate.exe /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   Result := '';
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    { The application owns this preference; Setup must not create or reset it on upgrade. }
+    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'SwiftSlate');
+  end;
 end;

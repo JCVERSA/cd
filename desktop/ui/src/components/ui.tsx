@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion } from 'motion/react'
 import type { HTMLMotionProps } from 'motion/react'
 import { Check, LoaderCircle, X } from 'lucide-react'
+import { useEffect, useId, useRef } from 'react'
 import type { MouseEvent, PropsWithChildren, ReactNode } from 'react'
 
 export function cn(...items: Array<string | false | null | undefined>) {
@@ -23,6 +24,7 @@ export function Button({
   className,
   children,
   disabled,
+  type = 'button',
   ...props
 }: ButtonProps) {
   return (
@@ -31,6 +33,7 @@ export function Button({
       transition={{ type: 'spring', stiffness: 560, damping: 32 }}
       className={cn('button', `button-${variant}`, `button-${size}`, className)}
       disabled={disabled || loading}
+      type={type}
       {...props}
     >
       {loading ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : icon}
@@ -39,7 +42,7 @@ export function Button({
   )
 }
 
-export function Switch({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
+export function Switch({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button
       type="button"
@@ -47,6 +50,7 @@ export function Switch({ checked, onChange, label }: { checked: boolean; onChang
       aria-checked={checked}
       aria-label={label}
       className={cn('switch', checked && 'switch-on')}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
     >
       <motion.span
@@ -103,6 +107,56 @@ type ModalProps = PropsWithChildren<{
 }>
 
 export function Modal({ open, onClose, title, description, footer, children, size = 'md' }: ModalProps) {
+  const titleId = useId()
+  const descriptionId = useId()
+  const panelRef = useRef<HTMLElement>(null)
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+
+  useEffect(() => {
+    if (!open) return
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const panel = panelRef.current
+    const focusableSelector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+    const focusFirst = window.requestAnimationFrame(() => {
+      const preferred = panel?.querySelector<HTMLElement>('[autofocus], input:not([disabled]), textarea:not([disabled]), select:not([disabled])')
+      const first = panel?.querySelector<HTMLElement>(focusableSelector)
+      ;(preferred || first || panel)?.focus()
+    })
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeRef.current()
+        return
+      }
+      if (event.key !== 'Tab' || !panel) return
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>(focusableSelector))
+        .filter((element) => element.getClientRects().length > 0)
+      if (!focusable.length) {
+        event.preventDefault()
+        panel.focus()
+        return
+      }
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.cancelAnimationFrame(focusFirst)
+      document.removeEventListener('keydown', handleKeyDown)
+      previousFocus?.focus()
+    }
+  }, [open])
+
   return (
     <AnimatePresence>
       {open ? (
@@ -114,9 +168,12 @@ export function Modal({ open, onClose, title, description, footer, children, siz
           onMouseDown={(event) => event.target === event.currentTarget && onClose()}
         >
           <motion.section
+            ref={panelRef}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="modal-title"
+            aria-labelledby={titleId}
+            aria-describedby={description ? descriptionId : undefined}
+            tabIndex={-1}
             className={cn('modal-panel', `modal-${size}`)}
             initial={{ opacity: 0, scale: 0.96, y: 18 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -125,8 +182,8 @@ export function Modal({ open, onClose, title, description, footer, children, siz
           >
             <header className="modal-header">
               <div>
-                <h2 id="modal-title">{title}</h2>
-                {description ? <p>{description}</p> : null}
+                <h2 id={titleId}>{title}</h2>
+                {description ? <p id={descriptionId}>{description}</p> : null}
               </div>
               <Button variant="ghost" size="icon" aria-label="Close dialog" onClick={onClose} icon={<X size={18} />} />
             </header>

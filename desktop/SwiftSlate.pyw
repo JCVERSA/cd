@@ -11,7 +11,8 @@ import json
 import math
 import os
 import re
-import subprocess
+# Required for the isolated UI child and explicit current-user local commands.
+import subprocess  # nosec B404
 import sys
 import tempfile
 import shutil
@@ -22,7 +23,7 @@ import urllib.request
 import urllib.error
 import urllib.parse
 
-from secure_config import SecureConfigError, read_config
+from secure_config import SecureConfigError, read_config, write_config
 from provider_catalog import PROVIDERS, ProviderError, validate_endpoint
 from text_styles import DEFINITIONS, style_for_command, transform
 
@@ -184,6 +185,16 @@ user32.ToUnicodeEx.restype = ctypes.c_int
 # -- Module --
 kernel32.GetModuleHandleW.argtypes = [wt.LPCWSTR]
 kernel32.GetModuleHandleW.restype = wt.HMODULE
+kernel32.CreateMutexW.argtypes = [wt.LPVOID, wt.BOOL, wt.LPCWSTR]
+kernel32.CreateMutexW.restype = wt.HANDLE
+kernel32.GetLastError.argtypes = []
+kernel32.GetLastError.restype = wt.DWORD
+kernel32.CloseHandle.argtypes = [wt.HANDLE]
+kernel32.CloseHandle.restype = wt.BOOL
+kernel32.LocalFree.argtypes = [wt.HANDLE]
+kernel32.LocalFree.restype = wt.HANDLE
+shell32.CommandLineToArgvW.argtypes = [wt.LPCWSTR, ctypes.POINTER(ctypes.c_int)]
+shell32.CommandLineToArgvW.restype = ctypes.POINTER(wt.LPWSTR)
 # -- Notifications (Shell32) --
 user32.LoadIconW.argtypes = [wt.HINSTANCE, wt.LPCWSTR]
 user32.LoadIconW.restype = wt.HICON
@@ -257,6 +268,7 @@ api_keys = []
 model = ""
 prefix = "."
 processing = False
+_processing_lock = threading.Lock()
 paused = False
 abort_event = threading.Event()  # Set when user types during processing — aborts spinner
 last_original_text = None
@@ -556,6 +568,15 @@ def load_config():
         notify("SwiftSlate", "config.json must contain a JSON object.", NIIF_ERROR)
         return False
 
+    if config.get("_legacy_plaintext_keys"):
+        try:
+            write_config(config_path, config)
+            config["_legacy_plaintext_keys"] = False
+            log("Migrated legacy plaintext API keys to current-user DPAPI protection")
+        except (OSError, SecureConfigError) as migration_error:
+            log(f"WARNING: Could not migrate legacy plaintext API keys: {migration_error}")
+            notify("SwiftSlate", "An older plaintext API key could not be protected. Open Settings and save the provider again.", NIIF_WARNING)
+
     parsed_keys = config.get("api_keys", [])
     if not isinstance(parsed_keys, list):
         # A string here would be iterated character-by-character downstream.
@@ -761,10 +782,14 @@ def _start_file_watcher():
     commands_path = os.path.join(data_dir, "commands.json")
 
     # Store initial mtimes
-    try: _config_mtime = os.path.getmtime(config_path)
-    except OSError: pass
-    try: _commands_mtime = os.path.getmtime(commands_path)
-    except OSError: pass
+    try:
+        _config_mtime = os.path.getmtime(config_path)
+    except OSError:
+        pass
+    try:
+        _commands_mtime = os.path.getmtime(commands_path)
+    except OSError:
+        pass
 
     def watcher():
         global _config_mtime, _commands_mtime
@@ -1655,9 +1680,25 @@ def _retry_paste(text, max_retries=5):
     log("All retry paste attempts failed")
     return False
 
+def _begin_processing():
+    """Atomically reserve the single text-processing slot."""
+    global processing
+    if not _processing_lock.acquire(blocking=False):
+        return False
+    processing = True
+    return True
+
+
+def _finish_processing():
+    """Release the processing slot from the worker that completed the operation."""
+    global processing
+    processing = False
+    _processing_lock.release()
+
+
 # --- Transform (AI command) ---
 def do_transform(trigger_name, prompt):
-    global processing, last_original_text
+    global last_original_text
     log(f"--- Transform: ?{trigger_name} ---")
 
     hwnd = user32.GetForegroundWindow()
@@ -1923,7 +1964,7 @@ def do_transform(trigger_name, prompt):
                 set_clipboard_silent(prev_clip or "", prev_extra)
             else:
                 log("Clipboard changed externally — skipping restoration")
-        processing = False
+        _finish_processing()
         log("--- Done ---")
 
 
@@ -1950,16 +1991,13 @@ def apply_style_to_selection(style_name, target_hwnd):
     used throughout so this operation does not add the selected text to
     clipboard history or cloud sync.
     """
-    global processing
-    if processing:
-        _notify_debounced("SwiftSlate is already processing text.", NIIF_INFO)
-        return
     style = style_for_command(style_name)
     if style is None or not target_hwnd:
         _notify_debounced("Select text in another app first.", NIIF_WARNING)
         return
-
-    processing = True
+    if not _begin_processing():
+        _notify_debounced("SwiftSlate is already processing text.", NIIF_INFO)
+        return
     prev_clip = get_clipboard_text()
     prev_extra = _snapshot_nontext_clipboard()
     try:
@@ -2004,11 +2042,11 @@ def apply_style_to_selection(style_name, target_hwnd):
                 set_clipboard_silent(prev_clip or "", prev_extra)
             else:
                 log("Clipboard changed externally — skipping restoration")
-        processing = False
+        _finish_processing()
 
 # --- Undo ---
 def do_undo():
-    global processing, last_original_text
+    global last_original_text
     log("--- Undo ---")
 
     try:
@@ -2048,11 +2086,11 @@ def do_undo():
         log(f"Undo failed: {e}")
         _notify_debounced("Could not undo.", NIIF_ERROR)
     finally:
-        processing = False
+        _finish_processing()
 
 # --- Clipboard commands ---
 def do_clipboard_command(command):
-    global processing, internal_clipboard, last_original_text
+    global internal_clipboard, last_original_text
     log(f"--- Clipboard: ?{command} ---")
 
     try:
@@ -2148,11 +2186,33 @@ def do_clipboard_command(command):
         log(f"Clipboard command failed: {e}")
         _notify_debounced("Clipboard operation failed.", NIIF_ERROR)
     finally:
-        processing = False
+        _finish_processing()
 
 # --- Replacer commands ---
+def _split_windows_command_line(command):
+    """Parse a trusted local command with Windows' own argv rules.
+
+    This preserves the legacy local-command feature without invoking ``cmd.exe`` or
+    enabling metacharacter expansion through ``shell=True``. Dashboard APIs cannot create
+    this command type; only the current user's local commands.json can contain one.
+    """
+    if not isinstance(command, str) or not command.strip() or "\x00" in command:
+        raise ValueError("local command is empty or invalid")
+    argc = ctypes.c_int(0)
+    argv_pointer = shell32.CommandLineToArgvW(command, ctypes.byref(argc))
+    if not argv_pointer:
+        raise OSError("Windows could not parse the local command")
+    try:
+        arguments = [argv_pointer[index] for index in range(argc.value)]
+    finally:
+        kernel32.LocalFree(ctypes.cast(argv_pointer, wt.HANDLE))
+    if not arguments or len(arguments) > 128:
+        raise ValueError("local command has an invalid argument count")
+    return arguments
+
+
 def do_replacer(trigger_name, cmd_type, value):
-    global processing, last_original_text
+    global last_original_text
     log(f"--- Replacer ({cmd_type}): ?{trigger_name} ---")
 
     try:
@@ -2210,8 +2270,19 @@ def do_replacer(trigger_name, cmd_type, value):
                 # Capture to files, not pipes: a fast/malicious command must not exhaust
                 # the resident process memory before the timeout fires.
                 with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
-                    proc = subprocess.Popen(
-                        value, shell=True, stdout=stdout, stderr=stderr,
+                    arguments = _split_windows_command_line(value)
+                    executable = shutil.which(arguments[0])
+                    if not executable:
+                        raise FileNotFoundError(f"local command was not found: {arguments[0]}")
+                    # Intentional current-user local-command feature; no shell is involved.
+                    proc = subprocess.Popen(  # nosec B603
+                        [executable, *arguments[1:]],
+                        shell=False,
+                        stdin=subprocess.DEVNULL,
+                        stdout=stdout,
+                        stderr=stderr,
+                        cwd=data_dir,
+                        close_fds=True,
                         creationflags=subprocess.CREATE_NO_WINDOW,
                     )
                     try:
@@ -2221,9 +2292,19 @@ def do_replacer(trigger_name, cmd_type, value):
                         # immediate shell, leaving orphaned children (e.g. powershell or
                         # curl spawned by the command) alive and writing to the temp files.
                         try:
-                            subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                                           capture_output=True, timeout=5, check=False,
-                                           creationflags=subprocess.CREATE_NO_WINDOW)
+                            taskkill = os.path.join(
+                                os.environ.get("SystemRoot", r"C:\Windows"),
+                                "System32", "taskkill.exe",
+                            )
+                            # Absolute Windows system utility with numeric PID arguments.
+                            subprocess.run(  # nosec B603
+                                [taskkill, "/PID", str(proc.pid), "/T", "/F"],
+                                stdin=subprocess.DEVNULL,
+                                capture_output=True,
+                                timeout=5,
+                                check=False,
+                                creationflags=subprocess.CREATE_NO_WINDOW,
+                            )
                         except Exception:
                             proc.kill()
                         proc.wait()
@@ -2280,17 +2361,16 @@ def do_replacer(trigger_name, cmd_type, value):
         log(f"Replacer failed: {e}")
         _notify_debounced(f"{prefix}{trigger_name} failed.", NIIF_ERROR)
     finally:
-        processing = False
+        _finish_processing()
 
 # --- Trigger handler ---
 def handle_trigger(trigger_name):
-    global processing
-    # Clear the abort signal BEFORE processing starts. Previously it was
-    # cleared inside do_transform after the worker thread spun up, so a user
-    # keystroke landing in that window set the event and was then wiped,
-    # losing a legitimate abort.
+    if not _begin_processing():
+        _notify_debounced("SwiftSlate is already processing text.", NIIF_INFO)
+        return
+    # Clear the abort signal BEFORE the worker thread starts, so a user keystroke
+    # landing after this point remains a legitimate abort signal.
     abort_event.clear()
-    processing = True
     log(f"Trigger: ?{trigger_name}")
 
     try:
@@ -2310,10 +2390,10 @@ def handle_trigger(trigger_name):
                 threading.Thread(target=lambda: do_transform(trigger_name, cmd["prompt"]), daemon=True).start()
         else:
             log(f"Unknown trigger: {trigger_name}")
-            processing = False
+            _finish_processing()
     except Exception as e:
         log(f"ERROR in handle_trigger: {e}")
-        processing = False
+        _finish_processing()
 
 # --- Raw Input keystroke processing ---
 def process_keystroke(vkey, scan_code):
@@ -2483,14 +2563,22 @@ def _dashboard_set_paused(value):
 
 
 def _dashboard_run_ai(text, prompt):
-    global processing
-    if processing:
+    if not _begin_processing():
         return None, "SwiftSlate is already processing text."
-    processing = True
     try:
         return call_api(text, prompt)
     finally:
-        processing = False
+        _finish_processing()
+
+
+def _dashboard_reload_runtime():
+    # Never replace provider/key globals in the middle of an in-flight transformation.
+    # The existing file watcher observes the atomic save and reloads it once processing
+    # finishes; the dashboard can still report the persisted values immediately.
+    if processing:
+        log("Dashboard save: runtime reload deferred until processing completes")
+        return True
+    return load_config()
 
 
 def _apply_startup_setting(enabled):
@@ -2552,7 +2640,7 @@ def open_dashboard():
                 data_dir,
                 runtime_state=_dashboard_runtime_state,
                 set_paused=_dashboard_set_paused,
-                reload_runtime=load_config,
+                reload_runtime=_dashboard_reload_runtime,
                 apply_startup=_apply_startup_setting,
                 run_ai=_dashboard_run_ai,
                 diagnostics=_dashboard_diagnostics,
@@ -2568,11 +2656,10 @@ def open_dashboard():
                 daemon=True,
             )
             _dashboard_thread.start()
-            _dashboard_server.session_token = token
         else:
-            token = _dashboard_server.session_token
+            token = _dashboard_server.rotate_session()
 
-        url = f"http://127.0.0.1:{_dashboard_server.server_port}/#session={urllib.parse.quote(token)}"
+        url = f"http://127.0.0.1:{_dashboard_server.server_port}/?desktop=1#session={urllib.parse.quote(token)}"
         env = os.environ.copy()
         env["SWIFTSLATE_UI_URL"] = url
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
@@ -2580,7 +2667,8 @@ def open_dashboard():
             command = [sys.executable, "--ui"]
         else:
             command = [sys.executable, os.path.join(script_dir, "ui_host.py")]
-        _ui_process = subprocess.Popen(
+        # Executable/script paths are constructed internally, never from an API request.
+        _ui_process = subprocess.Popen(  # nosec B603
             command,
             env=env,
             close_fds=True,
@@ -2663,24 +2751,20 @@ def wnd_proc(hwnd, msg, wparam, lparam):
 
     return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
-# --- Singleton (named mutex prevents duplicate instances) ---
+# --- Singleton (session-local named mutex prevents duplicate instances) ---
 _mutex_handle = None
 
 def acquire_singleton():
-    """Create a named mutex. Returns True if this is the only instance."""
+    """Create a session-local Win32 mutex. Return True only for its first owner."""
     global _mutex_handle
-    # Use a lockfile approach - simpler and reliable across Python versions
-    import msvcrt
-    lock_path = os.path.join(data_dir, ".lock")
-    try:
-        _mutex_handle = open(lock_path, "w")
-        msvcrt.locking(_mutex_handle.fileno(), msvcrt.LK_NBLCK, 1)
-        return True
-    except OSError:
-        if _mutex_handle:
-            _mutex_handle.close()
-            _mutex_handle = None
+    handle = kernel32.CreateMutexW(None, False, r"Local\SwiftSlate.Desktop.Singleton.v2")
+    if not handle:
         return False
+    if kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        kernel32.CloseHandle(handle)
+        return False
+    _mutex_handle = handle
+    return True
 
 # --- Main ---
 def self_test():
@@ -2834,6 +2918,8 @@ def main():
         _dashboard_server.server_close()
     if _ui_process is not None and _ui_process.poll() is None:
         _ui_process.terminate()
+    if _mutex_handle:
+        kernel32.CloseHandle(_mutex_handle)
     log("Shutting down")
     if log_file:
         log_file.close()

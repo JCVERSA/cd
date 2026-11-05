@@ -30,7 +30,7 @@ finally {
 }
 
 if (-not $SkipDependencies) {
-    & python -m pip install --disable-pip-version-check -r requirements-build.txt
+    & python -m pip install --disable-pip-version-check --require-hashes -r requirements-build-lock.txt
     if ($LASTEXITCODE -ne 0) { throw 'Python build dependency installation failed.' }
 }
 

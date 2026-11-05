@@ -95,8 +95,8 @@ def unprotect(encoded):
 def read_config(path):
     """Read JSON and expose decrypted keys only in the returned in-memory object.
 
-    A legacy plaintext ``api_keys`` list is accepted for migration compatibility,
-    but callers receive a warning and should run configure.ps1 to protect it.
+    Legacy plaintext root/provider keys are accepted for migration compatibility.
+    ``_legacy_plaintext_keys`` tells the application to rewrite them immediately.
     """
     with open(path, "r", encoding="utf-8-sig") as handle:
         config = json.load(handle)
@@ -104,6 +104,16 @@ def read_config(path):
         return config
 
     protected = config.get("api_keys_protected")
+    providers = config.get("providers")
+    # Rewrite whenever a legacy plaintext field exists, including malformed/mixed files
+    # that also contain protected fields, so no stale secret remains on disk.
+    config["_legacy_plaintext_keys"] = (
+        "api_keys" in config
+        or (
+            isinstance(providers, dict)
+            and any(isinstance(item, dict) and "api_key" in item for item in providers.values())
+        )
+    )
     key_errors = 0
     if protected is not None:
         if not isinstance(protected, list):
@@ -126,7 +136,6 @@ def read_config(path):
     # New dashboard configurations keep one credential per provider.  Decrypted values
     # exist only in this in-memory object; API responses must use public_provider_records
     # and never serialize this structure directly.
-    providers = config.get("providers")
     if providers is not None:
         if not isinstance(providers, dict):
             raise SecureConfigError("providers must be an object")
@@ -140,6 +149,8 @@ def read_config(path):
                 try:
                     item["api_key"] = unprotect(encoded)
                 except SecureConfigError:
+                    # Never fall back to a stale plaintext value from a mixed file.
+                    item.pop("api_key", None)
                     key_errors += 1
             decoded[provider_id] = item
         config["providers"] = decoded
@@ -160,6 +171,7 @@ def write_config(path, config):
         raise SecureConfigError("configuration must be an object")
     safe = dict(config)
     safe.pop("_protected_key_errors", None)
+    safe.pop("_legacy_plaintext_keys", None)
 
     keys = safe.pop("api_keys", None)
     if keys is not None:

@@ -4,6 +4,10 @@ import { afterEach } from 'vitest'
 
 afterEach(() => cleanup())
 
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  value: () => null,
+})
+
 Object.assign(navigator, {
   clipboard: {
     writeText: async () => undefined,

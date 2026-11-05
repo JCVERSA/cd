@@ -6,12 +6,11 @@ public provider records (configured/not configured), never decrypted keys.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 import ipaddress
 import json
 import socket
 import time
-from typing import Callable
 import urllib.error
 import urllib.parse
 import urllib.request

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, Clipboard, FileText, LoaderCircle, Play, RefreshCw, ShieldCheck, Terminal, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clipboard, LoaderCircle, Play, RefreshCw, ShieldCheck, Terminal, XCircle } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../api'
 import type { DiagnosticCheck, LogEntry } from '../types'
@@ -51,8 +51,13 @@ export function DiagnosticsScreen({
   }
 
   async function copyLogs() {
-    await navigator.clipboard?.writeText(logs.map((row) => `${row.time}  ${row.level}  ${row.message}`).join('\n'))
-    notify('Redacted logs copied.')
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard access is unavailable.')
+      await navigator.clipboard.writeText(logs.map((row) => `${row.time}  ${row.level}  ${row.message}`).join('\n'))
+      notify('Redacted logs copied.')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Logs could not be copied.', 'danger')
+    }
   }
 
   const passing = checks.filter((check) => check.status === 'pass').length

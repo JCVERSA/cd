@@ -5,15 +5,20 @@ import { Badge, Button, SpotlightCard } from '../components/ui'
 
 const defaultSample = 'SwiftSlate makes writing feel effortless 2026'
 
-export function StylesScreen({ prefix, notify }: { prefix: string; notify: (message: string) => void }) {
+export function StylesScreen({ prefix, notify }: { prefix: string; notify: (message: string, tone?: 'success' | 'danger') => void }) {
   const [sample, setSample] = useState(defaultSample)
   const [selected, setSelected] = useState('bold')
   const active = styles.find((style) => style.id === selected) || styles[0]
   const result = active.transform(sample)
 
   async function copy() {
-    await navigator.clipboard?.writeText(result)
-    notify('Styled text copied to the clipboard.')
+    try {
+      if (!navigator.clipboard) throw new Error('Clipboard access is unavailable.')
+      await navigator.clipboard.writeText(result)
+      notify('Styled text copied to the clipboard.', 'success')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Styled text could not be copied.', 'danger')
+    }
   }
 
   return (

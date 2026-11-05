@@ -7,8 +7,6 @@ and serves a fixed, bundled asset directory.  Provider keys never appear in resp
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from functools import partial
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -445,13 +443,30 @@ class _DashboardHTTPServer(ThreadingHTTPServer):
     def __init__(self, address, handler, *, backend: DashboardBackend, assets_dir: str, token: str):
         self.backend = backend
         self.assets_dir = os.path.abspath(assets_dir)
-        self.token = token
+        self.token = token  # one-time bootstrap capability; never used after exchange
+        self.session_token = secrets.token_urlsafe(32)
+        self.bootstrap_used = False
+        self.session_lock = threading.Lock()
         super().__init__(address, handler)
+
+    def rotate_session(self) -> str:
+        """Issue a fresh bootstrap/session pair before each WebView process."""
+        with self.session_lock:
+            self.token = secrets.token_urlsafe(32)
+            self.session_token = secrets.token_urlsafe(32)
+            self.bootstrap_used = False
+            return self.token
 
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
     server_version = "SwiftSlate"
     sys_version = ""
+
+    def setup(self):
+        super().setup()
+        # A local process must not be able to hold unbounded handler threads open with
+        # partial headers or bodies. Normal dashboard requests complete in milliseconds.
+        self.connection.settimeout(10)
 
     def log_message(self, _format, *_args):
         return
@@ -464,17 +479,19 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(length))
         self.send_header("Cache-Control", cache)
-        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+        self.send_header("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; style-src-elem 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
 
-    def _json(self, status: int, payload: object) -> None:
+    def _json(self, status: int, payload: object, *, headers: dict[str, str] | None = None) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
         self._security_headers(content_type="application/json; charset=utf-8", length=len(body))
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -487,13 +504,31 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         return self.headers.get("Host", "") == expected
 
     def _authorized(self) -> bool:
-        supplied = self.headers.get("Authorization", "")
-        return secrets.compare_digest(supplied, f"Bearer {self.app.token}")
+        supplied = ""
+        for part in self.headers.get("Cookie", "").split(";"):
+            name, separator, value = part.strip().partition("=")
+            if separator and name == "SwiftSlateSession":
+                supplied = value
+                break
+        return secrets.compare_digest(supplied, self.app.session_token)
 
     def _origin_allowed(self) -> bool:
         origin = self.headers.get("Origin")
         expected = f"http://127.0.0.1:{self.app.server_port}"
         return origin == expected
+
+    def _fetch_metadata_allowed(self) -> bool:
+        """Accept API calls only from this document's own Chromium fetch context.
+
+        The launch capability/session cookie remains the primary control. Fetch Metadata
+        independently blocks cross-site browser requests even if a future browser/CORS
+        regression were to expose an authenticated request primitive.
+        """
+        return (
+            self.headers.get("Sec-Fetch-Site") == "same-origin"
+            and self.headers.get("Sec-Fetch-Mode") in ("cors", "same-origin")
+            and self.headers.get("Sec-Fetch-Dest") == "empty"
+        )
 
     def _parse_json(self) -> dict:
         content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
@@ -520,13 +555,47 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._error(401, "Unauthorized.")
             return False
+        if not self._fetch_metadata_allowed():
+            self._error(403, "Invalid browser request context.")
+            return False
         if mutate and not self._origin_allowed():
             self._error(403, "Invalid origin.")
             return False
         return True
 
+    def _bootstrap_session(self) -> None:
+        if not self._valid_host():
+            self._error(421, "Invalid host.")
+            return
+        if not self._fetch_metadata_allowed() or not self._origin_allowed():
+            self._error(403, "Invalid browser request context.")
+            return
+        supplied = self.headers.get("Authorization", "")
+        if not secrets.compare_digest(supplied, f"Bearer {self.app.token}"):
+            self._error(401, "Unauthorized.")
+            return
+        try:
+            self._parse_json()
+        except DashboardError as exc:
+            self._error(exc.status, str(exc))
+            return
+        with self.app.session_lock:
+            if self.app.bootstrap_used:
+                self._error(401, "Bootstrap capability has already been used.")
+                return
+            self.app.bootstrap_used = True
+        self._json(200, {"ok": True}, headers={
+            "Set-Cookie": (
+                f"SwiftSlateSession={self.app.session_token}; "
+                "HttpOnly; SameSite=Strict; Path=/api"
+            ),
+        })
+
     def _dispatch_api(self) -> None:
         path = urllib.parse.urlsplit(self.path).path
+        if self.command == "POST" and path == "/api/v1/session":
+            self._bootstrap_session()
+            return
         mutate = self.command != "GET"
         if not self._before_api(mutate=mutate):
             return

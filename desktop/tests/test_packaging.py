@@ -10,7 +10,7 @@ class DesktopPackagingTest(unittest.TestCase):
     def test_windows_packaging_sources_exist(self):
         expected = (
             "SwiftSlate.pyw", "SwiftSlate.spec", "build_windows.ps1",
-            "packaging/SwiftSlate.iss", "requirements-build.txt",
+            "packaging/SwiftSlate.iss", "requirements-build.txt", "requirements-build-lock.txt",
             "dashboard_server.py", "provider_catalog.py", "ui_host.py",
             "ui_bundle/index.html",
         )
@@ -24,6 +24,10 @@ class DesktopPackagingTest(unittest.TestCase):
         self.assertIn("PrivilegesRequired=lowest", script)
         self.assertIn("{localappdata}\\Programs\\SwiftSlate", script)
         self.assertIn("MicrosoftEdgeWebview2Setup.exe", script)
+        self.assertIn("{sys}\\taskkill.exe", script)
+        self.assertNotIn("{cmd}", script)
+        self.assertIn("RegDeleteValue(HKCU", script)
+        self.assertNotIn("ValueType: none", script)
 
     def test_bundle_is_one_directory_and_contains_no_node_or_electron_runtime(self):
         spec = (ROOT / "SwiftSlate.spec").read_text(encoding="utf-8")
@@ -33,6 +37,43 @@ class DesktopPackagingTest(unittest.TestCase):
         self.assertIn("pywebview", requirements)
         self.assertNotIn("electron", requirements)
         self.assertNotIn("electron", package)
+
+    def test_windows_python_build_is_hash_locked(self):
+        lock = (ROOT / "requirements-build-lock.txt").read_text(encoding="utf-8")
+        script = (ROOT / "build_windows.ps1").read_text(encoding="utf-8")
+        self.assertGreaterEqual(lock.count("--hash=sha256:"), 15)
+        self.assertIn("--require-hashes", script)
+        self.assertIn("requirements-build-lock.txt", script)
+        workflow = (ROOT.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        self.assertIn("--require-hashes -r requirements-build-lock.txt", workflow)
+        self.assertIn("innosetup --version=7.1.1 --require-checksums", workflow)
+
+    def test_github_actions_are_pinned_to_commits(self):
+        workflow = (ROOT.parent / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        action_lines = [line.strip() for line in workflow.splitlines() if "uses:" in line]
+        self.assertTrue(action_lines)
+        for line in action_lines:
+            reference = line.split("@", 1)[1].split()[0]
+            self.assertRegex(reference, r"^[0-9a-f]{40}$", line)
+
+    def test_engine_uses_shell_free_commands_and_kernel_singleton(self):
+        source = (ROOT / "SwiftSlate.pyw").read_text(encoding="utf-8")
+        module = ast.parse(source)
+        shell_calls = [
+            node for node in ast.walk(module)
+            if isinstance(node, ast.Call)
+            and any(
+                keyword.arg == "shell"
+                and isinstance(keyword.value, ast.Constant)
+                and keyword.value.value is True
+                for keyword in node.keywords
+            )
+        ]
+        self.assertEqual(shell_calls, [])
+        self.assertIn("CommandLineToArgvW", source)
+        self.assertIn("CreateMutexW", source)
+        self.assertNotIn("msvcrt.locking", source)
+        self.assertIn("_processing_lock.acquire(blocking=False)", source)
 
     def test_windows_default_prefix_is_a_period(self):
         source = (ROOT / "SwiftSlate.pyw").read_text(encoding="utf-8")

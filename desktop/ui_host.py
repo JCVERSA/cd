@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import traceback
 
 
@@ -11,7 +10,8 @@ def _message_box(title: str, message: str) -> None:
     try:
         import ctypes
         ctypes.windll.user32.MessageBoxW(None, message, title, 0x10)
-    except Exception:
+    # No fallback UI exists before Win32 itself is available.
+    except Exception:  # nosec B110
         pass
 
 
@@ -31,7 +31,7 @@ def main() -> int:
         if "ALLOW_DOWNLOADS" in webview.settings:
             webview.settings["ALLOW_DOWNLOADS"] = False
 
-        window = webview.create_window(
+        webview.create_window(
             "SwiftSlate Settings",
             url=url,
             width=1180,

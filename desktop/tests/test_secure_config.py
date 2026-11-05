@@ -32,6 +32,67 @@ class SecureConfigTests(unittest.TestCase):
             self.assertEqual(loaded["api_keys"], ["legacy-secret"])
             self.assertEqual(loaded["providers"]["openai"]["api_key"], "provider-secret")
 
+    def test_legacy_plaintext_keys_are_marked_and_never_rewritten_plaintext(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text('{"api_keys":["legacy-secret"]}', encoding="utf-8")
+            loaded = secure_config.read_config(path)
+            self.assertTrue(loaded["_legacy_plaintext_keys"])
+            with patch.object(secure_config, "protect", return_value="protected-blob"):
+                secure_config.write_config(path, loaded)
+            on_disk = json.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn("api_keys", on_disk)
+            self.assertNotIn("_legacy_plaintext_keys", on_disk)
+            self.assertEqual(on_disk["api_keys_protected"], ["protected-blob"])
+
+    def test_mixed_legacy_and_protected_keys_are_marked_for_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(
+                '{"api_keys":["stale-plaintext"],"api_keys_protected":["protected-blob"]}',
+                encoding="utf-8",
+            )
+            with patch.object(secure_config, "unprotect", return_value="protected-secret"):
+                loaded = secure_config.read_config(path)
+            self.assertTrue(loaded["_legacy_plaintext_keys"])
+            self.assertEqual(loaded["api_keys"], ["protected-secret"])
+            with patch.object(secure_config, "protect", return_value="replacement-blob"):
+                secure_config.write_config(path, loaded)
+            on_disk = json.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn("api_keys", on_disk)
+            self.assertEqual(on_disk["api_keys_protected"], ["replacement-blob"])
+
+    def test_legacy_provider_plaintext_is_marked_and_protected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(
+                '{"providers":{"openai":{"api_key":"provider-secret"}}}',
+                encoding="utf-8",
+            )
+            loaded = secure_config.read_config(path)
+            self.assertTrue(loaded["_legacy_plaintext_keys"])
+            with patch.object(secure_config, "protect", return_value="provider-blob"):
+                secure_config.write_config(path, loaded)
+            on_disk = json.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn("api_key", on_disk["providers"]["openai"])
+            self.assertEqual(on_disk["providers"]["openai"]["api_key_protected"], "provider-blob")
+
+    def test_failed_protected_key_does_not_fall_back_to_mixed_plaintext(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            path.write_text(
+                '{"providers":{"openai":{"api_key":"stale-secret","api_key_protected":"bad-blob"}}}',
+                encoding="utf-8",
+            )
+            with patch.object(
+                secure_config,
+                "unprotect",
+                side_effect=secure_config.SecureConfigError("wrong user"),
+            ):
+                loaded = secure_config.read_config(path)
+            self.assertTrue(loaded["_legacy_plaintext_keys"])
+            self.assertNotIn("api_key", loaded["providers"]["openai"])
+
     def test_omitted_provider_plaintext_preserves_existing_blob(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "config.json"

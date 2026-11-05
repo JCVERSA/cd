@@ -2,19 +2,39 @@ import { demoSnapshot } from './data'
 import type { AppSnapshot, Command, Provider, RuntimeState } from './types'
 
 const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-const sessionToken = hashParams.get('session') || ''
-if (sessionToken) {
+let bootstrapCapability = hashParams.get('session') || ''
+const desktopMarker = new URLSearchParams(window.location.search).get('desktop') === '1'
+const isDesktopHost = Boolean(bootstrapCapability || desktopMarker)
+
+async function establishSession() {
+  if (!bootstrapCapability) return
+  const response = await fetch('/api/v1/session', {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'same-origin',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${bootstrapCapability}`,
+    },
+    body: '{}',
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({ error: `Session setup failed (${response.status})` }))
+    throw new Error(body.error || `Session setup failed (${response.status})`)
+  }
+  bootstrapCapability = ''
   window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`)
 }
 
-const isDesktopHost = Boolean(sessionToken)
+const sessionReady = isDesktopHost ? establishSession() : Promise.resolve()
 const headers = (): HeadersInit => ({
   Accept: 'application/json',
   'Content-Type': 'application/json',
-  ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
 })
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  await sessionReady
   const response = await fetch(path, {
     ...init,
     cache: 'no-store',

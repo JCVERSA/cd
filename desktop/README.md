@@ -10,7 +10,7 @@ Use **`SwiftSlate-Setup-x64.exe`**. It installs **`SwiftSlate.exe`** per user un
 
 The installer contains the Python runtime and interface assets. It does **not** install Node.js or Electron. If Microsoft Edge WebView2 is missing, Setup runs Microsoft's Evergreen bootstrapper conditionally.
 
-On first launch SwiftSlate creates its configuration under `%LOCALAPPDATA%\SwiftSlate`, starts the tray engine, and opens guided setup. A missing configuration no longer causes a silent exit.
+On first launch SwiftSlate creates its configuration under `%LOCALAPPDATA%\SwiftSlate`, starts the tray engine, and opens guided setup. A missing configuration no longer causes a silent exit. Uninstall preserves that user-data directory for reinstall continuity; delete it manually when a complete settings and credential-blob purge is required.
 
 ## Interface
 
@@ -53,11 +53,13 @@ Local styles never use the network. Accents, emoji, Arabic, CJK, Thai, and unsup
 - No analytics, telemetry, or automatic diagnostic uploads.
 - Text reaches the selected provider only when an AI command is invoked.
 - Temporary clipboard content is marked to avoid clipboard history/cloud sync where Windows supports it.
-- The dashboard binds to `127.0.0.1` on a random port and uses a process-random bearer capability.
-- API mutations require the exact loopback origin; no CORS access is allowed.
-- Requests are bounded and schema-validated, and static assets use a restrictive Content Security Policy.
+- The dashboard binds to `127.0.0.1` on a random port, exchanges a one-time URL-fragment capability for an API-scoped `HttpOnly` session cookie, and rotates that session on every settings launch.
+- API requests require the exact loopback host and same-origin Fetch Metadata; mutations also require the exact loopback origin, and no CORS access is allowed.
+- Requests are size/time bounded and schema-validated, and static assets use a restrictive Content Security Policy.
 - Remote custom endpoints require HTTPS; plain HTTP is accepted only on loopback.
 - The pywebview host receives no privileged JavaScript bridge.
+
+See [AUDIT-2026-11-05.md](AUDIT-2026-11-05.md) for the full security, privacy, packaging, accessibility, and residual-risk review.
 
 ## Build from source
 
@@ -65,7 +67,7 @@ Requirements on Windows x64:
 
 - Python 3.13
 - Node.js 22
-- Inno Setup 6 or newer
+- Inno Setup 7.1.1 recommended (the version fixed in CI; the script also supports Inno Setup 6)
 
 Run:
 
@@ -78,10 +80,11 @@ The build script:
 1. runs Python tests;
 2. installs and validates the React interface;
 3. builds static assets into `ui_bundle`;
-4. creates a PyInstaller one-directory application;
-5. runs the packaged `SwiftSlate.exe --self-test` smoke test;
-6. validates Microsoft's signature on the WebView2 bootstrapper;
-7. emits `release\SwiftSlate-Setup-x64.exe` and its SHA-256 file.
+4. installs the Windows Python build graph from a SHA-256-locked requirements file;
+5. creates a PyInstaller one-directory application;
+6. runs the packaged `SwiftSlate.exe --self-test` smoke test;
+7. validates Microsoft's signature on the WebView2 bootstrapper;
+8. emits `release\SwiftSlate-Setup-x64.exe` and its SHA-256 file.
 
 The GitHub Actions Windows job additionally installs the generated package into a clean temporary directory, runs the installed self-test, uninstalls it, and uploads the installer artifact.
 

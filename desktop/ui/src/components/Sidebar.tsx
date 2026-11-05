@@ -1,6 +1,5 @@
 import {
   Activity,
-  Blocks,
   Bot,
   ChevronLeft,
   Command,
