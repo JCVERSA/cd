@@ -2,7 +2,7 @@ import { Accessibility, Keyboard, MonitorUp, Palette, RotateCcw, Save, Shield } 
 import { useEffect, useState } from 'react'
 import { api } from '../api'
 import type { RuntimeState, ThemeId } from '../types'
-import { Button, Field, SpotlightCard, Switch } from '../components/ui'
+import { Button, Field, Select, SpotlightCard, Switch } from '../components/ui'
 
 const themes: Array<{ id: ThemeId; name: string; colors: string[] }> = [
   { id: 'lavender', name: 'Sparkle Lavender', colors: ['#d9c7ff', '#9b7ae8', '#17131f'] },
@@ -51,11 +51,16 @@ export function SettingsScreen({
               <div className="range-field"><input type="range" min="30" max="500" step="10" value={draft.keyDelay} onChange={(event) => setDraft({ ...draft, keyDelay: Number(event.target.value) })}/><output>{draft.keyDelay} ms</output></div>
             </Field>
             <Field label="Processing indicator">
-              <select value={draft.spinner} onChange={(event) => setDraft({ ...draft, spinner: event.target.value as RuntimeState['spinner'] })}>
-                <option value="animated">Animated spinner</option>
-                <option value="static">Static message</option>
-                <option value="off">Hidden</option>
-              </select>
+              <Select<RuntimeState['spinner']>
+                label="Processing indicator"
+                value={draft.spinner}
+                options={[
+                  { value: 'animated', label: 'Animated spinner', detail: 'Show animated progress while AI runs' },
+                  { value: 'static', label: 'Static message', detail: 'Show a calm status indicator without motion' },
+                  { value: 'off', label: 'Hidden', detail: 'Replace text silently with no indicator' },
+                ]}
+                onChange={(spinner) => setDraft({ ...draft, spinner })}
+              />
             </Field>
           </div>
         </SpotlightCard>

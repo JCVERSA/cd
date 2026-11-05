@@ -2,12 +2,21 @@ import { ArrowRight, Check, Clipboard, Clock3, Eraser, Play, Sparkles } from 'lu
 import { useMemo, useState } from 'react'
 import type { Command as CommandType } from '../types'
 import { api } from '../api'
-import { Badge, Button, SpotlightCard } from '../components/ui'
+import { Badge, Button, Select, SpotlightCard } from '../components/ui'
 
 const sample = 'hey team just wanted to check if we can move the meeting to tomorrow afternoon because the current time does not work well for everyone'
 
-export function Playground({ commands, notify }: { commands: CommandType[]; notify: (message: string, tone?: 'success' | 'danger') => void }) {
+export function Playground({ commands, prefix = '.', notify }: { commands: CommandType[]; prefix?: string; notify: (message: string, tone?: 'success' | 'danger') => void }) {
   const available = useMemo(() => commands.filter((command) => command.type === 'ai' || command.type === 'style'), [commands])
+  const commandOptions = useMemo(
+    () => available.map((command) => ({
+      value: command.trigger,
+      label: `${prefix}${command.trigger}`,
+      detail: command.prompt,
+      mono: true,
+    })),
+    [available, prefix],
+  )
   const [selected, setSelected] = useState(available[0]?.trigger || 'fix')
   const [input, setInput] = useState(sample)
   const [output, setOutput] = useState('')
@@ -54,9 +63,14 @@ export function Playground({ commands, notify }: { commands: CommandType[]; noti
           <section className="editor-pane">
             <div className="pane-heading">
               <label htmlFor="playground-command">Command</label>
-              <select id="playground-command" value={selected} onChange={(event) => setSelected(event.target.value)}>
-                {available.map((command) => <option key={command.id} value={command.trigger}>.{command.trigger} — {command.prompt}</option>)}
-              </select>
+              <Select
+                id="playground-command"
+                label="Command"
+                size="sm"
+                value={selected}
+                options={commandOptions}
+                onChange={setSelected}
+              />
             </div>
             <label className="editor-label" htmlFor="playground-input">Input text</label>
             <textarea

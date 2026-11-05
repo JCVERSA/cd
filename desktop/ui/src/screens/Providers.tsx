@@ -20,7 +20,7 @@ import { useMemo, useState } from 'react'
 import type { ComponentType } from 'react'
 import { api } from '../api'
 import type { Provider, ProviderId } from '../types'
-import { Badge, Button, Field, Modal, SpotlightCard } from '../components/ui'
+import { Badge, Button, Field, Modal, Select, SpotlightCard } from '../components/ui'
 
 const marks: Record<ProviderId, { letters: string; className: string; icon?: ComponentType<{ size?: number }> }> = {
   gemini: { letters: 'G', className: 'provider-gemini', icon: Sparkles },
@@ -172,9 +172,12 @@ export function ProvidersScreen({
               </Field>
               <Field label="Model">
                 {draft.models?.length ? (
-                  <select value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })}>
-                    {draft.models.map((model) => <option key={model} value={model}>{model}</option>)}
-                  </select>
+                  <Select
+                    label="Model"
+                    value={draft.model}
+                    options={draft.models.map((model) => ({ value: model, label: model, mono: true }))}
+                    onChange={(model) => setDraft({ ...draft, model })}
+                  />
                 ) : (
                   <input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder="Model identifier" />
                 )}

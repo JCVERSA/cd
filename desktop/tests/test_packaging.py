@@ -76,6 +76,8 @@ class DesktopPackagingTest(unittest.TestCase):
         self.assertFalse(any("hugeicon" in name.lower() for name in all_packages))
         tsx_source = "".join(path.read_text(encoding="utf-8") for path in (ROOT / "ui" / "src").rglob("*.tsx"))
         self.assertNotIn("<svg", tsx_source)
+        self.assertNotIn("<select", tsx_source)
+        self.assertNotIn("<option", tsx_source)
         sidebar = (ROOT / "ui" / "src" / "components" / "Sidebar.tsx").read_text(encoding="utf-8")
         onboarding = (ROOT / "ui" / "src" / "components" / "Onboarding.tsx").read_text(encoding="utf-8")
         html = (ROOT / "ui" / "index.html").read_text(encoding="utf-8")

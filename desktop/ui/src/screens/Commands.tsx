@@ -2,7 +2,7 @@ import { Bot, Pencil, Plus, Search, Sparkles, Trash2, Type, Wand2 } from 'lucide
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import type { Command, CommandType } from '../types'
-import { Badge, Button, Field, Modal, SpotlightCard, Switch } from '../components/ui'
+import { Badge, Button, Field, Modal, Select, SpotlightCard, Switch } from '../components/ui'
 
 const typeMeta: Record<CommandType, { label: string; icon: typeof Bot; tone: 'accent' | 'success' | 'warning' | 'neutral' }> = {
   ai: { label: 'AI', icon: Bot, tone: 'accent' },
@@ -139,11 +139,16 @@ export function CommandsScreen({
               <div className="prefix-input"><span>{prefix}</span><input value={editing.trigger} maxLength={50} onChange={(event) => setEditing({ ...editing, trigger: event.target.value.replace(/\s/g, '') })} placeholder="command" autoFocus /></div>
             </Field>
             <Field label="Command type">
-              <select value={editing.type} onChange={(event) => setEditing({ ...editing, type: event.target.value as CommandType })}>
-                <option value="ai">AI transformation</option>
-                <option value="replacer-text">Text replacement</option>
-                <option value="style">Local style</option>
-              </select>
+              <Select<CommandType>
+                label="Command type"
+                value={editing.type}
+                options={[
+                  { value: 'ai', label: 'AI transformation', detail: 'Send text to your active provider prompt' },
+                  { value: 'replacer-text', label: 'Text replacement', detail: 'Insert fixed text offline without AI' },
+                  { value: 'style', label: 'Local style', detail: 'Transform letters with an offline Unicode style' },
+                ]}
+                onChange={(nextType) => setEditing({ ...editing, type: nextType })}
+              />
             </Field>
             {editing.type === 'ai' ? (
               <Field label="Transformation instruction" hint="The selected text is fenced separately to reduce prompt injection risk.">

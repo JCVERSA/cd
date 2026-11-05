@@ -169,7 +169,7 @@ export default function App() {
               <AnimatePresence mode="wait">
                 <motion.div key={page} className="page-motion" initial={{ opacity: 0, y: 12, scale: 0.995 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6 }} transition={{ type: 'spring', stiffness: 310, damping: 31 }}>
                   {page === 'overview' ? <Overview snapshot={snapshot} onNavigate={navigate} onPause={togglePause}/> : null}
-                  {page === 'playground' ? <Playground commands={snapshot.commands} notify={notify}/> : null}
+                  {page === 'playground' ? <Playground commands={snapshot.commands} prefix={snapshot.runtime.prefix} notify={notify}/> : null}
                   {page === 'providers' ? <ProvidersScreen providers={snapshot.providers} activeProvider={snapshot.runtime.provider} onChange={changeProvider} notify={notify}/> : null}
                   {page === 'commands' ? <CommandsScreen commands={snapshot.commands} prefix={snapshot.runtime.prefix} onChange={(commands) => setSnapshot({ ...snapshot, commands })} notify={notify}/> : null}
                   {page === 'styles' ? <StylesScreen prefix={snapshot.runtime.prefix} notify={notify}/> : null}

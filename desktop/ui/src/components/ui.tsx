@@ -1,8 +1,9 @@
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion } from 'motion/react'
 import type { HTMLMotionProps } from 'motion/react'
-import { Check, LoaderCircle, X } from 'lucide-react'
-import { useEffect, useId, useRef } from 'react'
-import type { MouseEvent, PropsWithChildren, ReactNode } from 'react'
+import { Check, ChevronDown, LoaderCircle, Search, X } from 'lucide-react'
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PropsWithChildren, ReactNode } from 'react'
 
 export function cn(...items: Array<string | false | null | undefined>) {
   return items.filter(Boolean).join(' ')
@@ -119,7 +120,7 @@ export function Modal({ open, onClose, title, description, footer, children, siz
     const panel = panelRef.current
     const focusableSelector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
     const focusFirst = window.requestAnimationFrame(() => {
-      const preferred = panel?.querySelector<HTMLElement>('[autofocus], input:not([disabled]), textarea:not([disabled]), select:not([disabled])')
+      const preferred = panel?.querySelector<HTMLElement>('[autofocus], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [data-select-trigger]:not([disabled])')
       const first = panel?.querySelector<HTMLElement>(focusableSelector)
       ;(preferred || first || panel)?.focus()
     })
@@ -230,5 +231,404 @@ export function Field({ label, hint, children }: PropsWithChildren<{ label: stri
       {children}
       {hint ? <span className="field-hint">{hint}</span> : null}
     </label>
+  )
+}
+
+export type SelectOption<T extends string = string> = {
+  value: T
+  label: string
+  detail?: string
+  mono?: boolean
+}
+
+type SelectPopoverPosition = {
+  top?: number
+  bottom?: number
+  left: number
+  minWidth: number
+  maxWidth: number
+  maxHeight: number
+  placement: 'bottom' | 'top'
+}
+
+type SelectProps<T extends string = string> = {
+  id?: string
+  label: string
+  value: T
+  options: ReadonlyArray<SelectOption<T>>
+  onChange: (value: T) => void
+  placeholder?: string
+  disabled?: boolean
+  size?: 'sm' | 'md'
+  className?: string
+  searchableThreshold?: number
+}
+
+const MAX_RENDERED_OPTIONS = 150
+
+export function Select<T extends string = string>({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+  placeholder = 'Select an option',
+  disabled = false,
+  size = 'md',
+  className,
+  searchableThreshold = 8,
+}: SelectProps<T>) {
+  const listboxId = useId()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLDivElement>(null)
+  const listboxRef = useRef<HTMLDivElement>(null)
+  const searchRef = useRef<HTMLInputElement>(null)
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [position, setPosition] = useState<SelectPopoverPosition>({
+    top: 0,
+    left: 0,
+    minWidth: 220,
+    maxWidth: 360,
+    maxHeight: 280,
+    placement: 'bottom',
+  })
+
+  const isSearchable = options.length > searchableThreshold
+  const selectedOption = useMemo(
+    () => options.find((option) => option.value === value),
+    [options, value],
+  )
+
+  const filteredOptions = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    if (!normalized) return options
+    return options.filter((option) =>
+      `${option.label} ${option.detail || ''} ${option.value}`.toLowerCase().includes(normalized),
+    )
+  }, [options, query])
+
+  const visibleOptions = useMemo(() => {
+    if (filteredOptions.length <= MAX_RENDERED_OPTIONS) return filteredOptions
+    const sliced = filteredOptions.slice(0, MAX_RENDERED_OPTIONS)
+    if (selectedOption && !sliced.some((item) => item.value === selectedOption.value)) {
+      const match = filteredOptions.find((item) => item.value === selectedOption.value)
+      if (match) return [match, ...sliced.slice(0, MAX_RENDERED_OPTIONS - 1)]
+    }
+    return sliced
+  }, [filteredOptions, selectedOption])
+
+  const updatePosition = useCallback(() => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+    const rect = trigger.getBoundingClientRect()
+    const vw = window.innerWidth || 1024
+    const vh = window.innerHeight || 768
+    const minWidth = Math.min(Math.max(rect.width || 220, 210), vw - 24)
+    const maxWidth = Math.min(Math.max(rect.width || 300, 340), vw - 24)
+    const spaceBelow = vh - rect.bottom - 12
+    const spaceAbove = rect.top - 12
+    const openUpward = rect.top > 0 && spaceBelow < 190 && spaceAbove > spaceBelow
+    const left = Math.max(12, Math.min(rect.left, vw - minWidth - 12))
+
+    if (openUpward) {
+      setPosition({
+        bottom: vh - rect.top + 6,
+        left,
+        minWidth,
+        maxWidth,
+        maxHeight: Math.min(280, Math.max(140, spaceAbove - 8)),
+        placement: 'top',
+      })
+    } else {
+      setPosition({
+        top: rect.bottom + 6,
+        left,
+        minWidth,
+        maxWidth,
+        maxHeight: Math.min(280, Math.max(140, spaceBelow > 0 ? spaceBelow - 8 : 280)),
+        placement: 'bottom',
+      })
+    }
+  }, [])
+
+  const closeMenu = useCallback((restoreFocus: boolean) => {
+    setOpen(false)
+    setQuery('')
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }))
+    }
+  }, [])
+
+  const openMenu = useCallback((preferredDirection?: 'first' | 'last') => {
+    if (disabled) return
+    setQuery('')
+    const currentIdx = options.findIndex((option) => option.value === value)
+    if (preferredDirection === 'first') {
+      setActiveIndex(0)
+    } else if (preferredDirection === 'last') {
+      setActiveIndex(Math.max(0, options.length - 1))
+    } else {
+      setActiveIndex(currentIdx >= 0 ? currentIdx : 0)
+    }
+    updatePosition()
+    setOpen(true)
+  }, [disabled, options, updatePosition, value])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    updatePosition()
+    const target = isSearchable ? searchRef.current : listboxRef.current
+    const frame = window.requestAnimationFrame(() => {
+      target?.focus({ preventScroll: true })
+      const selectedEl = listboxRef.current?.querySelector<HTMLElement>('[data-active="true"]')
+      selectedEl?.scrollIntoView?.({ block: 'nearest' })
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [isSearchable, open, updatePosition])
+
+  useEffect(() => {
+    if (!open) return
+    const activeEl = listboxRef.current?.querySelector<HTMLElement>('[data-active="true"]')
+    activeEl?.scrollIntoView?.({ block: 'nearest' })
+  }, [activeIndex, open])
+
+  useEffect(() => {
+    if (!open) return
+
+    function handlePointerDown(event: globalThis.MouseEvent) {
+      const target = event.target as Node | null
+      if (!target) return
+      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) return
+      closeMenu(false)
+    }
+
+    function handleCaptureKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        event.stopImmediatePropagation()
+        closeMenu(true)
+      } else if (event.key === 'Tab') {
+        triggerRef.current?.focus({ preventScroll: true })
+        closeMenu(false)
+      }
+    }
+
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    document.addEventListener('mousedown', handlePointerDown, true)
+    window.addEventListener('keydown', handleCaptureKeyDown, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+      document.removeEventListener('mousedown', handlePointerDown, true)
+      window.removeEventListener('keydown', handleCaptureKeyDown, true)
+    }
+  }, [closeMenu, open, updatePosition])
+
+  function selectAt(index: number) {
+    const chosen = visibleOptions[index]
+    if (!chosen) return
+    onChange(chosen.value)
+    closeMenu(true)
+  }
+
+  function handleTriggerKeyDown(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (disabled) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      openMenu(open ? undefined : undefined)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      openMenu('last')
+    } else if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      if (open) closeMenu(true)
+      else openMenu()
+    }
+  }
+
+  function handleMenuKeyDown(event: ReactKeyboardEvent<HTMLElement>, inSearchInput = false) {
+    const count = visibleOptions.length
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      if (count > 0) setActiveIndex((prev) => (prev + 1) % count)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      if (count > 0) setActiveIndex((prev) => (prev - 1 + count) % count)
+    } else if (event.key === 'Home' && !inSearchInput) {
+      event.preventDefault()
+      if (count > 0) setActiveIndex(0)
+    } else if (event.key === 'End' && !inSearchInput) {
+      event.preventDefault()
+      if (count > 0) setActiveIndex(count - 1)
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      if (clampedActiveIndex >= 0) selectAt(clampedActiveIndex)
+    } else if (event.key === ' ' && !inSearchInput) {
+      event.preventDefault()
+      if (clampedActiveIndex >= 0) selectAt(clampedActiveIndex)
+    } else if (!inSearchInput && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const char = event.key.toLowerCase()
+      const nextIdx = visibleOptions.findIndex(
+        (item, idx) => idx > activeIndex && item.label.toLowerCase().startsWith(char),
+      )
+      const fallbackIdx = visibleOptions.findIndex((item) => item.label.toLowerCase().startsWith(char))
+      const resolved = nextIdx >= 0 ? nextIdx : fallbackIdx
+      if (resolved >= 0) setActiveIndex(resolved)
+    }
+  }
+
+  const clampedActiveIndex = visibleOptions.length
+    ? Math.min(activeIndex, visibleOptions.length - 1)
+    : -1
+  const activeOptionId = clampedActiveIndex >= 0 ? `${listboxId}-opt-${clampedActiveIndex}` : undefined
+  const portalTarget = typeof document !== 'undefined'
+    ? (triggerRef.current?.closest('.app') ?? document.querySelector('.app') ?? document.body)
+    : null
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        data-select-trigger=""
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
+        disabled={disabled}
+        className={cn(
+          'select-trigger',
+          size === 'sm' && 'select-trigger-sm',
+          open && 'select-trigger-open',
+          className,
+        )}
+        onClick={(event) => {
+          event.stopPropagation()
+          if (open) closeMenu(true)
+          else openMenu()
+        }}
+        onKeyDown={handleTriggerKeyDown}
+      >
+        <span className="select-trigger-content">
+          <span className={cn('select-trigger-label', selectedOption?.mono && 'select-mono')}>
+            {selectedOption ? selectedOption.label : (value || placeholder)}
+          </span>
+          {selectedOption?.detail ? (
+            <span className="select-trigger-detail">— {selectedOption.detail}</span>
+          ) : null}
+        </span>
+        <ChevronDown size={14} className={cn('select-chevron', open && 'select-chevron-open')} aria-hidden="true" />
+      </button>
+
+      {portalTarget
+        ? createPortal(
+            <AnimatePresence>
+              {open ? (
+                <motion.div
+                  ref={popoverRef}
+                  role="region"
+                  aria-label={`${label} menu`}
+                  className={cn('select-popover', `select-popover-${position.placement}`)}
+                  style={{
+                    top: position.top,
+                    bottom: position.bottom,
+                    left: position.left,
+                    minWidth: position.minWidth,
+                    maxWidth: position.maxWidth,
+                  }}
+                  initial={{ opacity: 0, y: position.placement === 'top' ? 6 : -6, scale: 0.985 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: position.placement === 'top' ? 4 : -4, scale: 0.99 }}
+                  transition={{ type: 'spring', stiffness: 460, damping: 32 }}
+                >
+                  {isSearchable ? (
+                    <div className="select-search">
+                      <Search size={13} aria-hidden="true" />
+                      <input
+                        ref={searchRef}
+                        type="text"
+                        role="combobox"
+                        aria-expanded={true}
+                        aria-autocomplete="list"
+                        value={query}
+                        aria-label={`Filter ${label}`}
+                        aria-controls={listboxId}
+                        aria-activedescendant={activeOptionId}
+                        placeholder="Filter options…"
+                        onChange={(event) => {
+                          setQuery(event.target.value)
+                          setActiveIndex(0)
+                        }}
+                        onKeyDown={(event) => handleMenuKeyDown(event, true)}
+                      />
+                    </div>
+                  ) : null}
+
+                  <div
+                    ref={listboxRef}
+                    id={listboxId}
+                    role="listbox"
+                    aria-label={label}
+                    tabIndex={isSearchable ? undefined : -1}
+                    aria-activedescendant={!isSearchable ? activeOptionId : undefined}
+                    className="select-options"
+                    style={{ maxHeight: isSearchable ? Math.max(120, position.maxHeight - 40) : position.maxHeight }}
+                    onKeyDown={!isSearchable ? (event) => handleMenuKeyDown(event, false) : undefined}
+                  >
+                    {visibleOptions.length ? (
+                      visibleOptions.map((option, index) => {
+                        const isSelected = option.value === value
+                        const isActive = index === clampedActiveIndex
+                        return (
+                          <div
+                            key={option.value}
+                            id={`${listboxId}-opt-${index}`}
+                            role="option"
+                            aria-selected={isSelected}
+                            data-active={isActive ? 'true' : undefined}
+                            className={cn(
+                              'select-option',
+                              isActive && 'select-option-active',
+                              isSelected && 'select-option-selected',
+                            )}
+                            onMouseEnter={() => setActiveIndex(index)}
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => selectAt(index)}
+                          >
+                            <span className="select-option-copy">
+                              <strong className={cn(option.mono && 'select-mono')}>{option.label}</strong>
+                              {option.detail ? <small>{option.detail}</small> : null}
+                            </span>
+                            {isSelected ? (
+                              <span className="select-option-check" aria-hidden="true">
+                                <Check size={13} />
+                              </span>
+                            ) : null}
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <div role="option" aria-disabled="true" aria-selected={false} className="select-empty">
+                        No matching options
+                      </div>
+                    )}
+                  </div>
+
+                  {filteredOptions.length > MAX_RENDERED_OPTIONS ? (
+                    <div className="select-more-hint">
+                      Showing {MAX_RENDERED_OPTIONS} of {filteredOptions.length} — type above to narrow
+                    </div>
+                  ) : null}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>,
+            portalTarget,
+          )
+        : null}
+    </>
   )
 }

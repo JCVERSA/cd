@@ -12,6 +12,7 @@
 
 @layer base {
   :root {
+    color-scheme: dark;
     font-family: "Segoe UI Variable", "Segoe UI", Inter, system-ui, sans-serif;
     color: #f7f5fb;
     background: #09090d;
@@ -201,6 +202,36 @@
   input::placeholder, textarea::placeholder { color: #5f5a68; }
   input:focus, textarea:focus, select:focus { border-color: rgba(var(--accent-rgb), .48); background: rgba(5,5,8,.48); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .075); }
   select { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 14px) 15px, calc(100% - 10px) 15px; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
+  .select-trigger { display: flex; width: 100%; height: 36px; min-width: 0; align-items: center; justify-content: space-between; padding: 0 10px 0 11px; gap: 8px; color: var(--text); border: 1px solid var(--border); border-radius: 9px; background: rgba(5,5,8,.32); font-size: 11px; text-align: left; cursor: pointer; transition: border-color .17s ease, box-shadow .17s ease, background .17s ease, color .17s ease; }
+  .select-trigger:hover:not(:disabled) { border-color: var(--border-strong); background: rgba(255,255,255,.04); }
+  .select-trigger:focus-visible, .select-trigger-open { border-color: rgba(var(--accent-rgb), .48); background: rgba(5,5,8,.5); box-shadow: 0 0 0 3px rgba(var(--accent-rgb), .08); outline: 0; }
+  .select-trigger:disabled { opacity: .45; cursor: not-allowed; }
+  .select-trigger-sm { height: 32px; padding: 0 9px 0 10px; border-radius: 8px; font-size: 9.5px; }
+  .select-trigger-content { display: flex; flex: 1; min-width: 0; align-items: baseline; gap: 6px; overflow: hidden; white-space: nowrap; }
+  .select-trigger-label { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--text); font-weight: 560; text-overflow: ellipsis; }
+  .select-trigger-detail { flex: 1 1 auto; min-width: 0; overflow: hidden; color: var(--muted); font-size: .92em; text-overflow: ellipsis; }
+  .select-mono { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; font-size: .96em; }
+  .select-trigger-open .select-trigger-label.select-mono { color: var(--accent); }
+  .select-chevron { flex: 0 0 auto; color: var(--muted); transition: transform .18s ease, color .18s ease; }
+  .select-chevron-open { color: var(--accent); transform: rotate(180deg); }
+  .select-popover { position: fixed; z-index: 260; overflow: hidden; border: 1px solid rgba(var(--accent-rgb), .22); border-radius: 12px; background: linear-gradient(155deg, rgba(30,28,40,.97), rgba(14,13,20,.98)); box-shadow: 0 22px 60px rgba(0,0,0,.58), inset 0 1px rgba(255,255,255,.045), 0 0 28px rgba(var(--accent-rgb), .08); backdrop-filter: blur(20px) saturate(135%); }
+  .select-popover-top { transform-origin: bottom center; }
+  .select-popover-bottom { transform-origin: top center; }
+  .select-search { display: flex; height: 35px; align-items: center; padding: 0 10px; gap: 7px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,.18); }
+  .select-search svg { flex: 0 0 auto; color: var(--muted); }
+  .select-search input { height: auto; padding: 0; border: 0; background: transparent; box-shadow: none !important; font-size: 10px; }
+  .select-options { display: flex; padding: 5px; flex-direction: column; gap: 2px; overflow-y: auto; outline: 0; }
+  .select-option { display: flex; align-items: center; justify-content: space-between; padding: 7px 9px; gap: 10px; color: var(--text-soft); border: 1px solid transparent; border-radius: 8px; background: transparent; cursor: pointer; transition: background .14s ease, border-color .14s ease, color .14s ease; }
+  .select-option-active { color: var(--text); background: rgba(255,255,255,.052); }
+  .select-option-selected { color: var(--text); border-color: rgba(var(--accent-rgb), .2); background: rgba(var(--accent-rgb), .09); }
+  .select-option-selected.select-option-active { border-color: rgba(var(--accent-rgb), .32); background: rgba(var(--accent-rgb), .13); }
+  .select-option-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+  .select-option-copy strong { overflow: hidden; font-size: 10.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .select-option-selected .select-option-copy strong.select-mono { color: var(--accent); }
+  .select-option-copy small { overflow: hidden; color: var(--muted); font-size: 8.8px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+  .select-option-check { display: grid; flex: 0 0 18px; width: 18px; height: 18px; place-items: center; color: #120e18; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px rgba(var(--accent-rgb), .25); }
+  .select-empty { padding: 14px 10px; color: var(--muted); font-size: 9.5px; text-align: center; }
+  .select-more-hint { padding: 6px 10px; color: var(--faint); border-top: 1px solid var(--border); background: rgba(0,0,0,.15); font-size: 8.5px; text-align: center; }
   .input-with-icon { position: relative; }
   .input-with-icon > svg { position: absolute; z-index: 1; left: 11px; top: 10px; color: var(--muted); }
   .input-with-icon input { padding-left: 35px; }
@@ -314,7 +345,7 @@
   .editor-pane { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--border); border-radius: 13px; background: rgba(5,5,8,.25); }
   .pane-heading { display: flex; min-height: 53px; align-items: center; justify-content: space-between; padding: 0 15px; border-bottom: 1px solid var(--border); }
   .pane-heading label, .pane-heading > span { color: var(--text-soft); font-size: 10.5px; font-weight: 600; }
-  .pane-heading select { width: min(270px, 65%); height: 32px; font-size: 9.5px; }
+  .pane-heading select, .pane-heading .select-trigger { width: min(270px, 65%); height: 32px; font-size: 9.5px; }
   .editor-label { padding: 15px 15px 0; color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }
   .editor-pane > textarea { min-height: 250px; flex: 1; padding: 12px 15px; border: 0; border-radius: 0; background: transparent; box-shadow: none; resize: none; font-size: 12px; line-height: 1.8; user-select: text; }
   .editor-footer { display: flex; min-height: 48px; align-items: center; justify-content: space-between; padding: 0 10px 0 15px; color: var(--faint); border-top: 1px solid var(--border); font-size: 9px; }
