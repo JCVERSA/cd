@@ -4,5 +4,7 @@ ui/node_modules/
 ui/.vite/
 ui/coverage/
 build/
+dist/
+.pyinstaller/
 release/
 packaging/MicrosoftEdgeWebview2Setup.exe

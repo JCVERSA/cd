@@ -35,7 +35,7 @@ if (-not $SkipDependencies) {
 }
 
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue build, release
-& python -m PyInstaller --clean --noconfirm SwiftSlate.spec
+& python -m PyInstaller --clean --noconfirm --distpath build --workpath .pyinstaller SwiftSlate.spec
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed.' }
 
 $selfTestLog = Join-Path $env:TEMP 'SwiftSlate-self-test.log'

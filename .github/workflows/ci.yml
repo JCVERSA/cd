@@ -98,7 +98,7 @@ jobs:
 
       - name: Build one-directory application
         working-directory: desktop
-        run: python -m PyInstaller --clean --noconfirm SwiftSlate.spec
+        run: python -m PyInstaller --clean --noconfirm --distpath build --workpath .pyinstaller SwiftSlate.spec
 
       - name: Smoke-test packaged application
         shell: pwsh
