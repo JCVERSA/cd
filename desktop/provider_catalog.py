@@ -31,6 +31,7 @@ class ProviderSpec:
     local: bool = False
     key_required: bool = True
     auth: str = "bearer"  # bearer | google | none
+    portal_url: str = ""
 
 
 PROVIDERS: dict[str, ProviderSpec] = {
@@ -38,44 +39,53 @@ PROVIDERS: dict[str, ProviderSpec] = {
         "gemini", "Google Gemini", "Fast multimodal models with a generous developer tier.",
         "https://generativelanguage.googleapis.com", "gemini-3.5-flash-lite",
         "/v1beta/models", "https://generativelanguage.googleapis.com", auth="google",
+        portal_url="https://aistudio.google.com/apikey",
     ),
     "groq": ProviderSpec(
         "groq", "Groq", "Low-latency inference for open models.",
         "https://api.groq.com", "openai/gpt-oss-120b", "/openai/v1/models",
         "https://api.groq.com/openai/v1",
+        portal_url="https://console.groq.com/keys",
     ),
     "openai": ProviderSpec(
         "openai", "OpenAI", "OpenAI chat and reasoning models.",
         "https://api.openai.com/v1", "gpt-5-mini", "/models", "https://api.openai.com/v1",
+        portal_url="https://platform.openai.com/api-keys",
     ),
     "openrouter": ProviderSpec(
         "openrouter", "OpenRouter", "One endpoint for hundreds of hosted models.",
         "https://openrouter.ai/api/v1", "openai/gpt-5-mini", "/models",
         "https://openrouter.ai/api/v1",
+        portal_url="https://openrouter.ai/keys",
     ),
     "mistral": ProviderSpec(
         "mistral", "Mistral AI", "Efficient European open and commercial models.",
         "https://api.mistral.ai/v1", "mistral-small-latest", "/models",
         "https://api.mistral.ai/v1",
+        portal_url="https://console.mistral.ai/api-keys",
     ),
     "deepseek": ProviderSpec(
         "deepseek", "DeepSeek", "Reasoning and coding models through an OpenAI-compatible API.",
         "https://api.deepseek.com", "deepseek-chat", "/models", "https://api.deepseek.com",
+        portal_url="https://platform.deepseek.com/api_keys",
     ),
     "nvidia": ProviderSpec(
         "nvidia", "NVIDIA NIM", "Accelerated inference through NVIDIA API Catalog.",
         "https://integrate.api.nvidia.com/v1", "meta/llama-3.3-70b-instruct", "/models",
         "https://integrate.api.nvidia.com/v1",
+        portal_url="https://build.nvidia.com/settings/api-keys",
     ),
     "ollama": ProviderSpec(
         "ollama", "Ollama", "Private local inference with models installed on this PC.",
         "http://127.0.0.1:11434", "llama3.2:latest", "/api/tags",
         "http://127.0.0.1:11434/v1", local=True, key_required=False, auth="none",
+        portal_url="https://ollama.com/download",
     ),
     "lmstudio": ProviderSpec(
         "lmstudio", "LM Studio", "Use the local LM Studio OpenAI-compatible server.",
         "http://127.0.0.1:1234/v1", "local-model", "/models",
         "http://127.0.0.1:1234/v1", local=True, key_required=False, auth="none",
+        portal_url="https://lmstudio.ai",
     ),
     "custom": ProviderSpec(
         "custom", "Custom endpoint", "Connect any OpenAI-compatible service.",
@@ -317,6 +327,7 @@ def public_provider_records(config: dict | None = None) -> list[dict]:
             "connected": provider_id == active and (not spec.key_required or key_configured),
             "local": spec.local,
             "keyConfigured": not spec.key_required or key_configured,
+            "portalAvailable": bool(spec.portal_url),
         }
         result.append(record)
     return result

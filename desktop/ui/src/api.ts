@@ -1,5 +1,5 @@
 import { demoSnapshot } from './data'
-import type { AppSnapshot, Command, Provider, RuntimeState } from './types'
+import type { AppSnapshot, Command, Provider, ProviderId, RuntimeState } from './types'
 
 const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
 let bootstrapCapability = hashParams.get('session') || ''
@@ -102,6 +102,20 @@ export const api = {
     return request(`/api/v1/providers/${id}/test`, {
       method: 'POST',
       body: JSON.stringify({ endpoint: provider.endpoint, model: provider.model, apiKey }),
+    })
+  },
+
+  async openProviderPortal(providerId: ProviderId, fallbackUrl?: string): Promise<{ ok: boolean; url: string }> {
+    if (!isDesktopHost) {
+      if (fallbackUrl && fallbackUrl.startsWith('https://')) {
+        window.open?.(fallbackUrl, '_blank', 'noopener,noreferrer')
+        return { ok: true, url: fallbackUrl }
+      }
+      throw new Error('This provider does not have an external portal link.')
+    }
+    return request(`/api/v1/providers/${providerId}/portal`, {
+      method: 'POST',
+      body: '{}',
     })
   },
 

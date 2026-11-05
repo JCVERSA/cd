@@ -1,39 +1,19 @@
 import {
-  Bot,
   Check,
-  Cloud,
-  Cpu,
-  Database,
+  ExternalLink,
   KeyRound,
   LoaderCircle,
-  Plus,
   RefreshCw,
   Server,
   Settings2,
   ShieldCheck,
-  Sparkles,
   TestTube2,
-  Wind,
-  Zap,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import type { ComponentType } from 'react'
 import { api } from '../api'
-import type { Provider, ProviderId } from '../types'
+import { ProviderLogo, getProviderPortalUrl, getProviderTileClass } from '../components/ProviderLogo'
 import { Badge, Button, Field, Modal, Select, SpotlightCard } from '../components/ui'
-
-const marks: Record<ProviderId, { letters: string; className: string; icon?: ComponentType<{ size?: number }> }> = {
-  gemini: { letters: 'G', className: 'provider-gemini', icon: Sparkles },
-  groq: { letters: 'GQ', className: 'provider-groq', icon: Zap },
-  openai: { letters: 'OA', className: 'provider-openai', icon: Bot },
-  openrouter: { letters: 'OR', className: 'provider-openrouter', icon: Cloud },
-  mistral: { letters: 'M', className: 'provider-mistral', icon: Wind },
-  deepseek: { letters: 'DS', className: 'provider-deepseek', icon: Database },
-  nvidia: { letters: 'NV', className: 'provider-nvidia', icon: Cpu },
-  ollama: { letters: 'OL', className: 'provider-ollama', icon: Server },
-  lmstudio: { letters: 'LM', className: 'provider-lmstudio', icon: Cpu },
-  custom: { letters: '+', className: 'provider-custom', icon: Plus },
-}
+import type { Provider } from '../types'
 
 export function ProvidersScreen({
   providers,
@@ -61,13 +41,32 @@ export function ProvidersScreen({
     setTestMessage('')
   }
 
+  async function openPortal(provider: Provider) {
+    const portalUrl = getProviderPortalUrl(provider.id, provider.portalAvailable)
+    if (!portalUrl) return
+    try {
+      await api.openProviderPortal(provider.id, portalUrl)
+      notify(
+        provider.local
+          ? `Opened ${provider.name} download page in your browser.`
+          : `Opened ${provider.name} API keys page in your browser.`,
+      )
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Could not open provider page.', 'danger')
+    }
+  }
+
   async function fetchModels() {
     if (!draft) return
     setBusy('models')
     setTestMessage('')
     try {
       const result = await api.fetchModels(draft, apiKey || undefined)
-      setDraft({ ...draft, models: result.models, model: result.models.includes(draft.model) ? draft.model : (result.models[0] || draft.model) })
+      setDraft({
+        ...draft,
+        models: result.models,
+        model: result.models.includes(draft.model) ? draft.model : (result.models[0] || draft.model),
+      })
       setTestMessage(`Found ${result.models.length} available model${result.models.length === 1 ? '' : 's'}.`)
     } catch (error) {
       setTestMessage(error instanceof Error ? error.message : 'Could not fetch models.')
@@ -105,6 +104,8 @@ export function ProvidersScreen({
     }
   }
 
+  const draftPortalUrl = draft ? getProviderPortalUrl(draft.id, draft.portalAvailable) : ''
+
   return (
     <div className="screen providers-screen">
       <section className="provider-summary-row">
@@ -116,34 +117,84 @@ export function ProvidersScreen({
         <div className="provider-summary-stats">
           <div><strong>{connected}</strong><span>connected</span></div>
           <div><strong>{providers.length}</strong><span>available</span></div>
-          <div><ShieldCheck size={18}/><span>keys protected</span></div>
+          <div><ShieldCheck size={18} /><span>keys protected</span></div>
         </div>
       </section>
 
       <section className="provider-grid">
         {providers.map((provider, index) => {
-          const mark = marks[provider.id]
-          const Icon = mark.icon
           const active = provider.id === activeProvider
+          const portalUrl = getProviderPortalUrl(provider.id, provider.portalAvailable)
+          const portalActionLabel = provider.local ? 'Get app' : 'Get key'
+          const portalAriaLabel = provider.local
+            ? `Get ${provider.name}`
+            : `Get ${provider.name} API key`
           return (
-            <SpotlightCard key={provider.id} className={`provider-card ${active ? 'provider-card-active' : ''}`} delay={Math.min(index * 0.025, 0.2)}>
+            <SpotlightCard
+              key={provider.id}
+              className={`provider-card ${active ? 'provider-card-active' : ''}`}
+              delay={Math.min(index * 0.025, 0.2)}
+            >
               <div className="provider-card-top">
-                <span className={`provider-mark ${mark.className}`}>{Icon ? <Icon size={19} /> : mark.letters}</span>
+                <span className={`provider-mark ${getProviderTileClass(provider.id)}`}>
+                  <ProviderLogo id={provider.id} size={21} />
+                </span>
                 <div className="provider-state">
-                  {active ? <Badge tone="accent">Active</Badge> : provider.connected ? <Badge tone="success">Ready</Badge> : <Badge>Not configured</Badge>}
+                  {portalUrl ? (
+                    <button
+                      type="button"
+                      className="provider-key-button"
+                      aria-label={portalAriaLabel}
+                      title={portalAriaLabel}
+                      onClick={() => void openPortal(provider)}
+                    >
+                      <span>{portalActionLabel}</span>
+                      <ExternalLink size={11} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                  {active ? (
+                    <Badge tone="accent">Active</Badge>
+                  ) : provider.connected ? (
+                    <Badge tone="success">Ready</Badge>
+                  ) : (
+                    <Badge>Not configured</Badge>
+                  )}
                 </div>
               </div>
               <h3>{provider.name}</h3>
               <p>{provider.description}</p>
               <div className="provider-details">
-                <div><span>Model</span><strong title={provider.model}>{provider.model || 'Not selected'}</strong></div>
-                <div><span>Endpoint</span><strong title={provider.endpoint}>{provider.local ? 'Local machine' : provider.endpoint.replace(/^https?:\/\//, '').split('/')[0] || 'Custom'}</strong></div>
+                <div>
+                  <span>Model</span>
+                  <strong title={provider.model}>{provider.model || 'Not selected'}</strong>
+                </div>
+                <div>
+                  <span>Endpoint</span>
+                  <strong title={provider.endpoint}>
+                    {provider.local
+                      ? 'Local machine'
+                      : provider.endpoint.replace(/^https?:\/\//, '').split('/')[0] || 'Custom'}
+                  </strong>
+                </div>
               </div>
               <div className="provider-card-footer">
                 <span className="credential-state">
-                  {provider.local ? <><Server size={14}/> No key required</> : provider.keyConfigured ? <><KeyRound size={14}/> Key protected</> : <><KeyRound size={14}/> Add a key</>}
+                  {provider.local ? (
+                    <><Server size={14} /> No key required</>
+                  ) : provider.keyConfigured ? (
+                    <><KeyRound size={14} /> Key protected</>
+                  ) : (
+                    <><KeyRound size={14} /> Add a key</>
+                  )}
                 </span>
-                <Button variant={active ? 'ghost' : 'secondary'} size="sm" icon={<Settings2 size={14} />} onClick={() => open(provider)}>Configure</Button>
+                <Button
+                  variant={active ? 'ghost' : 'secondary'}
+                  size="sm"
+                  icon={<Settings2 size={14} />}
+                  onClick={() => open(provider)}
+                >
+                  Configure
+                </Button>
               </div>
             </SpotlightCard>
           )
@@ -159,16 +210,32 @@ export function ProvidersScreen({
         footer={
           <>
             <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
-            {draft?.id !== activeProvider ? <Button variant="secondary" disabled={Boolean(busy)} onClick={() => save(false)}>Save only</Button> : null}
-            <Button variant="primary" loading={busy === 'save'} onClick={() => save(true)} icon={<Check size={16} />}>{draft?.id === activeProvider ? 'Save changes' : 'Save & use provider'}</Button>
+            {draft?.id !== activeProvider ? (
+              <Button variant="secondary" disabled={Boolean(busy)} onClick={() => save(false)}>Save only</Button>
+            ) : null}
+            <Button
+              variant="primary"
+              loading={busy === 'save'}
+              onClick={() => save(true)}
+              icon={<Check size={16} />}
+            >
+              {draft?.id === activeProvider ? 'Save changes' : 'Save & use provider'}
+            </Button>
           </>
         }
       >
         {draft ? (
           <div className="provider-form">
             <div className="form-grid-two">
-              <Field label="Endpoint" hint={draft.local ? 'The server must be running on this computer.' : 'HTTPS is required for remote credentials.'}>
-                <input value={draft.endpoint} onChange={(event) => setDraft({ ...draft, endpoint: event.target.value })} disabled={!draft.local && draft.id !== 'custom'} />
+              <Field
+                label="Endpoint"
+                hint={draft.local ? 'The server must be running on this computer.' : 'HTTPS is required for remote credentials.'}
+              >
+                <input
+                  value={draft.endpoint}
+                  onChange={(event) => setDraft({ ...draft, endpoint: event.target.value })}
+                  disabled={!draft.local && draft.id !== 'custom'}
+                />
               </Field>
               <Field label="Model">
                 {draft.models?.length ? (
@@ -179,14 +246,46 @@ export function ProvidersScreen({
                     onChange={(model) => setDraft({ ...draft, model })}
                   />
                 ) : (
-                  <input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder="Model identifier" />
+                  <input
+                    value={draft.model}
+                    onChange={(event) => setDraft({ ...draft, model: event.target.value })}
+                    placeholder="Model identifier"
+                  />
                 )}
               </Field>
             </div>
             {!draft.local ? (
-              <Field label="API key" hint={draft.keyConfigured ? 'Leave blank to keep the protected key already on this device.' : 'Saved with current-user DPAPI encryption.'}>
-                <div className="input-with-icon"><KeyRound size={16}/><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={draft.keyConfigured ? '••••••••••••••••' : 'Paste a key'} autoComplete="off" /></div>
-              </Field>
+              <div className="field api-key-block">
+                <div className="api-key-header">
+                  <label htmlFor="provider-api-key-input" className="field-label">API key</label>
+                  {draftPortalUrl ? (
+                    <button
+                      type="button"
+                      className="provider-key-inline"
+                      onClick={() => void openPortal(draft)}
+                    >
+                      <span>Get {draft.name} API key</span>
+                      <ExternalLink size={12} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </div>
+                <div className="input-with-icon">
+                  <KeyRound size={16} />
+                  <input
+                    id="provider-api-key-input"
+                    type="password"
+                    value={apiKey}
+                    onChange={(event) => setApiKey(event.target.value)}
+                    placeholder={draft.keyConfigured ? '••••••••••••••••' : 'Paste a key'}
+                    autoComplete="off"
+                  />
+                </div>
+                <span className="field-hint">
+                  {draft.keyConfigured
+                    ? 'Leave blank to keep the protected key already on this device.'
+                    : 'Saved with current-user DPAPI encryption.'}
+                </span>
+              </div>
             ) : null}
             <div className="provider-test-panel">
               <div>
@@ -194,11 +293,25 @@ export function ProvidersScreen({
                 <p>Fetch models checks availability. Test provider sends a tiny request to the selected model.</p>
               </div>
               <div className="provider-test-actions">
-                <Button size="sm" icon={busy === 'models' ? <LoaderCircle size={14} className="spin"/> : <RefreshCw size={14}/>} disabled={Boolean(busy)} onClick={fetchModels}>Fetch models</Button>
-                <Button size="sm" icon={busy === 'test' ? <LoaderCircle size={14} className="spin"/> : <TestTube2 size={14}/>} disabled={Boolean(busy)} onClick={test}>Test provider</Button>
+                <Button
+                  size="sm"
+                  icon={busy === 'models' ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />}
+                  disabled={Boolean(busy)}
+                  onClick={fetchModels}
+                >
+                  Fetch models
+                </Button>
+                <Button
+                  size="sm"
+                  icon={busy === 'test' ? <LoaderCircle size={14} className="spin" /> : <TestTube2 size={14} />}
+                  disabled={Boolean(busy)}
+                  onClick={test}
+                >
+                  Test provider
+                </Button>
               </div>
             </div>
-            {testMessage ? <div className="inline-message"><Check size={15}/>{testMessage}</div> : null}
+            {testMessage ? <div className="inline-message"><Check size={15} />{testMessage}</div> : null}
           </div>
         ) : null}
       </Modal>

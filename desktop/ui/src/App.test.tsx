@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import axe from 'axe-core'
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import App from './App'
 import { Select } from './components/ui'
 
@@ -170,5 +170,51 @@ describe('SwiftSlate dashboard', () => {
     await user.keyboard('{Enter}')
     await waitFor(() => expect(screen.queryByRole('listbox', { name: 'Model' })).not.toBeInTheDocument())
     expect(trigger).toHaveTextContent('provider/model-11')
+  })
+
+  it('renders official provider logos, custom SwiftSlate endpoint icon, and API key portal buttons', async () => {
+    window.localStorage.setItem('swiftslate.onboarded', 'true')
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    try {
+      const user = userEvent.setup()
+      const { container } = render(<App />)
+      await screen.findByText('SwiftSlate is listening')
+
+      await user.click(screen.getByRole('button', { name: /Providers/i }))
+      await screen.findByText('Choose where SwiftSlate thinks')
+
+      const logos = Array.from(container.querySelectorAll<HTMLImageElement>('.provider-card img.provider-logo-img'))
+      expect(logos).toHaveLength(10)
+      const uniqueSources = new Set(logos.map((img) => img.getAttribute('src')))
+      expect(uniqueSources.size).toBe(10)
+
+      expect(screen.getByRole('button', { name: 'Get Google Gemini API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get Groq API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get OpenAI API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get OpenRouter API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get Mistral AI API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get DeepSeek API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get NVIDIA NIM API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get Ollama' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get LM Studio' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Get Custom endpoint/i })).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'Get Groq API key' }))
+      expect(openSpy).toHaveBeenCalledWith('https://console.groq.com/keys', '_blank', 'noopener,noreferrer')
+
+      const configureButtons = screen.getAllByRole('button', { name: 'Configure' })
+      await user.click(configureButtons[5])
+      const dialog = await screen.findByRole('dialog', { name: /Configure DeepSeek/i })
+      const modalKeyButton = within(dialog).getByRole('button', { name: 'Get DeepSeek API key' })
+      await user.click(modalKeyButton)
+      expect(openSpy).toHaveBeenLastCalledWith('https://platform.deepseek.com/api_keys', '_blank', 'noopener,noreferrer')
+
+      const axeResult = await axe.run(document.body, {
+        rules: { 'color-contrast': { enabled: false } },
+      })
+      expect(axeResult.violations).toEqual([])
+    } finally {
+      openSpy.mockRestore()
+    }
   })
 })

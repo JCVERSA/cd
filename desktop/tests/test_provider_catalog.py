@@ -89,6 +89,23 @@ class ProviderCatalogTests(unittest.TestCase):
         self.assertTrue(openai["keyConfigured"])
         self.assertTrue(openai["connected"])
 
+    def test_public_records_expose_verified_https_portal_urls(self):
+        from provider_catalog import PROVIDERS
+
+        records = {item["id"]: item["portalAvailable"] for item in public_provider_records({})}
+        self.assertEqual(PROVIDERS["gemini"].portal_url, "https://aistudio.google.com/apikey")
+        self.assertEqual(PROVIDERS["groq"].portal_url, "https://console.groq.com/keys")
+        self.assertEqual(PROVIDERS["openai"].portal_url, "https://platform.openai.com/api-keys")
+        self.assertEqual(PROVIDERS["openrouter"].portal_url, "https://openrouter.ai/keys")
+        self.assertEqual(PROVIDERS["mistral"].portal_url, "https://console.mistral.ai/api-keys")
+        self.assertEqual(PROVIDERS["deepseek"].portal_url, "https://platform.deepseek.com/api_keys")
+        self.assertEqual(PROVIDERS["nvidia"].portal_url, "https://build.nvidia.com/settings/api-keys")
+        self.assertEqual(PROVIDERS["ollama"].portal_url, "https://ollama.com/download")
+        self.assertEqual(PROVIDERS["lmstudio"].portal_url, "https://lmstudio.ai")
+        self.assertEqual(PROVIDERS["custom"].portal_url, "")
+        for provider_id, available in records.items():
+            self.assertEqual(available, provider_id != "custom")
+
 
 if __name__ == "__main__":
     unittest.main()

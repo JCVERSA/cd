@@ -51,6 +51,7 @@ export type Provider = {
   connected: boolean
   local: boolean
   keyConfigured: boolean
+  portalAvailable?: boolean
   models?: string[]
   latencyMs?: number
 }

@@ -14,10 +14,10 @@ On first launch SwiftSlate creates its configuration under `%LOCALAPPDATA%\Swift
 
 ## Interface
 
-Double-click the tray icon or choose **Open SwiftSlate** to access:
+Click the tray icon or choose **Open SwiftSlate** to access:
 
 - runtime status, recent activity, pause/resume, and first-run onboarding;
-- OpenAI, Gemini, Groq, OpenRouter, Mistral, DeepSeek, NVIDIA NIM, Ollama, LM Studio, and custom OpenAI-compatible endpoints;
+- OpenAI, Gemini, Groq, OpenRouter, Mistral, DeepSeek, NVIDIA NIM, Ollama, LM Studio, and custom OpenAI-compatible endpoints with bundled provider brand marks, a SwiftSlate custom-endpoint emblem, and allowlisted one-click links to official API-key / download pages;
 - protected provider keys, live model discovery, and provider connection tests;
 - command creation, editing, enable/disable, and deletion;
 - offline style previews and a provider-backed playground;

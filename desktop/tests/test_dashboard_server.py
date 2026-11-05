@@ -16,9 +16,14 @@ class DashboardServerTests(unittest.TestCase):
         self.assets = self.root / "assets"
         self.assets.mkdir()
         (self.assets / "index.html").write_text("<!doctype html><title>SwiftSlate</title>", encoding="utf-8")
+        (self.assets / "logo.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"/>', encoding="utf-8")
         source_commands = Path(__file__).parents[1] / "commands.json"
         shutil.copy2(source_commands, self.root / "commands.json")
-        self.backend = DashboardBackend(str(self.root))
+        self.opened_urls: list[str] = []
+        self.backend = DashboardBackend(
+            str(self.root),
+            open_url=lambda url: (self.opened_urls.append(url) is None),
+        )
         self.server, self.token = create_dashboard_server(self.backend, str(self.assets), token="test-token")
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -174,6 +179,35 @@ class DashboardServerTests(unittest.TestCase):
         status, payload, _ = self.request("PUT", "/api/v1/runtime/pause", {"paused": True})
         self.assertEqual(status, 200)
         self.assertTrue(payload["paused"])
+
+    def test_provider_portal_opens_only_allowlisted_https_url(self):
+        status, payload, _ = self.request(
+            "POST",
+            "/api/v1/providers/deepseek/portal",
+            {"url": "https://evil.example/phish"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["url"], "https://platform.deepseek.com/api_keys")
+        self.assertEqual(self.opened_urls, ["https://platform.deepseek.com/api_keys"])
+
+        status_custom, payload_custom, _ = self.request("POST", "/api/v1/providers/custom/portal", {})
+        self.assertEqual(status_custom, 400)
+        self.assertIn("portal", payload_custom["error"].lower())
+
+        status_missing, _, _ = self.request("POST", "/api/v1/providers/unknown/portal", {})
+        self.assertEqual(status_missing, 404)
+        self.assertEqual(self.opened_urls, ["https://platform.deepseek.com/api_keys"])
+
+    def test_static_server_serves_svg_with_image_svg_xml_mime(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)
+        connection.request("GET", "/logo.svg")
+        response = connection.getresponse()
+        body = response.read()
+        content_type = response.getheader("Content-Type")
+        connection.close()
+        self.assertEqual(response.status, 200)
+        self.assertEqual(content_type, "image/svg+xml")
+        self.assertIn(b"<svg", body)
 
 
 if __name__ == "__main__":

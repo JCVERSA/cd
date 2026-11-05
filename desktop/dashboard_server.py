@@ -20,6 +20,7 @@ import threading
 import time
 from typing import Callable
 import urllib.parse
+import webbrowser
 
 from provider_catalog import (
     PROVIDERS,
@@ -107,6 +108,7 @@ class DashboardBackend:
         run_ai: Callable[[str, str], tuple[str | None, str | None]] | None = None,
         diagnostics: Callable[[], list[dict]] | None = None,
         logs: Callable[[], list[dict]] | None = None,
+        open_url: Callable[[str], bool] | None = None,
     ):
         self.data_dir = os.path.abspath(data_dir)
         self.config_path = os.path.join(self.data_dir, "config.json")
@@ -118,6 +120,7 @@ class DashboardBackend:
         self._run_ai = run_ai
         self._diagnostics = diagnostics
         self._log_records = logs or (lambda: [])
+        self._open_url = open_url or (lambda url: webbrowser.open(url, new=2))
         self.started_at = time.monotonic()
         self.activity: list[dict] = []
         self._lock = threading.RLock()
@@ -346,6 +349,16 @@ class DashboardBackend:
         candidate_model = payload.get("model")
         model_name = candidate_model if isinstance(candidate_model, str) and candidate_model.strip() else saved.get("model", PROVIDERS[provider_id].model)
         return test_provider(provider_id, endpoint=endpoint, api_key=key, model=model_name)
+
+    def open_provider_portal(self, provider_id: str) -> dict:
+        spec = PROVIDERS.get(provider_id)
+        if spec is None:
+            raise DashboardError("Unknown provider.", 404)
+        if not spec.portal_url.startswith("https://"):
+            raise DashboardError("This provider does not have a fixed portal URL.")
+        if not self._open_url(spec.portal_url):
+            raise DashboardError("Could not open your default browser.", 500)
+        return {"ok": True, "url": spec.portal_url}
 
     def save_command(self, command_id: str, payload: dict) -> dict:
         with self._lock:
@@ -616,7 +629,7 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             elif self.command == "POST" and path == "/api/v1/diagnostics/run":
                 result = self.app.backend.run_diagnostics()
             else:
-                provider_match = re.fullmatch(r"/api/v1/providers/([^/]+)(?:/(models|test))?", path)
+                provider_match = re.fullmatch(r"/api/v1/providers/([^/]+)(?:/(models|test|portal))?", path)
                 command_match = re.fullmatch(r"/api/v1/commands/([^/]+)", path)
                 if provider_match and self.command == "PUT" and provider_match.group(2) is None:
                     result = self.app.backend.save_provider(urllib.parse.unquote(provider_match.group(1)), payload)
@@ -624,6 +637,8 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
                     result = self.app.backend.provider_models(urllib.parse.unquote(provider_match.group(1)), payload)
                 elif provider_match and self.command == "POST" and provider_match.group(2) == "test":
                     result = self.app.backend.provider_test(urllib.parse.unquote(provider_match.group(1)), payload)
+                elif provider_match and self.command == "POST" and provider_match.group(2) == "portal":
+                    result = self.app.backend.open_provider_portal(urllib.parse.unquote(provider_match.group(1)))
                 elif command_match and self.command == "PUT":
                     result = self.app.backend.save_command(urllib.parse.unquote(command_match.group(1)), payload)
                 elif command_match and self.command == "DELETE":
@@ -657,7 +672,11 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
         except OSError:
             self._error(404, "Not found.")
             return
-        content_type = mimetypes.guess_type(target)[0] or "application/octet-stream"
+        content_type = (
+            "image/svg+xml"
+            if target.lower().endswith(".svg")
+            else (mimetypes.guess_type(target)[0] or "application/octet-stream")
+        )
         if content_type.startswith("text/") or content_type in ("application/javascript", "application/json"):
             content_type += "; charset=utf-8"
         cache = "public, max-age=31536000, immutable" if relative.startswith("assets/") else "no-store"

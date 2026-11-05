@@ -13,6 +13,7 @@ import {
   WandSparkles,
   Zap,
 } from 'lucide-react'
+import { ProviderLogo, getProviderTileClass } from '../components/ProviderLogo'
 import type { AppSnapshot, PageId } from '../types'
 import { Badge, Button, SpotlightCard } from '../components/ui'
 
@@ -32,6 +33,7 @@ export function Overview({
   onPause: () => void
 }) {
   const { runtime, activity } = snapshot
+  const activeProviderRecord = snapshot.providers.find((item) => item.id === runtime.provider)
   return (
     <div className="screen overview-screen">
       <section className="hero-grid">
@@ -68,11 +70,13 @@ export function Overview({
 
         <SpotlightCard className="provider-hero" delay={0.04}>
           <div className="card-heading-row">
-            <div className="icon-tile"><Bot size={18} /></div>
+            <div className={`provider-mark ${getProviderTileClass(runtime.provider)}`}>
+              <ProviderLogo id={runtime.provider} size={20} />
+            </div>
             <Badge tone="success">Connected</Badge>
           </div>
           <span className="card-kicker">Active provider</span>
-          <h3>{runtime.provider === 'gemini' ? 'Google Gemini' : runtime.provider}</h3>
+          <h3>{activeProviderRecord?.name || runtime.provider}</h3>
           <p className="mono-copy">{runtime.model}</p>
           <button type="button" className="text-link" onClick={() => onNavigate('providers')}>
             Manage provider <ArrowRight size={14} />

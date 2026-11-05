@@ -84,6 +84,19 @@ class DesktopPackagingTest(unittest.TestCase):
         self.assertIn("<BrandLogo", sidebar)
         self.assertIn("<BrandLogo", onboarding)
         self.assertIn("swiftslate-logo.png", html)
+        provider_logo = (ROOT / "ui" / "src" / "components" / "ProviderLogo.tsx").read_text(encoding="utf-8")
+        providers_dir = ROOT / "ui" / "src" / "assets" / "providers"
+        for provider_id in (
+            "gemini", "groq", "openai", "openrouter", "mistral",
+            "deepseek", "nvidia", "ollama", "lmstudio", "custom",
+        ):
+            svg_path = providers_dir / f"{provider_id}.svg"
+            self.assertTrue(svg_path.is_file(), f"Missing provider logo {svg_path}")
+            svg_text = svg_path.read_text(encoding="utf-8")
+            self.assertTrue(svg_text.lstrip().startswith("<svg"), provider_id)
+            self.assertNotIn("<script", svg_text.lower(), provider_id)
+            self.assertNotIn("https://", svg_text.lower(), provider_id)
+            self.assertIn(f"providers/{provider_id}.svg", provider_logo)
 
     def test_bundle_is_one_directory_and_contains_no_node_or_electron_runtime(self):
         spec = (ROOT / "SwiftSlate.spec").read_text(encoding="utf-8")

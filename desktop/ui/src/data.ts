@@ -10,6 +10,7 @@ export const providers: Provider[] = [
     connected: true,
     local: false,
     keyConfigured: true,
+    portalAvailable: true,
     latencyMs: 684,
     models: ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.6-pro'],
   },
@@ -22,6 +23,7 @@ export const providers: Provider[] = [
     connected: false,
     local: false,
     keyConfigured: false,
+    portalAvailable: true,
   },
   {
     id: 'openai',
@@ -32,6 +34,7 @@ export const providers: Provider[] = [
     connected: false,
     local: false,
     keyConfigured: false,
+    portalAvailable: true,
   },
   {
     id: 'openrouter',
@@ -42,6 +45,7 @@ export const providers: Provider[] = [
     connected: false,
     local: false,
     keyConfigured: false,
+    portalAvailable: true,
   },
   {
     id: 'mistral',
@@ -52,6 +56,7 @@ export const providers: Provider[] = [
     connected: false,
     local: false,
     keyConfigured: false,
+    portalAvailable: true,
   },
   {
     id: 'deepseek',
@@ -62,6 +67,7 @@ export const providers: Provider[] = [
     connected: false,
     local: false,
     keyConfigured: false,
+    portalAvailable: true,
   },
   {
     id: 'nvidia',
@@ -72,6 +78,7 @@ export const providers: Provider[] = [
     connected: false,
     local: false,
     keyConfigured: false,
+    portalAvailable: true,
   },
   {
     id: 'ollama',
@@ -82,6 +89,7 @@ export const providers: Provider[] = [
     connected: false,
     local: true,
     keyConfigured: true,
+    portalAvailable: true,
   },
   {
     id: 'lmstudio',
@@ -92,6 +100,7 @@ export const providers: Provider[] = [
     connected: false,
     local: true,
     keyConfigured: true,
+    portalAvailable: true,
   },
   {
     id: 'custom',
@@ -102,6 +111,7 @@ export const providers: Provider[] = [
     connected: false,
     local: false,
     keyConfigured: false,
+    portalAvailable: false,
   },
 ]
 
