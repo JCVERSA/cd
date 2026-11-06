@@ -1,4 +1,4 @@
-import { Bell, Command, MoonStar, Pause, Play, Search } from 'lucide-react'
+import { MoonStar, Pause, Play, Search } from 'lucide-react'
 import type { PageId } from '../types'
 import { Button } from './ui'
 
@@ -30,25 +30,30 @@ export function Topbar({
     <header className="topbar">
       <div className="breadcrumbs">
         <span>SwiftSlate</span>
-        <span className="breadcrumb-separator">/</span>
+        <span className="breadcrumb-separator" aria-hidden="true">/</span>
         <div>
           <h1>{current.title}</h1>
           <p>{current.subtitle}</p>
         </div>
       </div>
       <div className="topbar-actions">
-        <button className="search-trigger" type="button" onClick={onSearch}>
-          <Search size={16} />
+        <button className="search-trigger" type="button" onClick={onSearch} aria-label="Search SwiftSlate (Ctrl+K)">
+          <Search size={16} strokeWidth={1.85} aria-hidden="true" />
           <span>Search</span>
-          <kbd><Command size={11} />K</kbd>
+          <kbd aria-hidden="true">Ctrl K</kbd>
         </button>
-        <Button variant="ghost" size="icon" icon={<MoonStar size={18} />} aria-label="Change color theme" onClick={onTheme} />
-        <Button variant="ghost" size="icon" icon={<Bell size={18} />} aria-label="Notifications" />
-        <span className="topbar-divider" />
+        <Button
+          variant="ghost"
+          size="icon"
+          icon={<MoonStar size={18} strokeWidth={1.85} aria-hidden="true" />}
+          aria-label="Change color theme"
+          onClick={onTheme}
+        />
+        <span className="topbar-divider" aria-hidden="true" />
         <Button
           variant={paused ? 'primary' : 'secondary'}
           size="sm"
-          icon={paused ? <Play size={15} /> : <Pause size={15} />}
+          icon={paused ? <Play size={16} strokeWidth={1.85} aria-hidden="true" /> : <Pause size={16} strokeWidth={1.85} aria-hidden="true" />}
           onClick={onPause}
         >
           {paused ? 'Resume' : 'Pause'}

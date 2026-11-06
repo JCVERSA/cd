@@ -117,7 +117,7 @@ export function ProvidersScreen({
         <div className="provider-summary-stats">
           <div><strong>{connected}</strong><span>connected</span></div>
           <div><strong>{providers.length}</strong><span>available</span></div>
-          <div><ShieldCheck size={18} /><span>keys protected</span></div>
+          <div><ShieldCheck size={18} strokeWidth={1.85} aria-hidden="true" /><span>keys protected</span></div>
         </div>
       </section>
 
@@ -132,8 +132,9 @@ export function ProvidersScreen({
           return (
             <SpotlightCard
               key={provider.id}
+              interactive
               className={`provider-card ${active ? 'provider-card-active' : ''}`}
-              delay={Math.min(index * 0.025, 0.2)}
+              delay={Math.min(index * 0.02, 0.14)}
             >
               <div className="provider-card-top">
                 <span className={`provider-mark ${getProviderTileClass(provider.id)}`}>
@@ -149,7 +150,7 @@ export function ProvidersScreen({
                       onClick={() => void openPortal(provider)}
                     >
                       <span>{portalActionLabel}</span>
-                      <ExternalLink size={11} aria-hidden="true" />
+                      <ExternalLink size={12} strokeWidth={1.85} aria-hidden="true" />
                     </button>
                   ) : null}
                   {active ? (
@@ -180,17 +181,17 @@ export function ProvidersScreen({
               <div className="provider-card-footer">
                 <span className="credential-state">
                   {provider.local ? (
-                    <><Server size={14} /> No key required</>
+                    <><Server size={16} strokeWidth={1.85} aria-hidden="true" /> No key required</>
                   ) : provider.keyConfigured ? (
-                    <><KeyRound size={14} /> Key protected</>
+                    <><KeyRound size={16} strokeWidth={1.85} aria-hidden="true" /> Key protected</>
                   ) : (
-                    <><KeyRound size={14} /> Add a key</>
+                    <><KeyRound size={16} strokeWidth={1.85} aria-hidden="true" /> Add a key</>
                   )}
                 </span>
                 <Button
                   variant={active ? 'ghost' : 'secondary'}
                   size="sm"
-                  icon={<Settings2 size={14} />}
+                  icon={<Settings2 size={16} strokeWidth={1.85} aria-hidden="true" />}
                   onClick={() => open(provider)}
                 >
                   Configure
@@ -270,14 +271,15 @@ export function ProvidersScreen({
                   ) : null}
                 </div>
                 <div className="input-with-icon">
-                  <KeyRound size={16} />
+                  <KeyRound size={16} strokeWidth={1.85} aria-hidden="true" />
                   <input
                     id="provider-api-key-input"
                     type="password"
                     value={apiKey}
                     onChange={(event) => setApiKey(event.target.value)}
-                    placeholder={draft.keyConfigured ? '••••••••••••••••' : 'Paste a key'}
+                    placeholder={draft.keyConfigured ? '••••••••••••••••' : 'Paste a key…'}
                     autoComplete="off"
+                    spellCheck={false}
                   />
                 </div>
                 <span className="field-hint">
@@ -295,7 +297,7 @@ export function ProvidersScreen({
               <div className="provider-test-actions">
                 <Button
                   size="sm"
-                  icon={busy === 'models' ? <LoaderCircle size={14} className="spin" /> : <RefreshCw size={14} />}
+                  icon={busy === 'models' ? <LoaderCircle size={16} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <RefreshCw size={16} strokeWidth={1.85} aria-hidden="true" />}
                   disabled={Boolean(busy)}
                   onClick={fetchModels}
                 >
@@ -303,7 +305,7 @@ export function ProvidersScreen({
                 </Button>
                 <Button
                   size="sm"
-                  icon={busy === 'test' ? <LoaderCircle size={14} className="spin" /> : <TestTube2 size={14} />}
+                  icon={busy === 'test' ? <LoaderCircle size={16} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <TestTube2 size={16} strokeWidth={1.85} aria-hidden="true" />}
                   disabled={Boolean(busy)}
                   onClick={test}
                 >
@@ -311,7 +313,7 @@ export function ProvidersScreen({
                 </Button>
               </div>
             </div>
-            {testMessage ? <div className="inline-message"><Check size={15} />{testMessage}</div> : null}
+            {testMessage ? <div className="inline-message"><Check size={16} strokeWidth={1.85} aria-hidden="true" />{testMessage}</div> : null}
           </div>
         ) : null}
       </Modal>

@@ -1,30 +1,24 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
   <defs>
-    <linearGradient id="ss-pillar" x1="9.75" y1="4.5" x2="9.75" y2="19.5" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#BAFEFF"/>
-      <stop offset="0.32" stop-color="#48CEFF"/>
-      <stop offset="0.72" stop-color="#435EFF"/>
-      <stop offset="1" stop-color="#E240FF"/>
+    <linearGradient id="ss-custom-star" x1="22" y1="18" x2="74" y2="78" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#a8f5ff" />
+      <stop offset="52%" stop-color="#56d8ff" />
+      <stop offset="100%" stop-color="#9e7bff" />
     </linearGradient>
-    <linearGradient id="ss-orbit" x1="2.4" y1="15.8" x2="21.6" y2="7.6" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#4B66FF"/>
-      <stop offset="0.52" stop-color="#60D5FF"/>
-      <stop offset="1" stop-color="#C84BFF"/>
-    </linearGradient>
-    <linearGradient id="ss-spark" x1="16.1" y1="4.4" x2="16.1" y2="12.2" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#CBFFFF"/>
-      <stop offset="0.58" stop-color="#53D2FF"/>
-      <stop offset="1" stop-color="#9A5BFF"/>
-    </linearGradient>
-    <linearGradient id="ss-hex" x1="3" y1="2.5" x2="21" y2="21.5" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#62DCFF" stop-opacity="0.7"/>
-      <stop offset="0.5" stop-color="#6366F1" stop-opacity="0.45"/>
-      <stop offset="1" stop-color="#DF42FF" stop-opacity="0.7"/>
+    <linearGradient id="ss-custom-bracket" x1="8" y1="28" x2="88" y2="68" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#f2ecff" />
+      <stop offset="100%" stop-color="#c3afff" />
     </linearGradient>
   </defs>
-  <path d="M12 1.75L20.55 6.68v10.64L12 22.25 3.45 17.32V6.68L12 1.75z" fill="#080A14" fill-opacity="0.78" stroke="url(#ss-hex)" stroke-width="1.35" stroke-linejoin="round"/>
-  <ellipse cx="12.1" cy="12.5" rx="8.9" ry="3.55" transform="rotate(-24 12.1 12.5)" stroke="url(#ss-orbit)" stroke-width="1.35"/>
-  <rect x="7.85" y="4.65" width="3.8" height="14.7" rx="1.9" fill="url(#ss-pillar)" stroke="#080A14" stroke-width="0.9"/>
-  <path d="M16.1 4.4l.76 2.64 2.64.76-2.64.76-.76 2.64-.76-2.64-2.64-.76 2.64-.76.76-2.64z" fill="url(#ss-spark)"/>
-  <circle cx="16.35" cy="16.55" r="1.45" fill="#63DCFF" stroke="#080A14" stroke-width="0.75"/>
+  <path
+    d="M21 30L9.5 48L21 66M75 30L86.5 48L75 66"
+    stroke="url(#ss-custom-bracket)"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M48 17Q49.8 46.2 74 48Q49.8 49.8 48 79Q46.2 49.8 22 48Q46.2 46.2 48 17Z"
+    fill="url(#ss-custom-star)"
+  />
 </svg>

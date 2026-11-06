@@ -1,9 +1,11 @@
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion } from 'motion/react'
 import type { HTMLMotionProps } from 'motion/react'
-import { Check, ChevronDown, LoaderCircle, Search, X } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, LoaderCircle, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent, PropsWithChildren, ReactNode } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, PropsWithChildren, ReactNode } from 'react'
+
+const EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1]
 
 export function cn(...items: Array<string | false | null | undefined>) {
   return items.filter(Boolean).join(' ')
@@ -30,14 +32,14 @@ export function Button({
 }: ButtonProps) {
   return (
     <motion.button
-      whileTap={disabled ? undefined : { scale: 0.97 }}
-      transition={{ type: 'spring', stiffness: 560, damping: 32 }}
+      whileTap={disabled || loading ? undefined : { scale: 0.975 }}
+      transition={{ duration: 0.12, ease: EASE_OUT }}
       className={cn('button', `button-${variant}`, `button-${size}`, className)}
       disabled={disabled || loading}
       type={type}
       {...props}
     >
-      {loading ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : icon}
+      {loading ? <LoaderCircle size={16} strokeWidth={1.85} className="spin" aria-hidden="true" /> : icon}
       {children}
     </motion.button>
   )
@@ -54,11 +56,7 @@ export function Switch({ checked, onChange, label, disabled = false }: { checked
       disabled={disabled}
       onClick={() => onChange(!checked)}
     >
-      <motion.span
-        className="switch-knob"
-        animate={{ x: checked ? 18 : 0 }}
-        transition={{ type: 'spring', stiffness: 560, damping: 34 }}
-      />
+      <span className="switch-knob" aria-hidden="true" />
     </button>
   )
 }
@@ -67,14 +65,32 @@ export function Badge({ children, tone = 'neutral' }: PropsWithChildren<{ tone?:
   return <span className={cn('badge', `badge-${tone}`)}>{children}</span>
 }
 
-export function SpotlightCard({ children, className, delay = 0 }: PropsWithChildren<{ className?: string; delay?: number }>) {
+export function SpotlightCard({
+  children,
+  className,
+  delay = 0,
+  interactive = false,
+}: PropsWithChildren<{ className?: string; delay?: number; interactive?: boolean }>) {
   const x = useMotionValue(-200)
   const y = useMotionValue(-200)
-  const background = useMotionTemplate`radial-gradient(360px circle at ${x}px ${y}px, color-mix(in srgb, var(--accent) 13%, transparent), transparent 76%)`
+  const rectRef = useRef<DOMRect | null>(null)
+  const background = useMotionTemplate`radial-gradient(340px circle at ${x}px ${y}px, color-mix(in srgb, var(--accent) 12%, transparent), transparent 76%)`
   const reduce = useReducedMotion()
 
-  function handleMove(event: MouseEvent<HTMLDivElement>) {
-    const rect = event.currentTarget.getBoundingClientRect()
+  if (!interactive) {
+    return <div className={cn('glass-card', className)}>{children}</div>
+  }
+
+  function handleEnter(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType === 'mouse') {
+      rectRef.current = event.currentTarget.getBoundingClientRect()
+    }
+  }
+
+  function handleMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.pointerType !== 'mouse') return
+    const rect = rectRef.current ?? event.currentTarget.getBoundingClientRect()
+    rectRef.current = rect
     x.set(event.clientX - rect.left)
     y.set(event.clientY - rect.top)
   }
@@ -82,16 +98,17 @@ export function SpotlightCard({ children, className, delay = 0 }: PropsWithChild
   return (
     <motion.div
       className={cn('glass-card spotlight-card', className)}
-      style={{ backgroundImage: background }}
-      onMouseMove={handleMove}
-      onMouseLeave={() => {
+      style={reduce ? undefined : { backgroundImage: background }}
+      onPointerEnter={handleEnter}
+      onPointerMove={handleMove}
+      onPointerLeave={() => {
+        rectRef.current = null
         x.set(-200)
         y.set(-200)
       }}
-      initial={reduce ? false : { opacity: 0, y: 12, scale: 0.995 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ type: 'spring', stiffness: 260, damping: 28, delay }}
-      whileHover={reduce ? undefined : { scale: 1.008 }}
+      initial={reduce ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.18, ease: EASE_OUT, delay: Math.min(delay, 0.14) }}
     >
       {children}
     </motion.div>
@@ -120,7 +137,7 @@ export function Modal({ open, onClose, title, description, footer, children, siz
     const panel = panelRef.current
     const focusableSelector = 'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
     const focusFirst = window.requestAnimationFrame(() => {
-      const preferred = panel?.querySelector<HTMLElement>('[autofocus], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [data-select-trigger]:not([disabled])')
+      const preferred = panel?.querySelector<HTMLElement>('[data-autofocus], [autofocus], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [data-select-trigger]:not([disabled])')
       const first = panel?.querySelector<HTMLElement>(focusableSelector)
       ;(preferred || first || panel)?.focus()
     })
@@ -164,8 +181,8 @@ export function Modal({ open, onClose, title, description, footer, children, siz
         <motion.div
           className="modal-backdrop"
           initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 0.16, ease: EASE_OUT } }}
+          exit={{ opacity: 0, transition: { duration: 0.11, ease: EASE_OUT } }}
           onMouseDown={(event) => event.target === event.currentTarget && onClose()}
         >
           <motion.section
@@ -176,17 +193,16 @@ export function Modal({ open, onClose, title, description, footer, children, siz
             aria-describedby={description ? descriptionId : undefined}
             tabIndex={-1}
             className={cn('modal-panel', `modal-${size}`)}
-            initial={{ opacity: 0, scale: 0.96, y: 18 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98, y: 10 }}
-            transition={{ type: 'spring', stiffness: 360, damping: 31 }}
+            initial={{ opacity: 0, scale: 0.965, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.18, ease: EASE_OUT } }}
+            exit={{ opacity: 0, scale: 0.985, y: 4, transition: { duration: 0.11, ease: EASE_OUT } }}
           >
             <header className="modal-header">
               <div>
                 <h2 id={titleId}>{title}</h2>
                 {description ? <p id={descriptionId}>{description}</p> : null}
               </div>
-              <Button variant="ghost" size="icon" aria-label="Close dialog" onClick={onClose} icon={<X size={18} />} />
+              <Button variant="ghost" size="icon" aria-label="Close dialog" onClick={onClose} icon={<X size={18} strokeWidth={1.85} aria-hidden="true" />} />
             </header>
             <div className="modal-body">{children}</div>
             {footer ? <footer className="modal-footer">{footer}</footer> : null}
@@ -207,11 +223,12 @@ export function Toasts({ items }: { items: ToastItem[] }) {
           <motion.div
             key={toast.id}
             className={cn('toast', `toast-${toast.tone || 'neutral'}`)}
-            initial={{ opacity: 0, x: 22, scale: 0.96 }}
-            animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 18, scale: 0.97 }}
+            initial={{ opacity: 0, y: 10, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.18, ease: EASE_OUT } }}
+            exit={{ opacity: 0, y: 6, scale: 0.98, transition: { duration: 0.12, ease: EASE_OUT } }}
           >
-            {toast.tone === 'success' ? <Check size={16} /> : null}
+            {toast.tone === 'success' ? <Check size={16} strokeWidth={1.85} aria-hidden="true" /> : null}
+            {toast.tone === 'danger' ? <AlertCircle size={16} strokeWidth={1.85} aria-hidden="true" /> : null}
             {toast.message}
           </motion.div>
         ))}
@@ -521,7 +538,7 @@ export function Select<T extends string = string>({
             <span className="select-trigger-detail">— {selectedOption.detail}</span>
           ) : null}
         </span>
-        <ChevronDown size={14} className={cn('select-chevron', open && 'select-chevron-open')} aria-hidden="true" />
+        <ChevronDown size={16} strokeWidth={1.85} className={cn('select-chevron', open && 'select-chevron-open')} aria-hidden="true" />
       </button>
 
       {portalTarget
@@ -540,14 +557,13 @@ export function Select<T extends string = string>({
                     minWidth: position.minWidth,
                     maxWidth: position.maxWidth,
                   }}
-                  initial={{ opacity: 0, y: position.placement === 'top' ? 6 : -6, scale: 0.985 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: position.placement === 'top' ? 4 : -4, scale: 0.99 }}
-                  transition={{ type: 'spring', stiffness: 460, damping: 32 }}
+                  initial={{ opacity: 0, y: position.placement === 'top' ? 5 : -5, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.16, ease: EASE_OUT } }}
+                  exit={{ opacity: 0, y: position.placement === 'top' ? 3 : -3, scale: 0.985, transition: { duration: 0.1, ease: EASE_OUT } }}
                 >
                   {isSearchable ? (
                     <div className="select-search">
-                      <Search size={13} aria-hidden="true" />
+                      <Search size={14} strokeWidth={1.85} aria-hidden="true" />
                       <input
                         ref={searchRef}
                         type="text"

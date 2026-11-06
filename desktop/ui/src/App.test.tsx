@@ -55,9 +55,55 @@ describe('SwiftSlate dashboard', () => {
     const user = userEvent.setup()
     render(<App />)
     await screen.findByText('SwiftSlate is listening')
+    expect(screen.getByText('Engine active')).toBeInTheDocument()
+    expect(screen.getByText('Listening globally')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Pause' }))
     expect(await screen.findByText('SwiftSlate is paused')).toBeInTheDocument()
+    expect(screen.getByText('Engine paused')).toBeInTheDocument()
+    expect(screen.getByText('Triggers suspended')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument()
+  })
+
+  it('uses Windows-native chrome and passes axe across Commands, Styles, Settings, and Diagnostics', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    // Windows Ctrl K shortcut badge and no dead Notifications button
+    expect(screen.getByText('Ctrl K')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Notifications' })).not.toBeInTheDocument()
+
+    // Commands screen: aria-pressed filter state + axe
+    await user.click(screen.getByRole('button', { name: 'Commands' }))
+    await screen.findByText('Your command library')
+    const allFilter = screen.getByRole('button', { name: 'All' })
+    const aiFilter = screen.getByRole('button', { name: 'AI' })
+    expect(allFilter).toHaveAttribute('aria-pressed', 'true')
+    expect(aiFilter).toHaveAttribute('aria-pressed', 'false')
+    await user.click(aiFilter)
+    expect(aiFilter).toHaveAttribute('aria-pressed', 'true')
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+
+    // Styles screen: axe
+    await user.click(screen.getByRole('button', { name: 'Styles' }))
+    await screen.findByText('Style text without a network request')
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+
+    // Settings screen: Reset changes disabled until dirty + axe
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    await screen.findByText('Command behavior')
+    expect(screen.getByRole('button', { name: 'Reset changes' })).toBeDisabled()
+    const prefixInput = screen.getByLabelText(/Trigger prefix/i)
+    await user.clear(prefixInput)
+    await user.type(prefixInput, '/')
+    expect(screen.getByRole('button', { name: 'Reset changes' })).toBeEnabled()
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+
+    // Diagnostics screen: Windows debug.log console bar + axe
+    await user.click(screen.getByRole('button', { name: 'Diagnostics' }))
+    await screen.findByRole('button', { name: 'Run all checks' })
+    expect(screen.getByText('debug.log')).toBeInTheDocument()
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
   })
 
   it('opens search with the keyboard shortcut', async () => {

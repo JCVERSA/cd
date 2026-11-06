@@ -8,7 +8,7 @@ import {
   Settings,
   TerminalSquare,
 } from 'lucide-react'
-import { AnimatePresence, MotionConfig, motion } from 'motion/react'
+import { MotionConfig } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
 import { BrandLogo } from './components/BrandLogo'
@@ -160,35 +160,39 @@ export default function App() {
   return (
     <MotionConfig reducedMotion={reducedMotion ? 'always' : 'user'}>
       <div className="app" data-theme={theme} data-reduced-motion={reducedMotion || undefined}>
-        <div className="ambient" aria-hidden="true"><span className="blob blob-one"/><span className="blob blob-two"/><span className="blob blob-three"/></div>
-        <Sidebar collapsed={collapsed} active={page} onNavigate={navigate} onCollapse={() => setCollapsed(!collapsed)} />
+        <div className="ambient" aria-hidden="true" />
+        <Sidebar
+          collapsed={collapsed}
+          paused={snapshot?.runtime.paused || false}
+          active={page}
+          onNavigate={navigate}
+          onCollapse={() => setCollapsed(!collapsed)}
+        />
         <div className="app-main">
           <Topbar page={page} paused={snapshot?.runtime.paused || false} onPause={togglePause} onSearch={() => setSearchOpen(true)} onTheme={() => setThemeOpen(true)} />
           <main className="content" id="main-content">
-            {!snapshot ? <LoadingShell/> : (
-              <AnimatePresence mode="wait">
-                <motion.div key={page} className="page-motion" initial={{ opacity: 0, y: 12, scale: 0.995 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -6 }} transition={{ type: 'spring', stiffness: 310, damping: 31 }}>
-                  {page === 'overview' ? <Overview snapshot={snapshot} onNavigate={navigate} onPause={togglePause}/> : null}
-                  {page === 'playground' ? <Playground commands={snapshot.commands} prefix={snapshot.runtime.prefix} notify={notify}/> : null}
-                  {page === 'providers' ? <ProvidersScreen providers={snapshot.providers} activeProvider={snapshot.runtime.provider} onChange={changeProvider} notify={notify}/> : null}
-                  {page === 'commands' ? <CommandsScreen commands={snapshot.commands} prefix={snapshot.runtime.prefix} onChange={(commands) => setSnapshot({ ...snapshot, commands })} notify={notify}/> : null}
-                  {page === 'styles' ? <StylesScreen prefix={snapshot.runtime.prefix} notify={notify}/> : null}
-                  {page === 'settings' ? <SettingsScreen runtime={snapshot.runtime} onChange={(runtime) => setSnapshot({ ...snapshot, runtime })} notify={notify}/> : null}
-                  {page === 'diagnostics' ? <DiagnosticsScreen initial={snapshot.diagnostics} initialLogs={snapshot.logs} notify={notify}/> : null}
-                </motion.div>
-              </AnimatePresence>
+            {!snapshot ? <LoadingShell /> : (
+              <div key={page} className="page-motion">
+                {page === 'overview' ? <Overview snapshot={snapshot} onNavigate={navigate} onPause={togglePause} /> : null}
+                {page === 'playground' ? <Playground commands={snapshot.commands} prefix={snapshot.runtime.prefix} notify={notify} /> : null}
+                {page === 'providers' ? <ProvidersScreen providers={snapshot.providers} activeProvider={snapshot.runtime.provider} onChange={changeProvider} notify={notify} /> : null}
+                {page === 'commands' ? <CommandsScreen commands={snapshot.commands} prefix={snapshot.runtime.prefix} onChange={(commands) => setSnapshot({ ...snapshot, commands })} notify={notify} /> : null}
+                {page === 'styles' ? <StylesScreen prefix={snapshot.runtime.prefix} notify={notify} /> : null}
+                {page === 'settings' ? <SettingsScreen runtime={snapshot.runtime} onChange={(runtime) => setSnapshot({ ...snapshot, runtime })} notify={notify} /> : null}
+                {page === 'diagnostics' ? <DiagnosticsScreen initial={snapshot.diagnostics} initialLogs={snapshot.logs} notify={notify} /> : null}
+              </div>
             )}
           </main>
         </div>
 
         <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search SwiftSlate" description="Jump to a screen or find a command." size="md">
           <div className="command-palette">
-            <div className="palette-search"><Search size={17}/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search screens and commands…" autoFocus/></div>
+            <div className="palette-search"><Search size={16} strokeWidth={1.85} aria-hidden="true" /><input data-autofocus="" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search screens and commands…" /></div>
             <div className="palette-results">
               {searchResults.pageItems.length ? <span className="palette-heading">Screens</span> : null}
-              {searchResults.pageItems.map((item) => { const Icon = item.icon; return <button type="button" key={item.id} onClick={() => navigate(item.id)}><span><Icon size={16}/></span><div><strong>{item.label}</strong><small>{item.description}</small></div></button> })}
+              {searchResults.pageItems.map((item) => { const Icon = item.icon; return <button type="button" key={item.id} onClick={() => navigate(item.id)}><span aria-hidden="true"><Icon size={16} strokeWidth={1.85} /></span><div><strong>{item.label}</strong><small>{item.description}</small></div></button> })}
               {searchResults.commandItems.length ? <span className="palette-heading">Commands</span> : null}
-              {searchResults.commandItems.map((item) => <button type="button" key={item.id} onClick={() => navigate('commands')}><span><Command size={16}/></span><div><strong>.{item.trigger}</strong><small>{item.prompt || item.value}</small></div></button>)}
+              {searchResults.commandItems.map((item) => <button type="button" key={item.id} onClick={() => navigate('commands')}><span aria-hidden="true"><Command size={16} strokeWidth={1.85} /></span><div><strong>.{item.trigger}</strong><small>{item.prompt || item.value}</small></div></button>)}
               {!searchResults.pageItems.length && !searchResults.commandItems.length ? <div className="palette-empty">No results for “{search}”</div> : null}
             </div>
           </div>

@@ -10,55 +10,65 @@ import openaiLogo from '../assets/providers/openai.svg'
 import openrouterLogo from '../assets/providers/openrouter.svg'
 import type { ProviderId } from '../types'
 
-const providerAssets: Record<ProviderId, { src: string; className: string; portalUrl?: string }> = {
+const providerAssets: Record<ProviderId, { src: string; className: string; scale: number; portalUrl?: string }> = {
   gemini: {
     src: geminiLogo,
     className: 'provider-gemini',
+    scale: 1,
     portalUrl: 'https://aistudio.google.com/apikey',
   },
   groq: {
     src: groqLogo,
     className: 'provider-groq',
+    scale: 1.06,
     portalUrl: 'https://console.groq.com/keys',
   },
   openai: {
     src: openaiLogo,
     className: 'provider-openai',
+    scale: 0.96,
     portalUrl: 'https://platform.openai.com/api-keys',
   },
   openrouter: {
     src: openrouterLogo,
     className: 'provider-openrouter',
+    scale: 0.9,
     portalUrl: 'https://openrouter.ai/keys',
   },
   mistral: {
     src: mistralLogo,
     className: 'provider-mistral',
+    scale: 0.92,
     portalUrl: 'https://console.mistral.ai/api-keys',
   },
   deepseek: {
     src: deepseekLogo,
     className: 'provider-deepseek',
+    scale: 1,
     portalUrl: 'https://platform.deepseek.com/api_keys',
   },
   nvidia: {
     src: nvidiaLogo,
     className: 'provider-nvidia',
+    scale: 0.96,
     portalUrl: 'https://build.nvidia.com/settings/api-keys',
   },
   ollama: {
     src: ollamaLogo,
     className: 'provider-ollama',
+    scale: 1.05,
     portalUrl: 'https://ollama.com/download',
   },
   lmstudio: {
     src: lmstudioLogo,
     className: 'provider-lmstudio',
+    scale: 0.98,
     portalUrl: 'https://lmstudio.ai',
   },
   custom: {
     src: customLogo,
     className: 'provider-custom',
+    scale: 1.05,
   },
 }
 
@@ -83,11 +93,12 @@ export function ProviderLogo({
   label?: string
 }) {
   const asset = providerAssets[id as ProviderId] || providerAssets.custom
+  const opticalSize = Math.round(size * asset.scale)
   return (
     <img
       src={asset.src}
-      width={size}
-      height={size}
+      width={opticalSize}
+      height={opticalSize}
       className={`provider-logo-img ${className}`.trim()}
       alt={label || ''}
       aria-hidden={label ? undefined : true}

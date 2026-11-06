@@ -1,8 +1,8 @@
 import { Bot, Pencil, Plus, Search, Sparkles, Trash2, Type, Wand2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '../api'
-import type { Command, CommandType } from '../types'
 import { Badge, Button, Field, Modal, Select, SpotlightCard, Switch } from '../components/ui'
+import type { Command, CommandType } from '../types'
 
 const typeMeta: Record<CommandType, { label: string; icon: typeof Bot; tone: 'accent' | 'success' | 'warning' | 'neutral' }> = {
   ai: { label: 'AI', icon: Bot, tone: 'accent' },
@@ -83,46 +83,79 @@ export function CommandsScreen({
           <h2>Your command library</h2>
           <p>Triggers activate after text in any supported Windows application.</p>
         </div>
-        <Button variant="primary" icon={<Plus size={16}/>} onClick={() => setEditing(blankCommand())}>New command</Button>
+        <Button variant="primary" icon={<Plus size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing(blankCommand())}>New command</Button>
       </section>
 
       <SpotlightCard className="command-table-card">
         <div className="table-toolbar">
-          <div className="filter-search"><Search size={16}/><input aria-label="Search commands" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands…" /></div>
-          <div className="segmented-control" aria-label="Command type filter">
+          <div className="filter-search">
+            <Search size={16} strokeWidth={1.85} aria-hidden="true" />
+            <input aria-label="Search commands" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands…" />
+          </div>
+          <div className="segmented-control" role="group" aria-label="Command type filter">
             {(['all', 'ai', 'style', 'replacer-text'] as const).map((item) => (
-              <button key={item} className={type === item ? 'segment-active' : ''} type="button" onClick={() => setType(item)}>{item === 'all' ? 'All' : typeMeta[item].label}</button>
+              <button
+                key={item}
+                className={type === item ? 'segment-active' : ''}
+                aria-pressed={type === item}
+                type="button"
+                onClick={() => setType(item)}
+              >
+                {item === 'all' ? 'All' : typeMeta[item].label}
+              </button>
             ))}
           </div>
           <span className="table-count">{filtered.length} command{filtered.length === 1 ? '' : 's'}</span>
         </div>
 
         <div className="command-table" role="table" aria-label="Commands">
-          <div className="command-row command-header" role="row">
-            <span>Trigger</span><span>Behavior</span><span>Type</span><span>Uses</span><span>Enabled</span><span><span className="sr-only">Actions</span></span>
+          <div role="rowgroup">
+            <div className="command-row command-header" role="row">
+              <span role="columnheader">Trigger</span>
+              <span role="columnheader">Behavior</span>
+              <span role="columnheader">Type</span>
+              <span role="columnheader">Uses</span>
+              <span role="columnheader">Enabled</span>
+              <span role="columnheader"><span className="sr-only">Actions</span></span>
+            </div>
           </div>
-          {filtered.map((command) => {
-            const meta = typeMeta[command.type]
-            const Icon = meta.icon
-            return (
-              <div className="command-row" role="row" key={command.id}>
-                <div className="command-trigger"><span className="trigger-prefix">{prefix}</span><strong>{command.trigger}</strong></div>
-                <div className="command-behavior"><strong>{command.prompt || command.value || 'Built-in action'}</strong><small>{command.type === 'ai' ? 'Uses the active provider' : 'Runs on this device'}</small></div>
-                <div><Badge tone={meta.tone}><Icon size={12}/>{meta.label}</Badge></div>
-                <span className="uses-count">{command.uses}</span>
-                {command.type === 'system'
-                  ? <Badge tone="neutral">Built in</Badge>
-                  : <Switch checked={command.enabled} onChange={(value) => toggle(command, value)} label={`${command.enabled ? 'Disable' : 'Enable'} .${command.trigger}`} />}
-                <div className="row-actions">
-                  {command.type === 'system' ? null : <>
-                    <Button variant="ghost" size="icon" aria-label={`Edit .${command.trigger}`} icon={<Pencil size={15}/>} onClick={() => setEditing({ ...command })}/>
-                    <Button variant="ghost" size="icon" aria-label={`Delete .${command.trigger}`} icon={<Trash2 size={15}/>} onClick={() => setConfirmDelete(command)}/>
-                  </>}
+          <div role="rowgroup">
+            {filtered.map((command) => {
+              const meta = typeMeta[command.type]
+              const Icon = meta.icon
+              return (
+                <div className="command-row" role="row" key={command.id}>
+                  <div className="command-trigger" role="cell"><span className="trigger-prefix">{prefix}</span><strong>{command.trigger}</strong></div>
+                  <div className="command-behavior" role="cell">
+                    <strong>{command.prompt || command.value || 'Built-in action'}</strong>
+                    <small>{command.type === 'ai' ? 'Uses the active provider' : 'Runs on this device'}</small>
+                  </div>
+                  <div role="cell"><Badge tone={meta.tone}><Icon size={12} strokeWidth={1.85} aria-hidden="true" />{meta.label}</Badge></div>
+                  <span className="uses-count" role="cell">{command.uses}</span>
+                  <div role="cell">
+                    {command.type === 'system'
+                      ? <Badge tone="neutral">Built in</Badge>
+                      : <Switch checked={command.enabled} onChange={(value) => toggle(command, value)} label={`${command.enabled ? 'Disable' : 'Enable'} .${command.trigger}`} />}
+                  </div>
+                  <div className="row-actions" role="cell">
+                    {command.type === 'system' ? null : (
+                      <>
+                        <Button variant="ghost" size="icon" aria-label={`Edit .${command.trigger}`} icon={<Pencil size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing({ ...command })} />
+                        <Button variant="ghost" size="icon" aria-label={`Delete .${command.trigger}`} icon={<Trash2 size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setConfirmDelete(command)} />
+                      </>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
-          {!filtered.length ? <div className="empty-table"><Search size={23}/><strong>No commands found</strong><span>Try another search or filter.</span></div> : null}
+              )
+            })}
+          </div>
+          {!filtered.length ? (
+            <div className="empty-table">
+              <Search size={28} strokeWidth={1.85} aria-hidden="true" />
+              <strong>No commands found</strong>
+              <span>Try another search or filter.</span>
+            </div>
+          ) : null}
         </div>
       </SpotlightCard>
 
@@ -136,7 +169,18 @@ export function CommandsScreen({
         {editing ? (
           <div className="command-form">
             <Field label="Trigger" hint={`Users will type ${prefix}${editing.trigger || 'command'}. Letters, numbers, hyphens, and underscores are safest.`}>
-              <div className="prefix-input"><span>{prefix}</span><input value={editing.trigger} maxLength={50} onChange={(event) => setEditing({ ...editing, trigger: event.target.value.replace(/\s/g, '') })} placeholder="command" autoFocus /></div>
+              <div className="prefix-input">
+                <span>{prefix}</span>
+                <input
+                  data-autofocus=""
+                  value={editing.trigger}
+                  maxLength={50}
+                  spellCheck={false}
+                  autoComplete="off"
+                  onChange={(event) => setEditing({ ...editing, trigger: event.target.value.replace(/\s/g, '') })}
+                  placeholder="command…"
+                />
+              </div>
             </Field>
             <Field label="Command type">
               <Select<CommandType>
@@ -156,7 +200,7 @@ export function CommandsScreen({
               </Field>
             ) : (
               <Field label={editing.type === 'style' ? 'Style identifier' : 'Replacement text'}>
-                <textarea rows={4} value={editing.value} onChange={(event) => setEditing({ ...editing, value: event.target.value })} placeholder="Value" />
+                <textarea rows={4} value={editing.value} onChange={(event) => setEditing({ ...editing, value: event.target.value })} placeholder="Enter value…" />
               </Field>
             )}
           </div>
@@ -169,9 +213,9 @@ export function CommandsScreen({
         title="Delete command?"
         description={confirmDelete ? `.${confirmDelete.trigger} will stop working immediately.` : undefined}
         size="sm"
-        footer={<><Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button><Button variant="danger" icon={<Trash2 size={15}/>} onClick={remove}>Delete</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button><Button variant="danger" icon={<Trash2 size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={remove}>Delete</Button></>}
       >
-        <div className="delete-warning"><Trash2 size={20}/><p>This cannot be undone, but you can recreate the command later.</p></div>
+        <div className="delete-warning"><Trash2 size={18} strokeWidth={1.85} aria-hidden="true" /><p>This cannot be undone, but you can recreate the command later.</p></div>
       </Modal>
     </div>
   )

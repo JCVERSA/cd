@@ -97,6 +97,15 @@ class DesktopPackagingTest(unittest.TestCase):
             self.assertNotIn("<script", svg_text.lower(), provider_id)
             self.assertNotIn("https://", svg_text.lower(), provider_id)
             self.assertIn(f"providers/{provider_id}.svg", provider_logo)
+        custom_svg = (providers_dir / "custom.svg").read_text(encoding="utf-8")
+        self.assertNotIn("<rect", custom_svg.lower())
+        self.assertLessEqual(custom_svg.count("<path"), 3)
+        topbar = (ROOT / "ui" / "src" / "components" / "Topbar.tsx").read_text(encoding="utf-8")
+        self.assertIn("Ctrl K", topbar)
+        self.assertNotIn("⌘K", topbar)
+        diagnostics = (ROOT / "ui" / "src" / "screens" / "Diagnostics.tsx").read_text(encoding="utf-8")
+        self.assertIn("debug.log", diagnostics)
+        self.assertNotIn("log-dot-red", diagnostics)
 
     def test_bundle_is_one_directory_and_contains_no_node_or_electron_runtime(self):
         spec = (ROOT / "SwiftSlate.spec").read_text(encoding="utf-8")

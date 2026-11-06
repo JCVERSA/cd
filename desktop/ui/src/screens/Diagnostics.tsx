@@ -1,14 +1,14 @@
-import { AlertTriangle, CheckCircle2, Clipboard, LoaderCircle, Play, RefreshCw, ShieldCheck, Terminal, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { AlertTriangle, Check, CheckCircle2, Clipboard, LoaderCircle, Play, RefreshCw, ShieldCheck, Terminal, XCircle } from 'lucide-react'
+import { useRef, useState } from 'react'
 import { api } from '../api'
-import type { DiagnosticCheck, LogEntry } from '../types'
 import { Badge, Button, SpotlightCard } from '../components/ui'
+import type { DiagnosticCheck, LogEntry } from '../types'
 
 function CheckIcon({ status }: { status: DiagnosticCheck['status'] }) {
-  if (status === 'pass') return <CheckCircle2 size={18}/>
-  if (status === 'warn') return <AlertTriangle size={18}/>
-  if (status === 'fail') return <XCircle size={18}/>
-  return <LoaderCircle size={18}/>
+  if (status === 'pass') return <CheckCircle2 size={18} strokeWidth={1.85} aria-hidden="true" />
+  if (status === 'warn') return <AlertTriangle size={18} strokeWidth={1.85} aria-hidden="true" />
+  if (status === 'fail') return <XCircle size={18} strokeWidth={1.85} aria-hidden="true" />
+  return <LoaderCircle size={18} strokeWidth={1.85} className="spin" aria-hidden="true" />
 }
 
 export function DiagnosticsScreen({
@@ -24,6 +24,8 @@ export function DiagnosticsScreen({
   const [logs, setLogs] = useState(initialLogs)
   const [running, setRunning] = useState(false)
   const [refreshingLogs, setRefreshingLogs] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const copyTimer = useRef<number | null>(null)
 
   async function run() {
     setRunning(true)
@@ -54,7 +56,10 @@ export function DiagnosticsScreen({
     try {
       if (!navigator.clipboard) throw new Error('Clipboard access is unavailable.')
       await navigator.clipboard.writeText(logs.map((row) => `${row.time}  ${row.level}  ${row.message}`).join('\n'))
-      notify('Redacted logs copied.')
+      setCopied(true)
+      if (copyTimer.current) window.clearTimeout(copyTimer.current)
+      copyTimer.current = window.setTimeout(() => setCopied(false), 1400)
+      notify('Redacted logs copied.', 'success')
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Logs could not be copied.', 'danger')
     }
@@ -69,34 +74,55 @@ export function DiagnosticsScreen({
           <h2>{passing === checks.length ? 'Everything looks good' : 'SwiftSlate needs attention'}</h2>
           <p>These checks run on this computer. API keys and captured text are never included in logs.</p>
         </div>
-        <Button variant="primary" loading={running} icon={<Play size={16}/>} onClick={run}>Run all checks</Button>
+        <Button variant="primary" loading={running} icon={<Play size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={run}>Run all checks</Button>
       </section>
 
       <section className="diagnostic-grid">
         {checks.map((check, index) => (
-          <SpotlightCard className={`diagnostic-check check-${check.status}`} key={check.id} delay={index * 0.035}>
-            <span className="check-icon"><CheckIcon status={check.status}/></span>
+          <SpotlightCard interactive className={`diagnostic-check check-${check.status}`} key={check.id} delay={index * 0.025}>
+            <span className="check-icon"><CheckIcon status={check.status} /></span>
             <div><strong>{check.label}</strong><p>{check.status === 'idle' && running ? 'Checking…' : check.detail}</p></div>
-            <Badge tone={check.status === 'pass' ? 'success' : check.status === 'warn' ? 'warning' : check.status === 'fail' ? 'danger' : 'neutral'}>{check.status === 'pass' ? 'Passed' : check.status}</Badge>
+            <Badge tone={check.status === 'pass' ? 'success' : check.status === 'warn' ? 'warning' : check.status === 'fail' ? 'danger' : 'neutral'}>
+              {check.status === 'pass' ? 'Passed' : check.status}
+            </Badge>
           </SpotlightCard>
         ))}
       </section>
 
-      <SpotlightCard className="logs-card" delay={0.12}>
+      <SpotlightCard className="logs-card">
         <div className="section-heading">
           <div><span className="section-kicker">Redacted automatically</span><h3>Runtime log</h3></div>
-          <div className="log-actions"><Button variant="ghost" size="sm" loading={refreshingLogs} icon={<RefreshCw size={14}/>} onClick={refreshLogs}>Refresh</Button><Button variant="secondary" size="sm" icon={<Clipboard size={14}/>} onClick={copyLogs}>Copy logs</Button></div>
-        </div>
-        <div className="log-console" role="log" aria-label="Runtime log">
-          <div className="log-console-bar"><span/><span/><span/><strong><Terminal size={13}/> debug.log</strong></div>
-          <div className="log-lines">
-            {logs.map((entry, index) => (
-              <div className="log-line" key={`${entry.time}-${index}`}><time>{entry.time}</time><span className={`log-level log-${entry.level.toLowerCase()}`}>{entry.level}</span><code>{entry.message}</code></div>
-            ))}
-            {!logs.length ? <div className="log-line"><code>No runtime events have been recorded yet.</code></div> : null}
+          <div className="log-actions">
+            <Button variant="ghost" size="sm" loading={refreshingLogs} icon={<RefreshCw size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={refreshLogs}>Refresh</Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={copied
+                ? <Check size={16} strokeWidth={1.85} aria-hidden="true" />
+                : <Clipboard size={16} strokeWidth={1.85} aria-hidden="true" />}
+              onClick={copyLogs}
+            >
+              {copied ? 'Copied' : 'Copy logs'}
+            </Button>
           </div>
         </div>
-        <div className="log-privacy"><ShieldCheck size={15}/><span>Secrets matching configured API keys are replaced before they reach this log.</span></div>
+        <div className="log-console" role="log" aria-label="Runtime log">
+          <div className="log-console-bar">
+            <strong><Terminal size={14} strokeWidth={1.85} aria-hidden="true" /> debug.log</strong>
+            <span className="log-count">{logs.length} event{logs.length === 1 ? '' : 's'}</span>
+          </div>
+          <div className="log-lines">
+            {logs.map((entry, index) => (
+              <div className="log-line" key={`${entry.time}-${index}`}>
+                <time>{entry.time}</time>
+                <span className={`log-level log-${entry.level.toLowerCase()}`}>{entry.level}</span>
+                <code>{entry.message}</code>
+              </div>
+            ))}
+            {!logs.length ? <div className="log-line log-empty"><code>No runtime events have been recorded yet.</code></div> : null}
+          </div>
+        </div>
+        <div className="log-privacy"><ShieldCheck size={16} strokeWidth={1.85} aria-hidden="true" /><span>Secrets matching configured API keys are replaced before they reach this log.</span></div>
       </SpotlightCard>
     </div>
   )

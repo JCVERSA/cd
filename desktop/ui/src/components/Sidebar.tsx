@@ -25,33 +25,27 @@ const nav: Array<{ id: PageId; label: string; icon: typeof Gauge; section?: stri
 
 export function Sidebar({
   collapsed,
+  paused = false,
   active,
   onNavigate,
   onCollapse,
 }: {
   collapsed: boolean
+  paused?: boolean
   active: PageId
   onNavigate: (page: PageId) => void
   onCollapse: () => void
 }) {
   return (
-    <motion.aside
-      className={cn('sidebar', collapsed && 'sidebar-collapsed')}
-      animate={{ width: collapsed ? 68 : 244 }}
-      transition={{ type: 'spring', stiffness: 330, damping: 36 }}
-    >
+    <aside className={cn('sidebar', collapsed && 'sidebar-collapsed')} aria-label="Workspace sidebar">
       <div className="brand">
         <span className="brand-mark">
           <BrandLogo size={34} />
         </span>
-        <motion.div
-          className="brand-copy"
-          animate={{ opacity: collapsed ? 0 : 1, width: collapsed ? 0 : 'auto' }}
-          aria-hidden={collapsed}
-        >
+        <div className={cn('brand-copy', collapsed && 'nav-label-hidden')} aria-hidden={collapsed}>
           <strong>SwiftSlate</strong>
           <span>Write at light speed</span>
-        </motion.div>
+        </div>
       </div>
 
       <nav className="sidebar-nav" aria-label="Main navigation">
@@ -67,8 +61,14 @@ export function Sidebar({
                 aria-current={active === item.id ? 'page' : undefined}
                 title={collapsed ? item.label : undefined}
               >
-                {active === item.id ? <motion.span layoutId="active-nav" className="nav-active-pill" /> : null}
-                <Icon size={18} strokeWidth={1.8} />
+                {active === item.id ? (
+                  <motion.span
+                    layoutId="active-nav"
+                    className="nav-active-pill"
+                    transition={{ type: 'spring', duration: 0.28, bounce: 0.1 }}
+                  />
+                ) : null}
+                <Icon size={18} strokeWidth={1.85} aria-hidden="true" />
                 <span className={cn('nav-label', collapsed && 'nav-label-hidden')}>{item.label}</span>
               </button>
             </div>
@@ -78,20 +78,27 @@ export function Sidebar({
 
       <div className="sidebar-runtime">
         <div className="mini-status">
-          <span className="status-orbit"><span /></span>
+          <span className={cn('status-orbit', paused && 'status-orbit-paused')} aria-hidden="true">
+            <span />
+          </span>
           <div className={cn('mini-status-copy', collapsed && 'nav-label-hidden')}>
-            <strong>Engine active</strong>
-            <span>Listening globally</span>
+            <strong>{paused ? 'Engine paused' : 'Engine active'}</strong>
+            <span>{paused ? 'Triggers suspended' : 'Listening globally'}</span>
           </div>
         </div>
       </div>
 
-      <button type="button" className="collapse-button" onClick={onCollapse} aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}>
-        <motion.span animate={{ rotate: collapsed ? 180 : 0 }}>
-          <ChevronLeft size={16} />
-        </motion.span>
+      <button
+        type="button"
+        className="collapse-button"
+        onClick={onCollapse}
+        aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+      >
+        <span className={cn('collapse-chevron', collapsed && 'collapse-chevron-rotated')} aria-hidden="true">
+          <ChevronLeft size={16} strokeWidth={1.85} />
+        </span>
         <span className={cn(collapsed && 'nav-label-hidden')}>Collapse</span>
       </button>
-    </motion.aside>
+    </aside>
   )
 }
