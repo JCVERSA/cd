@@ -1,9 +1,19 @@
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion } from 'motion/react'
 import type { HTMLMotionProps } from 'motion/react'
-import { AlertCircle, Check, ChevronDown, Eye, EyeOff, KeyRound, LoaderCircle, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, PropsWithChildren, ReactNode } from 'react'
+import {
+  AlertCircleIcon,
+  CheckCircleIcon,
+  CheckMarkIcon,
+  ChevronMorphIcon,
+  CloseXIcon,
+  EyeToggleIcon,
+  KeyVaultIcon,
+  SearchIcon,
+  SpinnerRingIcon,
+} from '../icons'
 
 const EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1]
 
@@ -39,7 +49,7 @@ export function Button({
       type={type}
       {...props}
     >
-      {loading ? <LoaderCircle size={16} strokeWidth={1.85} className="spin" aria-hidden="true" /> : icon}
+      {loading ? <SpinnerRingIcon size={16} strokeWidth={1.85} className="spin" aria-hidden="true" /> : icon}
       {children}
     </motion.button>
   )
@@ -202,7 +212,7 @@ export function Modal({ open, onClose, title, description, footer, children, siz
                 <h2 id={titleId}>{title}</h2>
                 {description ? <p id={descriptionId}>{description}</p> : null}
               </div>
-              <Button variant="ghost" size="icon" aria-label="Close dialog" onClick={onClose} icon={<X size={18} strokeWidth={1.85} aria-hidden="true" />} />
+              <Button variant="ghost" size="icon" aria-label="Close dialog" onClick={onClose} icon={<CloseXIcon size={17} strokeWidth={1.85} aria-hidden="true" />} />
             </header>
             <div className="modal-body">{children}</div>
             {footer ? <footer className="modal-footer">{footer}</footer> : null}
@@ -227,8 +237,8 @@ export function Toasts({ items }: { items: ToastItem[] }) {
             animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.18, ease: EASE_OUT } }}
             exit={{ opacity: 0, y: 6, scale: 0.98, transition: { duration: 0.12, ease: EASE_OUT } }}
           >
-            {toast.tone === 'success' ? <Check size={16} strokeWidth={1.85} aria-hidden="true" /> : null}
-            {toast.tone === 'danger' ? <AlertCircle size={16} strokeWidth={1.85} aria-hidden="true" /> : null}
+            {toast.tone === 'success' ? <CheckCircleIcon size={16} strokeWidth={1.85} aria-hidden="true" /> : null}
+            {toast.tone === 'danger' ? <AlertCircleIcon size={16} strokeWidth={1.85} aria-hidden="true" /> : null}
             {toast.message}
           </motion.div>
         ))}
@@ -265,7 +275,7 @@ export function SecretInput({
   const [revealed, setRevealed] = useState(false)
   return (
     <div className="secret-input-wrap">
-      <KeyRound size={16} strokeWidth={1.85} aria-hidden="true" />
+      <KeyVaultIcon size={16} strokeWidth={1.85} aria-hidden="true" />
       <input
         id={id}
         type={revealed ? 'text' : 'password'}
@@ -282,9 +292,7 @@ export function SecretInput({
         aria-pressed={revealed}
         onClick={() => setRevealed((current) => !current)}
       >
-        {revealed
-          ? <EyeOff size={15} strokeWidth={1.85} aria-hidden="true" />
-          : <Eye size={15} strokeWidth={1.85} aria-hidden="true" />}
+        <EyeToggleIcon size={15} strokeWidth={1.85} morphed={revealed} aria-hidden="true" />
       </button>
     </div>
   )
@@ -577,7 +585,7 @@ export function Select<T extends string = string>({
             <span className="select-trigger-detail">— {selectedOption.detail}</span>
           ) : null}
         </span>
-        <ChevronDown size={16} strokeWidth={1.85} className={cn('select-chevron', open && 'select-chevron-open')} aria-hidden="true" />
+        <ChevronMorphIcon size={16} strokeWidth={1.85} morphed={open} className={cn('select-chevron', open && 'select-chevron-open')} aria-hidden="true" />
       </button>
 
       {portalTarget
@@ -602,7 +610,7 @@ export function Select<T extends string = string>({
                 >
                   {isSearchable ? (
                     <div className="select-search">
-                      <Search size={14} strokeWidth={1.85} aria-hidden="true" />
+                      <SearchIcon size={14} strokeWidth={1.85} aria-hidden="true" />
                       <input
                         ref={searchRef}
                         type="text"
@@ -660,7 +668,7 @@ export function Select<T extends string = string>({
                             </span>
                             {isSelected ? (
                               <span className="select-option-check" aria-hidden="true">
-                                <Check size={13} />
+                                <CheckMarkIcon size={13} />
                               </span>
                             ) : null}
                           </div>

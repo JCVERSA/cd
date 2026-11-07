@@ -1,6 +1,6 @@
-import { Check, Clipboard, CloudOff, Info } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { Badge, Button, SpotlightCard, cn } from '../components/ui'
+import { CopyCheckIcon, InfoCircleIcon, OfflineCloudIcon } from '../icons'
 import { styles } from '../styleTransforms'
 
 const defaultSample = 'SwiftSlate makes writing feel effortless 2026'
@@ -39,7 +39,7 @@ export function StylesScreen({
           <h2>Style text without a network request</h2>
           <p>Unicode presentation characters run 100% locally and leave accents, emoji, and non-Latin scripts untouched.</p>
         </div>
-        <Badge tone="success"><CloudOff size={12} strokeWidth={1.85} aria-hidden="true" /> Offline engine</Badge>
+        <Badge tone="success"><OfflineCloudIcon size={12} strokeWidth={1.85} aria-hidden="true" /> Offline engine</Badge>
       </section>
 
       <SpotlightCard className="foundry-composer">
@@ -67,9 +67,7 @@ export function StylesScreen({
             <Button
               variant="primary"
               size="sm"
-              icon={copiedId === active.id
-                ? <Check size={15} strokeWidth={1.85} aria-hidden="true" />
-                : <Clipboard size={15} strokeWidth={1.85} aria-hidden="true" />}
+              icon={<CopyCheckIcon size={15} strokeWidth={1.85} morphed={copiedId === active.id} aria-hidden="true" />}
               onClick={() => void copyText(activeOutput, active.id)}
             >
               {copiedId === active.id ? 'Copied' : 'Copy specimen'}
@@ -112,7 +110,7 @@ export function StylesScreen({
       </section>
 
       <div className="style-note">
-        <Info size={16} strokeWidth={1.85} aria-hidden="true" />
+        <InfoCircleIcon size={16} strokeWidth={1.85} aria-hidden="true" />
         <p>Unicode styles substitute code points rather than changing the host application’s font. Visual weight varies slightly by installed system font.</p>
       </div>
     </div>

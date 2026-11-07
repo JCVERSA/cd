@@ -1,4 +1,5 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import axe from 'axe-core'
 import { useState } from 'react'
@@ -6,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { api } from './api'
 import App from './App'
 import { Select } from './components/ui'
+import { GLYPH_CATALOG, pathSignature } from './icons'
 
 describe('SwiftSlate dashboard', () => {
   it('has no automatically detectable accessibility violations', async () => {
@@ -361,5 +363,45 @@ describe('SwiftSlate dashboard', () => {
     await user.type(searchInput, 'Cerebras{Enter}')
 
     expect(await screen.findByText('Choose where SwiftSlate thinks')).toBeInTheDocument()
+  })
+
+  it('maintains isomorphic SVG morph paths across all bespoke glyphs and morphs on tab/control interactions', async () => {
+    for (const [name, specs] of Object.entries(GLYPH_CATALOG)) {
+      expect(specs.length, name).toBeGreaterThan(0)
+      for (const spec of specs) {
+        expect(pathSignature(spec.rest), name).toBe(pathSignature(spec.morph))
+      }
+    }
+
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    // Active Overview tab starts morphed; inactive Playground tab morphs on pointerenter and resets on pointerleave
+    const overviewNav = screen.getByRole('button', { name: 'Overview' })
+    const playgroundNav = screen.getByRole('button', { name: 'Playground' })
+    const overviewSvg = overviewNav.querySelector('[data-slate-glyph="overview"]') as SVGElement
+    const playgroundSvg = playgroundNav.querySelector('[data-slate-glyph="playground"]') as SVGElement
+
+    expect(overviewSvg).toHaveAttribute('data-morphed', 'true')
+    expect(playgroundSvg).toHaveAttribute('data-morphed', 'false')
+
+    fireEvent.pointerEnter(playgroundNav)
+    expect(playgroundSvg).toHaveAttribute('data-morphed', 'true')
+    fireEvent.pointerLeave(playgroundNav)
+    expect(playgroundSvg).toHaveAttribute('data-morphed', 'false')
+
+    // Clicking Pause morphs PlayPauseIcon (false -> true) and SidebarToggleIcon morphs on collapse
+    const pauseBtn = screen.getByRole('button', { name: 'Pause' })
+    expect(pauseBtn.querySelector('[data-slate-glyph="playPause"]')).toHaveAttribute('data-morphed', 'false')
+    await user.click(pauseBtn)
+    const resumeBtn = await screen.findByRole('button', { name: 'Resume' })
+    expect(resumeBtn.querySelector('[data-slate-glyph="playPause"]')).toHaveAttribute('data-morphed', 'true')
+
+    const collapseBtn = screen.getByRole('button', { name: 'Collapse sidebar' })
+    expect(collapseBtn.querySelector('[data-slate-glyph="sidebarToggle"]')).toHaveAttribute('data-morphed', 'false')
+    await user.click(collapseBtn)
+    const expandBtn = screen.getByRole('button', { name: 'Expand sidebar' })
+    expect(expandBtn.querySelector('[data-slate-glyph="sidebarToggle"]')).toHaveAttribute('data-morphed', 'true')
   })
 })

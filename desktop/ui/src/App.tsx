@@ -1,14 +1,3 @@
-import {
-  Activity,
-  ArrowUpRight,
-  Bot,
-  Command,
-  Gauge,
-  Palette,
-  Search,
-  Settings,
-  TerminalSquare,
-} from 'lucide-react'
 import { MotionConfig } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
@@ -19,6 +8,17 @@ import { ProviderLogo, getProviderTileClass } from './components/ProviderLogo'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { Button, Modal, Skeleton, Toasts, cn, type ToastItem } from './components/ui'
+import {
+  ArrowUpRightIcon,
+  CommandsIcon,
+  DiagnosticsIcon,
+  OverviewIcon,
+  PlaygroundIcon,
+  ProvidersIcon,
+  SearchIcon,
+  SettingsIcon,
+  StylesIcon,
+} from './icons'
 import { CommandsScreen } from './screens/Commands'
 import { DiagnosticsScreen } from './screens/Diagnostics'
 import { Overview } from './screens/Overview'
@@ -28,14 +28,14 @@ import { SettingsScreen } from './screens/Settings'
 import { StylesScreen } from './screens/Styles'
 import type { AppSnapshot, PageId, Provider, ProviderId, ThemeId } from './types'
 
-const pages: Array<{ id: PageId; label: string; description: string; icon: typeof Gauge }> = [
-  { id: 'overview', label: 'Overview', description: 'Runtime telemetry and routing', icon: Gauge },
-  { id: 'playground', label: 'Playground', description: 'Test a trigger in a safe split buffer', icon: TerminalSquare },
-  { id: 'providers', label: 'Providers', description: 'Models, endpoints, and credentials', icon: Bot },
-  { id: 'commands', label: 'Commands', description: 'Inline trigger library', icon: Command },
-  { id: 'styles', label: 'Styles', description: 'Offline Unicode text foundry', icon: Palette },
-  { id: 'settings', label: 'Settings', description: 'Behavior, startup, and theme', icon: Settings },
-  { id: 'diagnostics', label: 'Diagnostics', description: 'Health matrix and debug logs', icon: Activity },
+const pages: Array<{ id: PageId; label: string; description: string; icon: typeof OverviewIcon }> = [
+  { id: 'overview', label: 'Overview', description: 'Runtime telemetry and routing', icon: OverviewIcon },
+  { id: 'playground', label: 'Playground', description: 'Test a trigger in a safe split buffer', icon: PlaygroundIcon },
+  { id: 'providers', label: 'Providers', description: 'Models, endpoints, and credentials', icon: ProvidersIcon },
+  { id: 'commands', label: 'Commands', description: 'Inline trigger library', icon: CommandsIcon },
+  { id: 'styles', label: 'Styles', description: 'Offline Unicode text foundry', icon: StylesIcon },
+  { id: 'settings', label: 'Settings', description: 'Behavior, startup, and theme', icon: SettingsIcon },
+  { id: 'diagnostics', label: 'Diagnostics', description: 'Health matrix and debug logs', icon: DiagnosticsIcon },
 ]
 
 const themeOptions: Array<{ id: ThemeId; name: string; color: string }> = [
@@ -52,7 +52,7 @@ type PaletteAction = {
   title: string
   subtitle: string
   run: () => void
-  icon?: typeof Gauge
+  icon?: typeof OverviewIcon
   providerId?: ProviderId
 }
 
@@ -144,7 +144,7 @@ export default function App() {
         group: 'Commands',
         title: `${prefix}${item.trigger}`,
         subtitle: item.prompt || item.value || 'Built-in command',
-        icon: Command,
+        icon: CommandsIcon,
         run: () => (item.type === 'ai' || item.type === 'style' ? openPlaygroundWith(item.trigger) : navigate('commands')),
       }))
 
@@ -282,7 +282,7 @@ export default function App() {
         <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search SwiftSlate" description="Jump to a screen, switch providers, or launch a command." size="md">
           <div className="command-palette">
             <div className="palette-search">
-              <Search size={16} strokeWidth={1.85} aria-hidden="true" />
+              <SearchIcon size={16} strokeWidth={1.85} morphed={Boolean(search)} aria-hidden="true" />
               <input
                 data-autofocus=""
                 value={search}
@@ -317,13 +317,13 @@ export default function App() {
                               <ProviderLogo id={item.providerId} size={15} />
                             </span>
                           ) : Icon ? (
-                            <span className="palette-icon-tile" aria-hidden="true"><Icon size={16} strokeWidth={1.85} /></span>
+                            <span className="palette-icon-tile" aria-hidden="true"><Icon size={16} strokeWidth={1.85} morphed={isActive} /></span>
                           ) : null}
                           <div>
                             <strong>{item.title}</strong>
                             <small>{item.subtitle}</small>
                           </div>
-                          <ArrowUpRight size={14} strokeWidth={1.85} className="palette-enter-icon" aria-hidden="true" />
+                          <ArrowUpRightIcon size={14} strokeWidth={1.85} morphed={isActive} className="palette-enter-icon" aria-hidden="true" />
                         </button>
                       )
                     })}

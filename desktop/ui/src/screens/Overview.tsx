@@ -1,16 +1,15 @@
-import {
-  ArrowRight,
-  Bot,
-  CheckCircle2,
-  Command,
-  MousePointer2,
-  Palette,
-  PauseCircle,
-  PlayCircle,
-  ShieldCheck,
-} from 'lucide-react'
 import { ProviderLogo, getProviderTileClass } from '../components/ProviderLogo'
 import { Badge, Button, SpotlightCard } from '../components/ui'
+import {
+  ArrowRightIcon,
+  CheckCircleIcon,
+  CommandsIcon,
+  CursorSparkIcon,
+  PlayPauseCircleIcon,
+  ProvidersIcon,
+  ShieldCheckIcon,
+  StylesIcon,
+} from '../icons'
 import type { AppSnapshot, PageId } from '../types'
 
 const quickTriggers = ['fix', 'improve', 'shorten', 'formal', 'bold'] as const
@@ -60,16 +59,14 @@ export function Overview({
               <div className="hero-actions">
                 <Button
                   variant="primary"
-                  icon={runtime.paused
-                    ? <PlayCircle size={16} strokeWidth={1.85} aria-hidden="true" />
-                    : <PauseCircle size={16} strokeWidth={1.85} aria-hidden="true" />}
+                  icon={<PlayPauseCircleIcon size={16} strokeWidth={1.85} morphed={runtime.paused} aria-hidden="true" />}
                   onClick={onPause}
                 >
                   {runtime.paused ? 'Resume engine' : 'Pause engine'}
                 </Button>
                 <Button
                   variant="secondary"
-                  icon={<MousePointer2 size={16} strokeWidth={1.85} aria-hidden="true" />}
+                  icon={<CursorSparkIcon size={16} strokeWidth={1.85} aria-hidden="true" />}
                   onClick={() => onNavigate('playground')}
                 >
                   Open playground
@@ -155,7 +152,7 @@ export function Overview({
           <div className="routing-pod-footer">
             <button type="button" className="text-link" onClick={() => onNavigate('providers')}>
               <span>{isProviderReady ? 'Switch or configure model' : 'Configure API key'}</span>
-              <ArrowRight size={15} strokeWidth={1.85} aria-hidden="true" />
+              <ArrowRightIcon size={15} strokeWidth={1.85} aria-hidden="true" />
             </button>
           </div>
         </SpotlightCard>
@@ -170,25 +167,25 @@ export function Overview({
             </div>
             <div className="launchpad-list">
               <button className="quick-action" type="button" onClick={() => onNavigate('commands')}>
-                <span className="quick-icon" aria-hidden="true"><Command size={16} strokeWidth={1.85} /></span>
+                <span className="quick-icon" aria-hidden="true"><CommandsIcon size={16} strokeWidth={1.85} /></span>
                 <span><strong>Create command</strong><small>Define a custom prompt or text snippet</small></span>
-                <ArrowRight size={15} strokeWidth={1.85} aria-hidden="true" />
+                <ArrowRightIcon size={15} strokeWidth={1.85} aria-hidden="true" />
               </button>
               <button className="quick-action" type="button" onClick={() => onNavigate('providers')}>
-                <span className="quick-icon" aria-hidden="true"><Bot size={16} strokeWidth={1.85} /></span>
+                <span className="quick-icon" aria-hidden="true"><ProvidersIcon size={16} strokeWidth={1.85} /></span>
                 <span><strong>Add provider</strong><small>14 free-tier and local engines ready</small></span>
-                <ArrowRight size={15} strokeWidth={1.85} aria-hidden="true" />
+                <ArrowRightIcon size={15} strokeWidth={1.85} aria-hidden="true" />
               </button>
               <button className="quick-action" type="button" onClick={() => onNavigate('styles')}>
-                <span className="quick-icon" aria-hidden="true"><Palette size={16} strokeWidth={1.85} /></span>
+                <span className="quick-icon" aria-hidden="true"><StylesIcon size={16} strokeWidth={1.85} /></span>
                 <span><strong>Typography foundry</strong><small>Preview offline Unicode styles</small></span>
-                <ArrowRight size={15} strokeWidth={1.85} aria-hidden="true" />
+                <ArrowRightIcon size={15} strokeWidth={1.85} aria-hidden="true" />
               </button>
             </div>
           </SpotlightCard>
 
           <div className="assurance-strip">
-            <ShieldCheck size={17} strokeWidth={1.85} aria-hidden="true" />
+            <ShieldCheckIcon size={17} strokeWidth={1.85} aria-hidden="true" />
             <p><strong>Local-first privacy:</strong> Unicode styles never touch the network, and API keys stay encrypted inside Windows DPAPI.</p>
           </div>
         </div>
@@ -204,7 +201,7 @@ export function Overview({
           <div className="activity-list">
             {activity.length ? activity.map((item) => (
               <div className="activity-row" key={item.id}>
-                <span className="activity-status" aria-hidden="true"><CheckCircle2 size={15} strokeWidth={1.85} /></span>
+                <span className="activity-status" aria-hidden="true"><CheckCircleIcon size={15} strokeWidth={1.85} /></span>
                 <div className="activity-main">
                   <strong>{item.command}</strong>
                   <span>{item.provider}</span>

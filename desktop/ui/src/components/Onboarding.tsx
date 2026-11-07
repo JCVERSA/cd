@@ -1,7 +1,15 @@
-import { ArrowLeft, ArrowRight, Check, Command, ExternalLink, ShieldCheck, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
+import {
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  BoltInstantIcon,
+  CheckMarkIcon,
+  CommandsIcon,
+  ExternalLaunchIcon,
+  ShieldCheckIcon,
+} from '../icons'
 import type { Provider, ProviderId } from '../types'
 import { BrandLogo } from './BrandLogo'
 import { ProviderLogo, getProviderPortalUrl, getProviderTileClass } from './ProviderLogo'
@@ -144,7 +152,7 @@ export function Onboarding({
                 </div>
               </div>
 
-              <div className="privacy-pill"><ShieldCheck size={15} strokeWidth={1.85} /> DPAPI encrypted · Zero telemetry</div>
+              <div className="privacy-pill"><ShieldCheckIcon size={15} strokeWidth={1.85} /> DPAPI encrypted · Zero telemetry</div>
             </div>
 
             <div className="onboarding-content">
@@ -158,8 +166,8 @@ export function Onboarding({
 
                 {step === 0 ? (
                   <div className="onboarding-features">
-                    <div><Zap size={18} strokeWidth={1.85} aria-hidden="true" /><span><strong>In-place</strong>Works inside any text box</span></div>
-                    <div><ShieldCheck size={18} strokeWidth={1.85} aria-hidden="true" /><span><strong>Private</strong>Local styles never use network</span></div>
+                    <div><BoltInstantIcon size={18} strokeWidth={1.85} aria-hidden="true" /><span><strong>In-place</strong>Works inside any text box</span></div>
+                    <div><ShieldCheckIcon size={18} strokeWidth={1.85} aria-hidden="true" /><span><strong>Private</strong>Local styles never use network</span></div>
                   </div>
                 ) : null}
 
@@ -170,7 +178,7 @@ export function Onboarding({
                         <span className={`onboarding-provider-tile ${getProviderTileClass(item.id)}`}><ProviderLogo id={item.id} size={18} /></span>
                         <strong>{item.name}</strong>
                         <small>{item.local ? 'Runs on this PC' : item.freeTier ? 'Free tier ready' : item.description}</small>
-                        {provider === item.id ? <i aria-hidden="true"><Check size={12} strokeWidth={2.2} /></i> : null}
+                        {provider === item.id ? <i aria-hidden="true"><CheckMarkIcon size={12} strokeWidth={2.2} /></i> : null}
                       </button>
                     ))}
                   </div>
@@ -178,7 +186,7 @@ export function Onboarding({
 
                 {step === 2 ? (
                   provider === 'ollama' ? (
-                    <div className="onboarding-local-ready"><Check size={18} strokeWidth={1.85} aria-hidden="true" /><div><strong>Ollama selected</strong><span>Default endpoint: http://127.0.0.1:11434</span></div></div>
+                    <div className="onboarding-local-ready"><CheckMarkIcon size={18} strokeWidth={1.85} aria-hidden="true" /><div><strong>Ollama selected</strong><span>Default endpoint: http://127.0.0.1:11434</span></div></div>
                   ) : (
                     <div className="onboarding-key-field">
                       <div className="api-key-header">
@@ -186,7 +194,7 @@ export function Onboarding({
                         {selectedPortalUrl ? (
                           <button type="button" className="provider-key-inline" onClick={() => void openSelectedPortal()}>
                             <span>Get {selectedProvider?.name || provider} API key</span>
-                            <ExternalLink size={12} strokeWidth={1.85} aria-hidden="true" />
+                            <ExternalLaunchIcon size={12} strokeWidth={1.85} aria-hidden="true" />
                           </button>
                         ) : null}
                       </div>
@@ -212,10 +220,10 @@ export function Onboarding({
 
               {error ? <div className="inline-message inline-message-danger onboarding-error" role="alert">{error}</div> : null}
               <div className="onboarding-actions">
-                {step > 0 ? <Button variant="ghost" icon={<ArrowLeft size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setStep(step - 1)}>Back</Button> : <span />}
+                {step > 0 ? <Button variant="ghost" icon={<ArrowLeftIcon size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setStep(step - 1)}>Back</Button> : <span />}
                 {step < steps.length - 1
-                  ? <Button variant="primary" onClick={() => setStep(step + 1)}>Continue <ArrowRight size={16} strokeWidth={1.85} aria-hidden="true" /></Button>
-                  : <Button variant="primary" loading={completing} icon={<Command size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={finish}>Open SwiftSlate</Button>}
+                  ? <Button variant="primary" onClick={() => setStep(step + 1)}>Continue <ArrowRightIcon size={16} strokeWidth={1.85} aria-hidden="true" /></Button>
+                  : <Button variant="primary" loading={completing} icon={<CommandsIcon size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={finish}>Open SwiftSlate</Button>}
               </div>
             </div>
           </motion.section>

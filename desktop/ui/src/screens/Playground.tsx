@@ -1,7 +1,16 @@
-import { ArrowLeftRight, ArrowRight, Check, Clipboard, Clock3, Eraser, Play, Sparkles } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { Badge, Button, Select, SpotlightCard, cn } from '../components/ui'
+import {
+  ArrowRightIcon,
+  CheckMarkIcon,
+  ClockPulseIcon,
+  CopyCheckIcon,
+  EraserSweepIcon,
+  PlayActionIcon,
+  SparkleIcon,
+  SwapChainIcon,
+} from '../icons'
 import type { Command as CommandType } from '../types'
 
 const sample = 'hey team just wanted to check if we can move the meeting to tomorrow afternoon because the current time does not work well for everyone'
@@ -109,7 +118,7 @@ export function Playground({
             </div>
             <Button
               variant="primary"
-              icon={<Play size={15} strokeWidth={1.85} aria-hidden="true" />}
+              icon={<PlayActionIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
               loading={running}
               disabled={!input.trim()}
               onClick={run}
@@ -165,7 +174,7 @@ export function Playground({
               <Button
                 variant="ghost"
                 size="sm"
-                icon={<Eraser size={15} strokeWidth={1.85} aria-hidden="true" />}
+                icon={<EraserSweepIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
                 onClick={() => setInput('')}
               >
                 Clear
@@ -174,32 +183,32 @@ export function Playground({
           </section>
 
           <div className="playground-flow" aria-hidden="true">
-            <ArrowRight size={18} strokeWidth={1.85} />
+            <ArrowRightIcon size={18} strokeWidth={1.85} morphed={running || Boolean(output)} />
           </div>
 
           <section className="editor-pane result-pane">
             <div className="pane-heading">
               <span>Transformed output</span>
-              {output ? <Badge tone="success"><Check size={12} strokeWidth={1.85} aria-hidden="true" /> Ready</Badge> : <Badge>Idle</Badge>}
+              {output ? <Badge tone="success"><CheckMarkIcon size={12} strokeWidth={1.85} aria-hidden="true" /> Ready</Badge> : <Badge>Idle</Badge>}
             </div>
             <div className="result-output" aria-live="polite">
               {output ? (
                 <div key={runCount} className="result-text-reveal">{output}</div>
               ) : (
                 <div className="result-placeholder">
-                  <Sparkles size={24} strokeWidth={1.85} aria-hidden="true" />
+                  <SparkleIcon size={24} strokeWidth={1.85} aria-hidden="true" />
                   <p>Run <code>{prefix}{selected}</code> to preview the inline replacement.</p>
                 </div>
               )}
             </div>
             <div className="editor-footer">
-              <span>{output ? <><Clock3 size={14} strokeWidth={1.85} aria-hidden="true" /> {duration} ms</> : 'Nothing pasted externally'}</span>
+              <span>{output ? <><ClockPulseIcon size={14} strokeWidth={1.85} aria-hidden="true" /> {duration} ms</> : 'Nothing pasted externally'}</span>
               <div className="result-footer-actions">
                 {output ? (
                   <Button
                     variant="ghost"
                     size="sm"
-                    icon={<ArrowLeftRight size={14} strokeWidth={1.85} aria-hidden="true" />}
+                    icon={<SwapChainIcon size={14} strokeWidth={1.85} aria-hidden="true" />}
                     onClick={() => { setInput(output); setOutput('') }}
                   >
                     Use as input
@@ -208,9 +217,7 @@ export function Playground({
                 <Button
                   variant="secondary"
                   size="sm"
-                  icon={copied
-                    ? <Check size={15} strokeWidth={1.85} aria-hidden="true" />
-                    : <Clipboard size={15} strokeWidth={1.85} aria-hidden="true" />}
+                  icon={<CopyCheckIcon size={15} strokeWidth={1.85} morphed={copied} aria-hidden="true" />}
                   disabled={!output}
                   onClick={copy}
                 >

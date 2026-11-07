@@ -1,7 +1,16 @@
-import { Accessibility, Check, Keyboard, MonitorUp, Palette, RotateCcw, Save, Shield } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { Badge, Button, Field, Select, SpotlightCard, Switch, cn } from '../components/ui'
+import {
+  CheckMarkIcon,
+  KeyboardDeckIcon,
+  MotionEaseIcon,
+  ResetArcIcon,
+  SaveVaultIcon,
+  ShieldCheckIcon,
+  ThemeSwatchIcon,
+  WindowLaunchIcon,
+} from '../icons'
 import type { RuntimeState, ThemeId } from '../types'
 
 const themes: Array<{ id: ThemeId; name: string; colors: string[] }> = [
@@ -54,7 +63,7 @@ export function SettingsScreen({
       <div className={cn('settings-commit-bar', isDirty && 'settings-commit-bar-dirty')}>
         <div className="settings-commit-status">
           <Badge tone={isDirty ? 'warning' : 'success'}>
-            {isDirty ? 'Unsaved changes' : <><Check size={12} strokeWidth={1.85} aria-hidden="true" /> Synced</>}
+            {isDirty ? 'Unsaved changes' : <><CheckMarkIcon size={12} strokeWidth={1.85} aria-hidden="true" /> Synced</>}
           </Badge>
           <span>{isDirty ? 'Save to apply changes to the background engine.' : 'Changes apply immediately after saving.'}</span>
         </div>
@@ -62,7 +71,7 @@ export function SettingsScreen({
           <Button
             variant="ghost"
             disabled={!isDirty}
-            icon={<RotateCcw size={15} strokeWidth={1.85} aria-hidden="true" />}
+            icon={<ResetArcIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
             onClick={() => setDraft(runtime)}
           >
             Reset changes
@@ -71,7 +80,7 @@ export function SettingsScreen({
             variant="primary"
             loading={saving}
             disabled={!isDirty && !saving}
-            icon={<Save size={15} strokeWidth={1.85} aria-hidden="true" />}
+            icon={<SaveVaultIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
             onClick={save}
           >
             Save settings
@@ -83,7 +92,7 @@ export function SettingsScreen({
         <div className="settings-rail">
           <SpotlightCard className="theme-card">
             <div className="settings-card-heading">
-              <span className="settings-heading-icon" aria-hidden="true"><Palette size={17} strokeWidth={1.85} /></span>
+              <span className="settings-heading-icon" aria-hidden="true"><ThemeSwatchIcon size={17} strokeWidth={1.85} /></span>
               <div><h2>Color theme</h2><p>Surfaces stay dark and calm; only the active accent shifts.</p></div>
             </div>
             <div className="theme-options">
@@ -104,7 +113,7 @@ export function SettingsScreen({
           </SpotlightCard>
 
           <div className="assurance-strip">
-            <Shield size={17} strokeWidth={1.85} aria-hidden="true" />
+            <ShieldCheckIcon size={17} strokeWidth={1.85} aria-hidden="true" />
             <p><strong>Zero telemetry:</strong> Preferences and diagnostics remain stored under your Windows profile.</p>
           </div>
         </div>
@@ -112,7 +121,7 @@ export function SettingsScreen({
         <div className="settings-column">
           <SpotlightCard className="settings-card">
             <div className="settings-card-heading">
-              <span className="settings-heading-icon" aria-hidden="true"><Keyboard size={17} strokeWidth={1.85} /></span>
+              <span className="settings-heading-icon" aria-hidden="true"><KeyboardDeckIcon size={17} strokeWidth={1.85} /></span>
               <div><h2>Command behavior</h2><p>Control how inline triggers are detected and pasted.</p></div>
             </div>
             <div className="settings-form-grid">
@@ -142,7 +151,7 @@ export function SettingsScreen({
 
           <SpotlightCard className="settings-card">
             <div className="settings-card-heading">
-              <span className="settings-heading-icon" aria-hidden="true"><MonitorUp size={17} strokeWidth={1.85} /></span>
+              <span className="settings-heading-icon" aria-hidden="true"><WindowLaunchIcon size={17} strokeWidth={1.85} /></span>
               <div><h2>Windows integration</h2><p>Startup registration and background tray lifecycle.</p></div>
             </div>
             <div className="setting-list">
@@ -159,7 +168,7 @@ export function SettingsScreen({
 
           <SpotlightCard className="settings-card">
             <div className="settings-card-heading">
-              <span className="settings-heading-icon" aria-hidden="true"><Accessibility size={17} strokeWidth={1.85} /></span>
+              <span className="settings-heading-icon" aria-hidden="true"><MotionEaseIcon size={17} strokeWidth={1.85} /></span>
               <div><h2>Accessibility</h2><p>SwiftSlate also honors the Windows OS reduced-motion preference.</p></div>
             </div>
             <div className="setting-list">

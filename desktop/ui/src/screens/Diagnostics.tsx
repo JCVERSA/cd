@@ -1,16 +1,26 @@
-import { AlertTriangle, Check, CheckCircle2, Clipboard, LoaderCircle, Play, RefreshCw, ShieldCheck, Terminal, XCircle } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { Badge, Button, SpotlightCard } from '../components/ui'
+import {
+  AlertTriangleIcon,
+  CheckCircleIcon,
+  CopyCheckIcon,
+  PlayActionIcon,
+  ShieldCheckIcon,
+  SpinnerRingIcon,
+  SyncArrowsIcon,
+  TerminalPromptIcon,
+  XCircleIcon,
+} from '../icons'
 import type { DiagnosticCheck, LogEntry } from '../types'
 
 type LogFilter = 'all' | 'info' | 'warn' | 'error'
 
 function CheckIcon({ status }: { status: DiagnosticCheck['status'] }) {
-  if (status === 'pass') return <CheckCircle2 size={17} strokeWidth={1.85} aria-hidden="true" />
-  if (status === 'warn') return <AlertTriangle size={17} strokeWidth={1.85} aria-hidden="true" />
-  if (status === 'fail') return <XCircle size={17} strokeWidth={1.85} aria-hidden="true" />
-  return <LoaderCircle size={17} strokeWidth={1.85} className="spin" aria-hidden="true" />
+  if (status === 'pass') return <CheckCircleIcon size={17} strokeWidth={1.85} aria-hidden="true" />
+  if (status === 'warn') return <AlertTriangleIcon size={17} strokeWidth={1.85} aria-hidden="true" />
+  if (status === 'fail') return <XCircleIcon size={17} strokeWidth={1.85} aria-hidden="true" />
+  return <SpinnerRingIcon size={17} strokeWidth={1.85} className="spin" aria-hidden="true" />
 }
 
 export function DiagnosticsScreen({
@@ -86,7 +96,7 @@ export function DiagnosticsScreen({
           <h2>{passing === checks.length ? 'Everything looks healthy' : 'SwiftSlate needs attention'}</h2>
           <p>{passing} of {checks.length} local runtime checks passing. API keys and typed text never enter logs.</p>
         </div>
-        <Button variant="primary" loading={running} icon={<Play size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={run}>Run all checks</Button>
+        <Button variant="primary" loading={running} icon={<PlayActionIcon size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={run}>Run all checks</Button>
       </section>
 
       <section className="diagnostics-split">
@@ -131,13 +141,11 @@ export function DiagnosticsScreen({
                   </button>
                 ))}
               </div>
-              <Button variant="ghost" size="sm" loading={refreshingLogs} icon={<RefreshCw size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={refreshLogs}>Refresh</Button>
+              <Button variant="ghost" size="sm" loading={refreshingLogs} icon={<SyncArrowsIcon size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={refreshLogs}>Refresh</Button>
               <Button
                 variant="secondary"
                 size="sm"
-                icon={copied
-                  ? <Check size={15} strokeWidth={1.85} aria-hidden="true" />
-                  : <Clipboard size={15} strokeWidth={1.85} aria-hidden="true" />}
+                icon={<CopyCheckIcon size={15} strokeWidth={1.85} morphed={copied} aria-hidden="true" />}
                 onClick={copyLogs}
               >
                 {copied ? 'Copied' : 'Copy logs'}
@@ -147,7 +155,7 @@ export function DiagnosticsScreen({
 
           <div className="log-console" role="log" aria-label="Runtime log">
             <div className="log-console-bar">
-              <strong><Terminal size={14} strokeWidth={1.85} aria-hidden="true" /> debug.log</strong>
+              <strong><TerminalPromptIcon size={14} strokeWidth={1.85} aria-hidden="true" /> debug.log</strong>
               <span className="log-count">{filteredLogs.length} event{filteredLogs.length === 1 ? '' : 's'}</span>
             </div>
             <div className="log-lines">
@@ -161,7 +169,7 @@ export function DiagnosticsScreen({
               {!filteredLogs.length ? <div className="log-line log-empty"><code>No matching runtime events recorded.</code></div> : null}
             </div>
           </div>
-          <div className="log-privacy"><ShieldCheck size={15} strokeWidth={1.85} aria-hidden="true" /><span>Configured provider keys are scrubbed automatically before reaching this console.</span></div>
+          <div className="log-privacy"><ShieldCheckIcon size={15} strokeWidth={1.85} aria-hidden="true" /><span>Configured provider keys are scrubbed automatically before reaching this console.</span></div>
         </SpotlightCard>
       </section>
     </div>

@@ -1,4 +1,4 @@
-import { Palette, Pause, Play, Search } from 'lucide-react'
+import { PlayPauseIcon, SearchIcon, ThemeSwatchIcon } from '../icons'
 import type { PageId } from '../types'
 import { Button } from './ui'
 
@@ -41,14 +41,14 @@ export function Topbar({
           <code>{prefix}fix</code>
         </span>
         <button className="search-trigger" type="button" onClick={onSearch} aria-label="Search SwiftSlate (Ctrl+K)">
-          <Search size={15} strokeWidth={1.85} aria-hidden="true" />
+          <SearchIcon size={15} strokeWidth={1.85} aria-hidden="true" />
           <span>Jump or run…</span>
           <kbd aria-hidden="true">Ctrl K</kbd>
         </button>
         <Button
           variant="ghost"
           size="icon"
-          icon={<Palette size={17} strokeWidth={1.85} aria-hidden="true" />}
+          icon={<ThemeSwatchIcon size={17} strokeWidth={1.85} aria-hidden="true" />}
           aria-label="Change color theme"
           onClick={onTheme}
         />
@@ -56,7 +56,7 @@ export function Topbar({
         <Button
           variant={paused ? 'primary' : 'secondary'}
           size="sm"
-          icon={paused ? <Play size={15} strokeWidth={1.85} aria-hidden="true" /> : <Pause size={15} strokeWidth={1.85} aria-hidden="true" />}
+          icon={<PlayPauseIcon size={14} morphed={paused} aria-hidden="true" />}
           onClick={onPause}
         >
           {paused ? 'Resume' : 'Pause'}

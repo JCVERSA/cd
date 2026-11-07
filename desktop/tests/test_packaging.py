@@ -72,8 +72,10 @@ class DesktopPackagingTest(unittest.TestCase):
         package = json.loads((ROOT / "ui" / "package.json").read_text(encoding="utf-8"))
         dependencies = package["dependencies"]
         all_packages = dependencies | package["devDependencies"]
-        self.assertEqual(dependencies["lucide-react"], "1.69.0")
+        self.assertFalse(any("lucide" in name.lower() for name in all_packages))
         self.assertFalse(any("hugeicon" in name.lower() for name in all_packages))
+        for icon_module in ("glyphGeometry.ts", "glyphCatalog.ts", "SlateIcon.ts", "index.ts"):
+            self.assertTrue((ROOT / "ui" / "src" / "icons" / icon_module).is_file(), icon_module)
         tsx_source = "".join(path.read_text(encoding="utf-8") for path in (ROOT / "ui" / "src").rglob("*.tsx"))
         self.assertNotIn("<svg", tsx_source)
         self.assertNotIn("<select", tsx_source)

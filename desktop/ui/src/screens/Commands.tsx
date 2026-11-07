@@ -1,14 +1,24 @@
-import { Bot, Pencil, Play, Plus, Search, Sparkles, Trash2, Type, Wand2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { Badge, Button, Field, Modal, Select, SpotlightCard, Switch } from '../components/ui'
+import {
+  EditPenIcon,
+  PlayActionIcon,
+  PlusCreateIcon,
+  ProvidersIcon,
+  SearchIcon,
+  SparkleIcon,
+  TrashBinIcon,
+  TypeGlyphIcon,
+  WandIcon,
+} from '../icons'
 import type { Command, CommandType } from '../types'
 
-const typeMeta: Record<CommandType, { label: string; icon: typeof Bot; tone: 'accent' | 'success' | 'warning' | 'neutral' }> = {
-  ai: { label: 'AI', icon: Bot, tone: 'accent' },
-  style: { label: 'Local style', icon: Sparkles, tone: 'success' },
-  'replacer-text': { label: 'Text', icon: Type, tone: 'warning' },
-  system: { label: 'System', icon: Wand2, tone: 'neutral' },
+const typeMeta: Record<CommandType, { label: string; icon: typeof ProvidersIcon; tone: 'accent' | 'success' | 'warning' | 'neutral' }> = {
+  ai: { label: 'AI', icon: ProvidersIcon, tone: 'accent' },
+  style: { label: 'Local style', icon: SparkleIcon, tone: 'success' },
+  'replacer-text': { label: 'Text', icon: TypeGlyphIcon, tone: 'warning' },
+  system: { label: 'System', icon: WandIcon, tone: 'neutral' },
 }
 
 function blankCommand(): Command {
@@ -85,13 +95,13 @@ export function CommandsScreen({
           <h2>Your command library</h2>
           <p>{enabledCount} active triggers ready after any sentence across Windows applications.</p>
         </div>
-        <Button variant="primary" icon={<Plus size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing(blankCommand())}>New command</Button>
+        <Button variant="primary" icon={<PlusCreateIcon size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing(blankCommand())}>New command</Button>
       </section>
 
       <SpotlightCard className="command-table-card">
         <div className="table-toolbar">
           <div className="filter-search">
-            <Search size={16} strokeWidth={1.85} aria-hidden="true" />
+            <SearchIcon size={16} strokeWidth={1.85} morphed={Boolean(query)} aria-hidden="true" />
             <input aria-label="Search commands" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands…" />
           </div>
           <div className="segmented-control" role="group" aria-label="Command type filter">
@@ -147,14 +157,14 @@ export function CommandsScreen({
                         size="icon"
                         aria-label={`Try .${command.trigger} in Playground`}
                         title={`Try ${prefix}${command.trigger}`}
-                        icon={<Play size={14} strokeWidth={1.85} aria-hidden="true" />}
+                        icon={<PlayActionIcon size={14} strokeWidth={1.85} aria-hidden="true" />}
                         onClick={() => onTryCommand?.(command.trigger)}
                       />
                     ) : null}
                     {command.type === 'system' ? null : (
                       <>
-                        <Button variant="ghost" size="icon" aria-label={`Edit .${command.trigger}`} icon={<Pencil size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing({ ...command })} />
-                        <Button variant="ghost" size="icon" aria-label={`Delete .${command.trigger}`} icon={<Trash2 size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setConfirmDelete(command)} />
+                        <Button variant="ghost" size="icon" aria-label={`Edit .${command.trigger}`} icon={<EditPenIcon size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing({ ...command })} />
+                        <Button variant="ghost" size="icon" aria-label={`Delete .${command.trigger}`} icon={<TrashBinIcon size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setConfirmDelete(command)} />
                       </>
                     )}
                   </div>
@@ -164,7 +174,7 @@ export function CommandsScreen({
           </div>
           {!filtered.length ? (
             <div className="empty-table">
-              <Search size={26} strokeWidth={1.85} aria-hidden="true" />
+              <SearchIcon size={26} strokeWidth={1.85} aria-hidden="true" />
               <strong>No commands found</strong>
               <span>Try another search or filter.</span>
             </div>
@@ -226,9 +236,9 @@ export function CommandsScreen({
         title="Delete command?"
         description={confirmDelete ? `.${confirmDelete.trigger} will stop working immediately.` : undefined}
         size="sm"
-        footer={<><Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button><Button variant="danger" icon={<Trash2 size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={remove}>Delete</Button></>}
+        footer={<><Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button><Button variant="danger" icon={<TrashBinIcon size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={remove}>Delete</Button></>}
       >
-        <div className="delete-warning"><Trash2 size={18} strokeWidth={1.85} aria-hidden="true" /><p>This cannot be undone, but you can recreate the command later.</p></div>
+        <div className="delete-warning"><TrashBinIcon size={18} strokeWidth={1.85} aria-hidden="true" /><p>This cannot be undone, but you can recreate the command later.</p></div>
       </Modal>
     </div>
   )

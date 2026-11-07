@@ -1,22 +1,21 @@
-import {
-  AlertCircle,
-  Check,
-  ExternalLink,
-  KeyRound,
-  LoaderCircle,
-  RefreshCw,
-  Search,
-  Server,
-  Settings2,
-  ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
-  TestTube2,
-} from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { ProviderLogo, getProviderPortalUrl, getProviderTileClass } from '../components/ProviderLogo'
 import { Badge, Button, Field, Modal, SecretInput, Select, SpotlightCard } from '../components/ui'
+import {
+  AlertCircleIcon,
+  CheckMarkIcon,
+  ExternalLaunchIcon,
+  KeyVaultIcon,
+  ProbeFlaskIcon,
+  SearchIcon,
+  ServerStackIcon,
+  ShieldCheckIcon,
+  SparkleIcon,
+  SpinnerRingIcon,
+  SyncArrowsIcon,
+  TuneSlidersIcon,
+} from '../icons'
 import type { Provider } from '../types'
 
 type ProviderFilter = 'all' | 'free' | 'cloud' | 'local'
@@ -166,7 +165,7 @@ export function ProvidersScreen({
         <div className="provider-summary-stats">
           <div><strong>{connected}</strong><span>ready</span></div>
           <div><strong>{freeCount}</strong><span>free-tier</span></div>
-          <div><ShieldCheck size={17} strokeWidth={1.85} aria-hidden="true" /><span>DPAPI bound</span></div>
+          <div><ShieldCheckIcon size={17} strokeWidth={1.85} aria-hidden="true" /><span>DPAPI bound</span></div>
         </div>
       </section>
 
@@ -192,7 +191,7 @@ export function ProvidersScreen({
           <Button
             variant="secondary"
             size="sm"
-            icon={<SlidersHorizontal size={15} strokeWidth={1.85} aria-hidden="true" />}
+            icon={<TuneSlidersIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
             onClick={() => open(activeRecord)}
           >
             Edit active routing
@@ -202,7 +201,7 @@ export function ProvidersScreen({
 
       <div className="provider-toolbar">
         <div className="filter-search">
-          <Search size={16} strokeWidth={1.85} aria-hidden="true" />
+          <SearchIcon size={16} strokeWidth={1.85} morphed={Boolean(query)} aria-hidden="true" />
           <input
             aria-label="Search providers"
             value={query}
@@ -260,7 +259,7 @@ export function ProvidersScreen({
                         onClick={() => void openPortal(provider)}
                       >
                         <span>{portalActionLabel}</span>
-                        <ExternalLink size={12} strokeWidth={1.85} aria-hidden="true" />
+                        <ExternalLaunchIcon size={12} strokeWidth={1.85} aria-hidden="true" />
                       </button>
                     ) : null}
                     {active ? (
@@ -268,7 +267,7 @@ export function ProvidersScreen({
                     ) : provider.connected || provider.keyConfigured ? (
                       <Badge tone="success">Ready</Badge>
                     ) : provider.freeTier && !provider.local ? (
-                      <Badge tone="success"><Sparkles size={12} strokeWidth={1.85} aria-hidden="true" />Free tier</Badge>
+                      <Badge tone="success"><SparkleIcon size={12} strokeWidth={1.85} aria-hidden="true" />Free tier</Badge>
                     ) : (
                       <Badge>Not configured</Badge>
                     )}
@@ -293,17 +292,17 @@ export function ProvidersScreen({
                 <div className="provider-card-footer">
                   <span className="credential-state">
                     {provider.local ? (
-                      <><Server size={15} strokeWidth={1.85} aria-hidden="true" /> No key required</>
+                      <><ServerStackIcon size={15} strokeWidth={1.85} aria-hidden="true" /> No key required</>
                     ) : provider.keyConfigured ? (
-                      <><KeyRound size={15} strokeWidth={1.85} aria-hidden="true" /> Key protected</>
+                      <><KeyVaultIcon size={15} strokeWidth={1.85} aria-hidden="true" /> Key protected</>
                     ) : (
-                      <><KeyRound size={15} strokeWidth={1.85} aria-hidden="true" /> Add a key</>
+                      <><KeyVaultIcon size={15} strokeWidth={1.85} aria-hidden="true" /> Add a key</>
                     )}
                   </span>
                   <Button
                     variant={active ? 'primary' : 'secondary'}
                     size="sm"
-                    icon={<Settings2 size={15} strokeWidth={1.85} aria-hidden="true" />}
+                    icon={<TuneSlidersIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
                     onClick={() => open(provider)}
                   >
                     Configure
@@ -315,7 +314,7 @@ export function ProvidersScreen({
         </section>
       ) : (
         <SpotlightCard className="provider-empty">
-          <Search size={24} strokeWidth={1.85} aria-hidden="true" />
+          <SearchIcon size={24} strokeWidth={1.85} aria-hidden="true" />
           <strong>No matching providers</strong>
           <span>Try another search term or switch back to all providers.</span>
           <Button size="sm" onClick={() => { setQuery(''); setFilter('all') }}>Clear filters</Button>
@@ -338,7 +337,7 @@ export function ProvidersScreen({
               variant="primary"
               loading={busy === 'save'}
               onClick={() => save(true)}
-              icon={<Check size={16} aria-hidden="true" />}
+              icon={<CheckMarkIcon size={16} aria-hidden="true" />}
             >
               {draft?.id === activeProvider ? 'Save changes' : 'Save & use provider'}
             </Button>
@@ -386,7 +385,7 @@ export function ProvidersScreen({
                       onClick={() => void openPortal(draft)}
                     >
                       <span>Get {draft.name} API key</span>
-                      <ExternalLink size={12} aria-hidden="true" />
+                      <ExternalLaunchIcon size={12} aria-hidden="true" />
                     </button>
                   ) : null}
                 </div>
@@ -411,7 +410,7 @@ export function ProvidersScreen({
               <div className="provider-test-actions">
                 <Button
                   size="sm"
-                  icon={busy === 'models' ? <LoaderCircle size={15} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <RefreshCw size={15} strokeWidth={1.85} aria-hidden="true" />}
+                  icon={busy === 'models' ? <SpinnerRingIcon size={15} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <SyncArrowsIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
                   disabled={Boolean(busy)}
                   onClick={fetchModels}
                 >
@@ -419,7 +418,7 @@ export function ProvidersScreen({
                 </Button>
                 <Button
                   size="sm"
-                  icon={busy === 'test' ? <LoaderCircle size={15} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <TestTube2 size={15} strokeWidth={1.85} aria-hidden="true" />}
+                  icon={busy === 'test' ? <SpinnerRingIcon size={15} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <ProbeFlaskIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
                   disabled={Boolean(busy)}
                   onClick={test}
                 >
@@ -433,8 +432,8 @@ export function ProvidersScreen({
                 role={testFeedback.tone === 'danger' ? 'alert' : 'status'}
               >
                 {testFeedback.tone === 'danger'
-                  ? <AlertCircle size={16} strokeWidth={1.85} aria-hidden="true" />
-                  : <Check size={16} strokeWidth={1.85} aria-hidden="true" />}
+                  ? <AlertCircleIcon size={16} strokeWidth={1.85} aria-hidden="true" />
+                  : <CheckMarkIcon size={16} strokeWidth={1.85} aria-hidden="true" />}
                 {testFeedback.text}
               </div>
             ) : null}

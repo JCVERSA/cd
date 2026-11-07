@@ -1,28 +1,28 @@
-import {
-  Activity,
-  Bot,
-  ChevronLeft,
-  ChevronRight,
-  Command,
-  Gauge,
-  Palette,
-  Settings,
-  TerminalSquare,
-} from 'lucide-react'
 import { motion } from 'motion/react'
+import {
+  ChevronRightIcon,
+  CommandsIcon,
+  DiagnosticsIcon,
+  OverviewIcon,
+  PlaygroundIcon,
+  ProvidersIcon,
+  SettingsIcon,
+  SidebarToggleIcon,
+  StylesIcon,
+} from '../icons'
 import type { PageId, ProviderId } from '../types'
 import { BrandLogo } from './BrandLogo'
 import { ProviderLogo, getProviderTileClass } from './ProviderLogo'
 import { cn } from './ui'
 
-const nav: Array<{ id: PageId; label: string; icon: typeof Gauge; dividerBefore?: boolean }> = [
-  { id: 'overview', label: 'Overview', icon: Gauge },
-  { id: 'playground', label: 'Playground', icon: TerminalSquare },
-  { id: 'providers', label: 'Providers', icon: Bot, dividerBefore: true },
-  { id: 'commands', label: 'Commands', icon: Command },
-  { id: 'styles', label: 'Styles', icon: Palette },
-  { id: 'settings', label: 'Settings', icon: Settings, dividerBefore: true },
-  { id: 'diagnostics', label: 'Diagnostics', icon: Activity },
+const nav: Array<{ id: PageId; label: string; icon: typeof OverviewIcon; dividerBefore?: boolean }> = [
+  { id: 'overview', label: 'Overview', icon: OverviewIcon },
+  { id: 'playground', label: 'Playground', icon: PlaygroundIcon },
+  { id: 'providers', label: 'Providers', icon: ProvidersIcon, dividerBefore: true },
+  { id: 'commands', label: 'Commands', icon: CommandsIcon },
+  { id: 'styles', label: 'Styles', icon: StylesIcon },
+  { id: 'settings', label: 'Settings', icon: SettingsIcon, dividerBefore: true },
+  { id: 'diagnostics', label: 'Diagnostics', icon: DiagnosticsIcon },
 ]
 
 export function Sidebar({
@@ -59,24 +59,25 @@ export function Sidebar({
       <nav className="sidebar-nav" aria-label="Main navigation">
         {nav.map((item) => {
           const Icon = item.icon
+          const isCurrent = active === item.id
           return (
             <div key={item.id} className="nav-group-item">
               {item.dividerBefore ? <span className="nav-divider" aria-hidden="true" /> : null}
               <button
                 type="button"
-                className={cn('nav-item', active === item.id && 'nav-item-active')}
+                className={cn('nav-item', isCurrent && 'nav-item-active')}
                 onClick={() => onNavigate(item.id)}
-                aria-current={active === item.id ? 'page' : undefined}
+                aria-current={isCurrent ? 'page' : undefined}
                 title={collapsed ? item.label : undefined}
               >
-                {active === item.id ? (
+                {isCurrent ? (
                   <motion.span
                     layoutId="active-nav"
                     className="nav-active-pill"
                     transition={{ type: 'spring', duration: 0.26, bounce: 0.08 }}
                   />
                 ) : null}
-                <Icon size={18} strokeWidth={1.85} aria-hidden="true" />
+                <Icon size={18} strokeWidth={1.85} morphed={isCurrent} aria-hidden="true" />
                 <span className={cn('nav-label', collapsed && 'nav-label-hidden')}>{item.label}</span>
               </button>
             </div>
@@ -99,7 +100,7 @@ export function Sidebar({
             <strong>{activeProviderName}</strong>
             <span>{activeModel || 'Select model'}</span>
           </span>
-          <ChevronRight size={14} strokeWidth={1.85} className={cn('sidebar-pod-arrow', collapsed && 'nav-label-hidden')} aria-hidden="true" />
+          <ChevronRightIcon size={14} strokeWidth={1.85} className={cn('sidebar-pod-arrow', collapsed && 'nav-label-hidden')} aria-hidden="true" />
         </button>
 
         <div className="sidebar-runtime">
@@ -121,8 +122,8 @@ export function Sidebar({
         onClick={onCollapse}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >
-        <span className={cn('collapse-chevron', collapsed && 'collapse-chevron-rotated')} aria-hidden="true">
-          <ChevronLeft size={16} strokeWidth={1.85} />
+        <span className="collapse-chevron" aria-hidden="true">
+          <SidebarToggleIcon size={17} strokeWidth={1.85} morphed={collapsed} />
         </span>
         <span className={cn(collapsed && 'nav-label-hidden')}>Collapse rail</span>
       </button>
