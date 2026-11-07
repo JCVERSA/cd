@@ -654,12 +654,13 @@
   .active-routing-copy > span { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .provider-toolbar { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 14px; padding: 10px 12px; gap: 10px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-1); }
-  .provider-grid { display: grid; grid-template-columns: repeat(3, minmax(250px, 1fr)); gap: 12px; }
+  .provider-grid { display: block; width: 100%; }
   .provider-empty { display: flex; min-height: 220px; padding: 28px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; }
   .provider-empty strong { color: var(--text-soft); font-size: 14px; }
   .provider-empty span { margin-bottom: 6px; font-size: 12.5px; }
   .provider-card { display: flex; min-height: 238px; flex-direction: column; padding: 18px; }
-  .provider-card-active { border-color: rgba(var(--accent-rgb),.32); box-shadow: 0 0 0 1px rgba(var(--accent-rgb),.08); }
+  .provider-card-active .chroma-card-rim { box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .36), inset 0 1px 0 rgba(255, 255, 255, .08); }
+  .provider-card-active { background: linear-gradient(180deg, rgba(var(--accent-rgb), .06) 0%, rgba(16, 16, 23, .97) 100%); }
   .provider-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .provider-state { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .provider-mark { display: grid; width: 38px; height: 38px; flex-shrink: 0; place-items: center; border: 1px solid rgba(255,255,255,.14); border-radius: 11px; background: rgba(255,255,255,.04); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
@@ -686,7 +687,7 @@
   .api-key-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
   .provider-card h3 { margin-top: 13px; font-size: 15.5px; font-weight: 620; letter-spacing: -.015em; }
-  .provider-card > p { min-height: 38px; margin-top: 5px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+  .provider-card .chroma-card-slot > p, .provider-card > p { min-height: 38px; margin-top: 5px; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
   .provider-details { display: grid; grid-template-columns: 1fr 1fr; margin-top: 12px; padding: 10px 0; border-top: 1px solid rgba(255,255,255,.055); border-bottom: 1px solid rgba(255,255,255,.055); }
   .provider-details > div { min-width: 0; }
   .provider-details > div + div { padding-left: 10px; border-left: 1px solid rgba(255,255,255,.055); }
@@ -771,13 +772,13 @@
   }
 
   .specimen-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(280px, 1fr));
+    display: block;
+    width: 100%;
     margin-top: 12px;
-    gap: 12px;
   }
   .specimen-card { padding: 0; }
-  .specimen-card-active { border-color: rgba(var(--accent-rgb), .34); background: rgba(var(--accent-rgb), .055); }
+  .specimen-card-active { background: linear-gradient(180deg, rgba(var(--accent-rgb), .075) 0%, rgba(16, 16, 23, .97) 100%); }
+  .specimen-card-active .chroma-card-rim { box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), .38), inset 0 1px 0 rgba(255, 255, 255, .08); }
   .specimen-select-hit {
     display: flex;
     width: 100%;
@@ -1005,7 +1006,6 @@
   @media (max-width: 1160px) {
     .screen { padding: 18px 18px 28px; }
     .engine-stage-top { grid-template-columns: 1fr; }
-    .provider-grid { grid-template-columns: repeat(2, minmax(230px, 1fr)); }
     .diagnostics-split { grid-template-columns: 1fr; }
   }
 
@@ -1032,13 +1032,12 @@
     .search-trigger { width: 36px; justify-content: center; padding: 0; }
     .search-trigger span, .search-trigger kbd { display: none; }
     .provider-summary-stats { display: none; }
-    .specimen-grid { grid-template-columns: 1fr; }
     .onboarding-panel { grid-template-columns: 1fr; width: min(580px, calc(100vw - 40px)); }
     .onboarding-art { display: none; }
   }
 
   @media (max-width: 760px) {
-    .provider-grid, .telemetry-ledger, .form-grid-two, .settings-form-grid, .onboarding-provider-grid, .onboarding-features { grid-template-columns: 1fr; }
+    .telemetry-ledger, .form-grid-two, .settings-form-grid, .onboarding-provider-grid, .onboarding-features { grid-template-columns: 1fr; }
     .telemetry-cell + .telemetry-cell { border-left: 0; border-top: 1px solid var(--border); }
     .settings-form-grid .field:first-child { max-width: none; }
     .playground-select-group .select-trigger { width: 190px; }

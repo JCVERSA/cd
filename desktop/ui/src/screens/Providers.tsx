@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api } from '../api'
-import { ProviderLogo, getProviderPortalUrl, getProviderTileClass } from '../components/ProviderLogo'
+import { ChromaGrid } from '../components/ChromaGrid'
+import { ProviderLogo, getProviderAccentColor, getProviderPortalUrl, getProviderTileClass } from '../components/ProviderLogo'
 import { Badge, Button, Field, Modal, SecretInput, Select, SpotlightCard } from '../components/ui'
 import {
   AlertCircleIcon,
@@ -230,88 +231,100 @@ export function ProvidersScreen({
       </div>
 
       {filtered.length ? (
-        <section className="provider-grid">
-          {filtered.map((provider, index) => {
+        <ChromaGrid
+          as="section"
+          className="provider-grid"
+          columns={3}
+          minCardWidth={248}
+          gap={12}
+          radius={290}
+          softness={0.62}
+          damping={0.42}
+          fadeOut={0.55}
+          glow={0.62}
+          borderGlow={0.95}
+          cardRadius={14}
+          items={filtered.map((provider) => {
             const active = provider.id === activeProvider
             const portalUrl = getProviderPortalUrl(provider.id, provider.portalAvailable)
             const portalActionLabel = provider.local ? 'Get app' : 'Get key'
             const portalAriaLabel = provider.local
               ? `Get ${provider.name}`
               : `Get ${provider.name} API key`
-            return (
-              <SpotlightCard
-                key={provider.id}
-                interactive
-                className={`provider-card ${active ? 'provider-card-active' : ''}`}
-                delay={Math.min(index * 0.02, 0.14)}
-              >
-                <div className="provider-card-top">
-                  <span className={`provider-mark ${getProviderTileClass(provider.id)}`}>
-                    <ProviderLogo id={provider.id} size={21} />
-                  </span>
-                  <div className="provider-state">
-                    {portalUrl ? (
-                      <button
-                        type="button"
-                        className="provider-key-button"
-                        aria-label={portalAriaLabel}
-                        title={portalAriaLabel}
-                        onClick={() => void openPortal(provider)}
-                      >
-                        <span>{portalActionLabel}</span>
-                        <ExternalLaunchIcon size={12} strokeWidth={1.85} aria-hidden="true" />
-                      </button>
-                    ) : null}
-                    {active ? (
-                      <Badge tone="accent">Active</Badge>
-                    ) : provider.connected || provider.keyConfigured ? (
-                      <Badge tone="success">Ready</Badge>
-                    ) : provider.freeTier && !provider.local ? (
-                      <Badge tone="success"><SparkleIcon size={12} strokeWidth={1.85} aria-hidden="true" />Free tier</Badge>
-                    ) : (
-                      <Badge>Not configured</Badge>
-                    )}
+            return {
+              id: provider.id,
+              accent: getProviderAccentColor(provider.id),
+              className: `provider-card${active ? ' provider-card-active' : ''}`,
+              children: (
+                <>
+                  <div className="provider-card-top">
+                    <span className={`provider-mark ${getProviderTileClass(provider.id)}`}>
+                      <ProviderLogo id={provider.id} size={21} />
+                    </span>
+                    <div className="provider-state">
+                      {portalUrl ? (
+                        <button
+                          type="button"
+                          className="provider-key-button"
+                          aria-label={portalAriaLabel}
+                          title={portalAriaLabel}
+                          onClick={() => void openPortal(provider)}
+                        >
+                          <span>{portalActionLabel}</span>
+                          <ExternalLaunchIcon size={12} strokeWidth={1.85} aria-hidden="true" />
+                        </button>
+                      ) : null}
+                      {active ? (
+                        <Badge tone="accent">Active</Badge>
+                      ) : provider.connected || provider.keyConfigured ? (
+                        <Badge tone="success">Ready</Badge>
+                      ) : provider.freeTier && !provider.local ? (
+                        <Badge tone="success"><SparkleIcon size={12} strokeWidth={1.85} aria-hidden="true" />Free tier</Badge>
+                      ) : (
+                        <Badge>Not configured</Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <h3>{provider.name}</h3>
-                <p>{provider.description}</p>
-                <div className="provider-details">
-                  <div>
-                    <span>Model</span>
-                    <strong title={provider.model}>{provider.model || 'Not selected'}</strong>
+                  <h3>{provider.name}</h3>
+                  <p>{provider.description}</p>
+                  <div className="provider-details">
+                    <div>
+                      <span>Model</span>
+                      <strong title={provider.model}>{provider.model || 'Not selected'}</strong>
+                    </div>
+                    <div>
+                      <span>Host</span>
+                      <strong title={provider.endpoint}>
+                        {provider.local
+                          ? 'Local machine'
+                          : provider.endpoint.replace(/^https?:\/\//, '').split('/')[0] || 'Custom'}
+                      </strong>
+                    </div>
                   </div>
-                  <div>
-                    <span>Host</span>
-                    <strong title={provider.endpoint}>
-                      {provider.local
-                        ? 'Local machine'
-                        : provider.endpoint.replace(/^https?:\/\//, '').split('/')[0] || 'Custom'}
-                    </strong>
+                  <div className="provider-card-footer">
+                    <span className="credential-state">
+                      {provider.local ? (
+                        <><ServerStackIcon size={15} strokeWidth={1.85} aria-hidden="true" /> No key required</>
+                      ) : provider.keyConfigured ? (
+                        <><KeyVaultIcon size={15} strokeWidth={1.85} aria-hidden="true" /> Key protected</>
+                      ) : (
+                        <><KeyVaultIcon size={15} strokeWidth={1.85} aria-hidden="true" /> Add a key</>
+                      )}
+                    </span>
+                    <Button
+                      variant={active ? 'primary' : 'secondary'}
+                      size="sm"
+                      icon={<TuneSlidersIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
+                      onClick={() => open(provider)}
+                    >
+                      Configure
+                    </Button>
                   </div>
-                </div>
-                <div className="provider-card-footer">
-                  <span className="credential-state">
-                    {provider.local ? (
-                      <><ServerStackIcon size={15} strokeWidth={1.85} aria-hidden="true" /> No key required</>
-                    ) : provider.keyConfigured ? (
-                      <><KeyVaultIcon size={15} strokeWidth={1.85} aria-hidden="true" /> Key protected</>
-                    ) : (
-                      <><KeyVaultIcon size={15} strokeWidth={1.85} aria-hidden="true" /> Add a key</>
-                    )}
-                  </span>
-                  <Button
-                    variant={active ? 'primary' : 'secondary'}
-                    size="sm"
-                    icon={<TuneSlidersIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
-                    onClick={() => open(provider)}
-                  >
-                    Configure
-                  </Button>
-                </div>
-              </SpotlightCard>
-            )
+                </>
+              ),
+            }
           })}
-        </section>
+        />
       ) : (
         <SpotlightCard className="provider-empty">
           <SearchIcon size={24} strokeWidth={1.85} aria-hidden="true" />

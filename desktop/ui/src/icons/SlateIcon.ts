@@ -17,6 +17,7 @@ const INTERACTIVE_HOST_SELECTOR = [
   'a',
   '[role="button"]',
   '[role="option"]',
+  '.chroma-card',
   '.diagnostic-row',
   '.telemetry-cell',
   '.assurance-strip',

@@ -1,9 +1,19 @@
 import { useRef, useState } from 'react'
+import { ChromaGrid } from '../components/ChromaGrid'
 import { Badge, Button, SpotlightCard, cn } from '../components/ui'
 import { CopyCheckIcon, InfoCircleIcon, OfflineCloudIcon } from '../icons'
 import { styles } from '../styleTransforms'
 
 const defaultSample = 'SwiftSlate makes writing feel effortless 2026'
+
+const styleAccents: Record<string, string> = {
+  bold: '#d9c7ff',
+  italic: '#88b8ff',
+  mono: '#75e5bc',
+  bubble: '#ffafc8',
+  gothic: '#ffc76b',
+  smallcaps: '#60d5ff',
+}
 
 export function StylesScreen({
   prefix,
@@ -51,7 +61,7 @@ export function StylesScreen({
             value={sample}
             onChange={(event) => setSample(event.target.value)}
             maxLength={240}
-            placeholder="Type any phrase to preview all 7 styles live…"
+            placeholder="Type any phrase to preview all 6 styles live…"
           />
           <span className="foundry-hint">
             In any Windows app, type your text followed by <code>{prefix}{active.id}</code> to transform in place.
@@ -77,17 +87,28 @@ export function StylesScreen({
         </div>
       </SpotlightCard>
 
-      <section className="specimen-grid" aria-label="Unicode style specimens">
-        {styles.map((style, index) => {
+      <ChromaGrid
+        as="section"
+        ariaLabel="Unicode style specimens"
+        className="specimen-grid"
+        columns={2}
+        minCardWidth={280}
+        gap={12}
+        radius={270}
+        softness={0.62}
+        damping={0.42}
+        fadeOut={0.55}
+        glow={0.56}
+        borderGlow={0.92}
+        cardRadius={14}
+        items={styles.map((style) => {
           const preview = style.transform(sample || 'SwiftSlate 2026')
           const isSelected = selected === style.id
-          return (
-            <SpotlightCard
-              key={style.id}
-              interactive
-              delay={index * 0.02}
-              className={cn('specimen-card', isSelected && 'specimen-card-active')}
-            >
+          return {
+            id: style.id,
+            accent: styleAccents[style.id] || '#d9c7ff',
+            className: cn('specimen-card', isSelected && 'specimen-card-active'),
+            children: (
               <button
                 type="button"
                 className="specimen-select-hit"
@@ -104,10 +125,10 @@ export function StylesScreen({
                 </div>
                 <p className="specimen-live-line">{preview}</p>
               </button>
-            </SpotlightCard>
-          )
+            ),
+          }
         })}
-      </section>
+      />
 
       <div className="style-note">
         <InfoCircleIcon size={16} strokeWidth={1.85} aria-hidden="true" />

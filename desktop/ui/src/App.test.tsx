@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { api } from './api'
 import App from './App'
+import { ChromaGrid } from './components/ChromaGrid'
 import { Select } from './components/ui'
 import { GLYPH_CATALOG, pathSignature } from './icons'
 
@@ -409,5 +410,54 @@ describe('SwiftSlate dashboard', () => {
     await user.click(collapseBtn)
     const expandBtn = screen.getByRole('button', { name: 'Expand sidebar' })
     expect(expandBtn.querySelector('[data-slate-glyph="sidebarToggle"]')).toHaveAttribute('data-morphed', 'true')
+  })
+
+  it('integrates ChromaGrid spotlight across Providers and Styles and supports photo/link cards', async () => {
+    const user = userEvent.setup()
+    const { container, unmount } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    await user.click(screen.getByRole('button', { name: /Switch engine/i }))
+    await screen.findByText('Choose where SwiftSlate thinks')
+
+    const providerGrid = container.querySelector('.chroma-grid.provider-grid') as HTMLElement
+    expect(providerGrid).not.toBeNull()
+    expect(providerGrid).toHaveAttribute('data-reveal', 'spotlight')
+    const chromaCards = providerGrid.querySelectorAll('.chroma-card.provider-card')
+    expect(chromaCards).toHaveLength(16)
+
+    // Distinct brand chroma accents are applied per provider card
+    const accents = new Set(Array.from(chromaCards).map((card) => (card as HTMLElement).style.getPropertyValue('--chroma-accent')))
+    expect(accents.size).toBeGreaterThanOrEqual(12)
+
+    fireEvent.pointerMove(providerGrid, { clientX: 160, clientY: 120 })
+    await waitFor(() => {
+      expect(Number(providerGrid.style.getPropertyValue('--chroma-power'))).toBeGreaterThan(0)
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Styles' }))
+    await screen.findByText('Style text without a network request')
+    const specimenGrid = container.querySelector('.chroma-grid.specimen-grid') as HTMLElement
+    expect(specimenGrid).not.toBeNull()
+    expect(specimenGrid.querySelectorAll('.chroma-card.specimen-card')).toHaveLength(6)
+
+    unmount()
+
+    // Standalone React Bits ChromaGrid API verification (image + link + frame)
+    const { container: mediaContainer } = render(
+      <ChromaGrid
+        frame
+        columns={2}
+        radius={240}
+        items={[
+          { image: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', title: 'Canola Field', subtitle: 'Midday', accent: '#ffd23f' },
+          { image: 'data:image/gif;base64,R0lGODlhAQABAAAAACw=', title: 'The Pier', subtitle: 'Clear sky', accent: '#3fb8ff', url: 'https://example.com' },
+        ]}
+      />,
+    )
+    expect(mediaContainer.querySelector('.chroma-grid.has-frame')).not.toBeNull()
+    expect(mediaContainer.querySelectorAll('img.chroma-mono')).toHaveLength(2)
+    expect(mediaContainer.querySelectorAll('img.chroma-color')).toHaveLength(2)
+    expect(mediaContainer.querySelector('a.chroma-card')).toHaveAttribute('href', 'https://example.com')
   })
 })
