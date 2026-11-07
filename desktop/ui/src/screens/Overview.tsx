@@ -2,20 +2,18 @@ import {
   ArrowRight,
   Bot,
   CheckCircle2,
-  Clock3,
   Command,
-  KeyRound,
   MousePointer2,
+  Palette,
   PauseCircle,
   PlayCircle,
   ShieldCheck,
-  Sparkles,
-  WandSparkles,
-  Zap,
 } from 'lucide-react'
 import { ProviderLogo, getProviderTileClass } from '../components/ProviderLogo'
 import { Badge, Button, SpotlightCard } from '../components/ui'
 import type { AppSnapshot, PageId } from '../types'
+
+const quickTriggers = ['fix', 'improve', 'shorten', 'formal', 'bold'] as const
 
 function formatDuration(seconds: number) {
   const hours = Math.floor(seconds / 3600)
@@ -26,104 +24,187 @@ function formatDuration(seconds: number) {
 export function Overview({
   snapshot,
   onNavigate,
+  onTryCommand,
   onPause,
 }: {
   snapshot: AppSnapshot
   onNavigate: (page: PageId) => void
+  onTryCommand: (trigger: string) => void
   onPause: () => void
 }) {
   const { runtime, activity } = snapshot
   const activeProviderRecord = snapshot.providers.find((item) => item.id === runtime.provider)
+  const isProviderReady = Boolean(
+    activeProviderRecord?.connected || activeProviderRecord?.local || activeProviderRecord?.keyConfigured,
+  )
+  const endpointHost = activeProviderRecord?.local
+    ? '127.0.0.1 (Local runtime)'
+    : activeProviderRecord?.endpoint.replace(/^https?:\/\//, '').split('/')[0] || 'Custom endpoint'
+
   return (
     <div className="screen overview-screen">
-      <section className="hero-grid">
-        <SpotlightCard className="runtime-hero" interactive>
-          <div className="runtime-hero-copy">
-            <div className="eyebrow">
-              <span className={`live-dot ${runtime.paused ? 'live-dot-paused' : ''}`} aria-hidden="true" /> Runtime
+      <section className="overview-bento-top">
+        <SpotlightCard className="engine-stage" interactive>
+          <div className="engine-stage-top">
+            <div className="engine-stage-copy">
+              <div className="status-pill-inline">
+                <span className={`live-dot ${runtime.paused ? 'live-dot-paused' : ''}`} aria-hidden="true" />
+                <span>{runtime.paused ? 'Inline hook paused' : 'Global keyboard hook active'}</span>
+              </div>
+              <h2>{runtime.paused ? 'SwiftSlate is paused' : 'SwiftSlate is listening'}</h2>
+              <p>
+                {runtime.paused
+                  ? 'Inline triggers are paused across Windows. Your commands and encrypted credentials remain intact.'
+                  : <>Finish any sentence with <code>{runtime.prefix}fix</code>, <code>{runtime.prefix}improve</code>, or a custom trigger to rewrite text in place.</>}
+              </p>
+              <div className="hero-actions">
+                <Button
+                  variant="primary"
+                  icon={runtime.paused
+                    ? <PlayCircle size={16} strokeWidth={1.85} aria-hidden="true" />
+                    : <PauseCircle size={16} strokeWidth={1.85} aria-hidden="true" />}
+                  onClick={onPause}
+                >
+                  {runtime.paused ? 'Resume engine' : 'Pause engine'}
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={<MousePointer2 size={16} strokeWidth={1.85} aria-hidden="true" />}
+                  onClick={() => onNavigate('playground')}
+                >
+                  Open playground
+                </Button>
+              </div>
             </div>
-            <h2>{runtime.paused ? 'SwiftSlate is paused' : 'SwiftSlate is listening'}</h2>
-            <p>
-              {runtime.paused
-                ? 'Inline commands are temporarily disabled. Your configuration is still safe.'
-                : <>Type <code>{runtime.prefix}fix</code>, <code>{runtime.prefix}improve</code>, or any custom trigger in a text field.</>}
-            </p>
-            <div className="hero-actions">
-              <Button
-                variant="primary"
-                icon={runtime.paused
-                  ? <PlayCircle size={16} strokeWidth={1.85} aria-hidden="true" />
-                  : <PauseCircle size={16} strokeWidth={1.85} aria-hidden="true" />}
-                onClick={onPause}
-              >
-                {runtime.paused ? 'Resume engine' : 'Pause engine'}
-              </Button>
-              <Button
-                variant="ghost"
-                icon={<MousePointer2 size={16} strokeWidth={1.85} aria-hidden="true" />}
-                onClick={() => onNavigate('playground')}
-              >
-                Open playground
-              </Button>
+
+            <div className="inline-specimen-frame" aria-label="Inline command specimen">
+              <div className="specimen-row">
+                <span className="specimen-tag">Typed</span>
+                <code>we should push release to fri {runtime.prefix}formal</code>
+              </div>
+              <div className="specimen-row specimen-row-out">
+                <span className="specimen-tag">Replaced</span>
+                <strong>Let’s move the release to Friday.</strong>
+              </div>
+              <div className="specimen-triggers">
+                <span>Try live:</span>
+                {quickTriggers.map((trigger) => (
+                  <button
+                    key={trigger}
+                    type="button"
+                    className="trigger-chip"
+                    onClick={() => onTryCommand(trigger)}
+                  >
+                    {runtime.prefix}{trigger}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-          <div className="runtime-visual" aria-hidden="true">
-            <div className="pulse-shell pulse-shell-outer" />
-            <div className="pulse-shell pulse-shell-inner" />
-            <div className="runtime-glyph"><Sparkles size={28} strokeWidth={1.85} /></div>
-            <span className="orbit-dot orbit-dot-a" />
-            <span className="orbit-dot orbit-dot-b" />
+
+          <div className="telemetry-ledger" role="region" aria-label="Runtime statistics">
+            <div className="telemetry-cell">
+              <span>Commands</span>
+              <strong>{runtime.commandCount}</strong>
+              <small>active globally</small>
+            </div>
+            <div className="telemetry-cell">
+              <span>Requests today</span>
+              <strong>{runtime.requestsToday}</strong>
+              <small>local styles run offline</small>
+            </div>
+            <div className="telemetry-cell">
+              <span>Session uptime</span>
+              <strong>{formatDuration(runtime.uptimeSeconds)}</strong>
+              <small>zero idle CPU polling</small>
+            </div>
+            <div className="telemetry-cell">
+              <span>Protected keys</span>
+              <strong>{runtime.protectedKeyCount}</strong>
+              <small>Windows DPAPI bound</small>
+            </div>
           </div>
         </SpotlightCard>
 
-        <SpotlightCard className="provider-hero" interactive delay={0.03}>
-          <div className="card-heading-row">
+        <SpotlightCard className="routing-pod" interactive delay={0.03}>
+          <div className="routing-pod-header">
             <div className={`provider-mark ${getProviderTileClass(runtime.provider)}`}>
-              <ProviderLogo id={runtime.provider} size={20} />
+              <ProviderLogo id={runtime.provider} size={21} />
             </div>
-            <Badge tone="success">Connected</Badge>
+            <Badge tone={isProviderReady ? 'success' : 'warning'}>
+              {isProviderReady ? 'Connected' : 'Setup needed'}
+            </Badge>
           </div>
-          <span className="card-kicker">Active provider</span>
-          <h3>{activeProviderRecord?.name || runtime.provider}</h3>
-          <p className="mono-copy">{runtime.model}</p>
-          <button type="button" className="text-link" onClick={() => onNavigate('providers')}>
-            Manage provider <ArrowRight size={16} strokeWidth={1.85} aria-hidden="true" />
-          </button>
+
+          <div className="routing-pod-body">
+            <h3>{activeProviderRecord?.name || runtime.provider}</h3>
+            <p>{activeProviderRecord?.description || 'Active model endpoint for AI inline commands.'}</p>
+          </div>
+
+          <dl className="routing-specs">
+            <div>
+              <dt>Active model</dt>
+              <dd className="mono-copy" title={runtime.model}>{runtime.model || 'None selected'}</dd>
+            </div>
+            <div>
+              <dt>Endpoint</dt>
+              <dd className="mono-copy" title={endpointHost}>{endpointHost}</dd>
+            </div>
+          </dl>
+
+          <div className="routing-pod-footer">
+            <button type="button" className="text-link" onClick={() => onNavigate('providers')}>
+              <span>{isProviderReady ? 'Switch or configure model' : 'Configure API key'}</span>
+              <ArrowRight size={15} strokeWidth={1.85} aria-hidden="true" />
+            </button>
+          </div>
         </SpotlightCard>
       </section>
 
-      <section className="stat-grid" aria-label="Runtime statistics">
-        <SpotlightCard className="stat-card" interactive delay={0.05}>
-          <div className="stat-icon accent-purple" aria-hidden="true"><Command size={18} strokeWidth={1.85} /></div>
-          <div><span>Commands</span><strong>{runtime.commandCount}</strong><small>available globally</small></div>
-        </SpotlightCard>
-        <SpotlightCard className="stat-card" interactive delay={0.07}>
-          <div className="stat-icon accent-blue" aria-hidden="true"><Zap size={18} strokeWidth={1.85} /></div>
-          <div><span>Requests today</span><strong>{runtime.requestsToday}</strong><small>all processed locally first</small></div>
-        </SpotlightCard>
-        <SpotlightCard className="stat-card" interactive delay={0.09}>
-          <div className="stat-icon accent-green" aria-hidden="true"><Clock3 size={18} strokeWidth={1.85} /></div>
-          <div><span>Uptime</span><strong>{formatDuration(runtime.uptimeSeconds)}</strong><small>zero CPU while idle</small></div>
-        </SpotlightCard>
-        <SpotlightCard className="stat-card" interactive delay={0.11}>
-          <div className="stat-icon accent-rose" aria-hidden="true"><KeyRound size={18} strokeWidth={1.85} /></div>
-          <div><span>Protected keys</span><strong>{runtime.protectedKeyCount}</strong><small>encrypted with DPAPI</small></div>
-        </SpotlightCard>
-      </section>
+      <section className="overview-bento-bottom">
+        <div className="launchpad-column">
+          <SpotlightCard className="launchpad-card">
+            <div className="card-header-clean">
+              <h3>Workspace actions</h3>
+              <span>Jump straight to setup</span>
+            </div>
+            <div className="launchpad-list">
+              <button className="quick-action" type="button" onClick={() => onNavigate('commands')}>
+                <span className="quick-icon" aria-hidden="true"><Command size={16} strokeWidth={1.85} /></span>
+                <span><strong>Create command</strong><small>Define a custom prompt or text snippet</small></span>
+                <ArrowRight size={15} strokeWidth={1.85} aria-hidden="true" />
+              </button>
+              <button className="quick-action" type="button" onClick={() => onNavigate('providers')}>
+                <span className="quick-icon" aria-hidden="true"><Bot size={16} strokeWidth={1.85} /></span>
+                <span><strong>Add provider</strong><small>14 free-tier and local engines ready</small></span>
+                <ArrowRight size={15} strokeWidth={1.85} aria-hidden="true" />
+              </button>
+              <button className="quick-action" type="button" onClick={() => onNavigate('styles')}>
+                <span className="quick-icon" aria-hidden="true"><Palette size={16} strokeWidth={1.85} /></span>
+                <span><strong>Typography foundry</strong><small>Preview offline Unicode styles</small></span>
+                <ArrowRight size={15} strokeWidth={1.85} aria-hidden="true" />
+              </button>
+            </div>
+          </SpotlightCard>
 
-      <section className="content-grid">
+          <div className="assurance-strip">
+            <ShieldCheck size={17} strokeWidth={1.85} aria-hidden="true" />
+            <p><strong>Local-first privacy:</strong> Unicode styles never touch the network, and API keys stay encrypted inside Windows DPAPI.</p>
+          </div>
+        </div>
+
         <SpotlightCard className="activity-card">
           <div className="section-heading">
-            <div>
-              <span className="section-kicker">Live history</span>
-              <h3>Recent activity</h3>
+            <div className="card-header-clean">
+              <h3>Recent executions</h3>
+              <span>Latest inline replacements in this session</span>
             </div>
             <Button variant="ghost" size="sm" onClick={() => onNavigate('diagnostics')}>View logs</Button>
           </div>
           <div className="activity-list">
             {activity.length ? activity.map((item) => (
               <div className="activity-row" key={item.id}>
-                <span className="activity-status" aria-hidden="true"><CheckCircle2 size={16} strokeWidth={1.85} /></span>
+                <span className="activity-status" aria-hidden="true"><CheckCircle2 size={15} strokeWidth={1.85} /></span>
                 <div className="activity-main">
                   <strong>{item.command}</strong>
                   <span>{item.provider}</span>
@@ -133,38 +214,12 @@ export function Overview({
               </div>
             )) : (
               <div className="activity-empty">
-                No commands triggered yet. Type <code>{runtime.prefix}fix</code> or <code>{runtime.prefix}bold</code> in any text field to get started.
+                <p>No inline commands triggered yet.</p>
+                <span>Type <code>{runtime.prefix}fix</code> or <code>{runtime.prefix}bold</code> at the end of text in any app, or test one in Playground.</span>
               </div>
             )}
           </div>
         </SpotlightCard>
-
-        <div className="side-card-stack">
-          <SpotlightCard className="quick-card">
-            <div className="section-heading compact">
-              <div><span className="section-kicker">Shortcuts</span><h3>Quick actions</h3></div>
-              <WandSparkles size={18} strokeWidth={1.85} className="muted-icon" aria-hidden="true" />
-            </div>
-            <button className="quick-action" type="button" onClick={() => onNavigate('commands')}>
-              <span className="quick-icon" aria-hidden="true"><Command size={16} strokeWidth={1.85} /></span>
-              <span><strong>Create command</strong><small>Add a new inline trigger</small></span>
-              <ArrowRight size={16} strokeWidth={1.85} aria-hidden="true" />
-            </button>
-            <button className="quick-action" type="button" onClick={() => onNavigate('providers')}>
-              <span className="quick-icon" aria-hidden="true"><Bot size={16} strokeWidth={1.85} /></span>
-              <span><strong>Add provider</strong><small>Connect a model endpoint</small></span>
-              <ArrowRight size={16} strokeWidth={1.85} aria-hidden="true" />
-            </button>
-          </SpotlightCard>
-
-          <SpotlightCard className="security-card">
-            <div className="security-icon" aria-hidden="true"><ShieldCheck size={18} strokeWidth={1.85} /></div>
-            <div>
-              <strong>Private by design</strong>
-              <p>Local styles never use the network. Credentials stay encrypted for your Windows account.</p>
-            </div>
-          </SpotlightCard>
-        </div>
       </section>
     </div>
   )

@@ -1,4 +1,4 @@
-import { Bot, Pencil, Plus, Search, Sparkles, Trash2, Type, Wand2 } from 'lucide-react'
+import { Bot, Pencil, Play, Plus, Search, Sparkles, Trash2, Type, Wand2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { Badge, Button, Field, Modal, Select, SpotlightCard, Switch } from '../components/ui'
@@ -19,11 +19,13 @@ export function CommandsScreen({
   commands,
   prefix,
   onChange,
+  onTryCommand,
   notify,
 }: {
   commands: Command[]
   prefix: string
   onChange: (commands: Command[]) => void
+  onTryCommand?: (trigger: string) => void
   notify: (message: string, tone?: 'success' | 'danger') => void
 }) {
   const [query, setQuery] = useState('')
@@ -32,6 +34,7 @@ export function CommandsScreen({
   const [confirmDelete, setConfirmDelete] = useState<Command | null>(null)
   const [saving, setSaving] = useState(false)
 
+  const enabledCount = useMemo(() => commands.filter((command) => command.enabled).length, [commands])
   const filtered = useMemo(() => commands.filter((command) => {
     const matchQuery = !query || command.trigger.toLowerCase().includes(query.toLowerCase()) || command.prompt.toLowerCase().includes(query.toLowerCase())
     return matchQuery && (type === 'all' || command.type === type)
@@ -79,9 +82,8 @@ export function CommandsScreen({
     <div className="screen commands-screen">
       <section className="screen-intro-row">
         <div>
-          <span className="section-kicker">Inline automation</span>
           <h2>Your command library</h2>
-          <p>Triggers activate after text in any supported Windows application.</p>
+          <p>{enabledCount} active triggers ready after any sentence across Windows applications.</p>
         </div>
         <Button variant="primary" icon={<Plus size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing(blankCommand())}>New command</Button>
       </section>
@@ -112,10 +114,10 @@ export function CommandsScreen({
           <div role="rowgroup">
             <div className="command-row command-header" role="row">
               <span role="columnheader">Trigger</span>
-              <span role="columnheader">Behavior</span>
-              <span role="columnheader">Type</span>
+              <span role="columnheader">Instruction</span>
+              <span role="columnheader">Kind</span>
               <span role="columnheader">Uses</span>
-              <span role="columnheader">Enabled</span>
+              <span role="columnheader">Active</span>
               <span role="columnheader"><span className="sr-only">Actions</span></span>
             </div>
           </div>
@@ -123,12 +125,13 @@ export function CommandsScreen({
             {filtered.map((command) => {
               const meta = typeMeta[command.type]
               const Icon = meta.icon
+              const canTry = Boolean(onTryCommand) && (command.type === 'ai' || command.type === 'style')
               return (
                 <div className="command-row" role="row" key={command.id}>
                   <div className="command-trigger" role="cell"><span className="trigger-prefix">{prefix}</span><strong>{command.trigger}</strong></div>
                   <div className="command-behavior" role="cell">
                     <strong>{command.prompt || command.value || 'Built-in action'}</strong>
-                    <small>{command.type === 'ai' ? 'Uses the active provider' : 'Runs on this device'}</small>
+                    <small>{command.type === 'ai' ? 'Uses active provider' : 'Runs offline on device'}</small>
                   </div>
                   <div role="cell"><Badge tone={meta.tone}><Icon size={12} strokeWidth={1.85} aria-hidden="true" />{meta.label}</Badge></div>
                   <span className="uses-count" role="cell">{command.uses}</span>
@@ -138,10 +141,20 @@ export function CommandsScreen({
                       : <Switch checked={command.enabled} onChange={(value) => toggle(command, value)} label={`${command.enabled ? 'Disable' : 'Enable'} .${command.trigger}`} />}
                   </div>
                   <div className="row-actions" role="cell">
+                    {canTry ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Try .${command.trigger} in Playground`}
+                        title={`Try ${prefix}${command.trigger}`}
+                        icon={<Play size={14} strokeWidth={1.85} aria-hidden="true" />}
+                        onClick={() => onTryCommand?.(command.trigger)}
+                      />
+                    ) : null}
                     {command.type === 'system' ? null : (
                       <>
-                        <Button variant="ghost" size="icon" aria-label={`Edit .${command.trigger}`} icon={<Pencil size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing({ ...command })} />
-                        <Button variant="ghost" size="icon" aria-label={`Delete .${command.trigger}`} icon={<Trash2 size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setConfirmDelete(command)} />
+                        <Button variant="ghost" size="icon" aria-label={`Edit .${command.trigger}`} icon={<Pencil size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing({ ...command })} />
+                        <Button variant="ghost" size="icon" aria-label={`Delete .${command.trigger}`} icon={<Trash2 size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setConfirmDelete(command)} />
                       </>
                     )}
                   </div>
@@ -151,7 +164,7 @@ export function CommandsScreen({
           </div>
           {!filtered.length ? (
             <div className="empty-table">
-              <Search size={28} strokeWidth={1.85} aria-hidden="true" />
+              <Search size={26} strokeWidth={1.85} aria-hidden="true" />
               <strong>No commands found</strong>
               <span>Try another search or filter.</span>
             </div>

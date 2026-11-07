@@ -1,4 +1,5 @@
 import {
+  AlertCircle,
   Check,
   ExternalLink,
   KeyRound,
@@ -8,13 +9,14 @@ import {
   Server,
   Settings2,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   TestTube2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { ProviderLogo, getProviderPortalUrl, getProviderTileClass } from '../components/ProviderLogo'
-import { Badge, Button, Field, Modal, Select, SpotlightCard } from '../components/ui'
+import { Badge, Button, Field, Modal, SecretInput, Select, SpotlightCard } from '../components/ui'
 import type { Provider } from '../types'
 
 type ProviderFilter = 'all' | 'free' | 'cloud' | 'local'
@@ -43,9 +45,13 @@ export function ProvidersScreen({
   const [draft, setDraft] = useState<Provider | null>(null)
   const [apiKey, setApiKey] = useState('')
   const [busy, setBusy] = useState<'save' | 'models' | 'test' | null>(null)
-  const [testMessage, setTestMessage] = useState('')
+  const [testFeedback, setTestFeedback] = useState<{ text: string; tone: 'success' | 'danger' } | null>(null)
 
-  const connected = useMemo(() => providers.filter((provider) => provider.connected).length, [providers])
+  const activeRecord = useMemo(
+    () => providers.find((provider) => provider.id === activeProvider) || providers[0],
+    [activeProvider, providers],
+  )
+  const connected = useMemo(() => providers.filter((provider) => provider.connected || provider.keyConfigured || provider.local).length, [providers])
   const freeCount = useMemo(
     () => providers.filter((provider) => provider.freeTier || provider.local).length,
     [providers],
@@ -73,7 +79,7 @@ export function ProvidersScreen({
     setEditing(provider)
     setDraft({ ...provider })
     setApiKey('')
-    setTestMessage('')
+    setTestFeedback(null)
   }
 
   async function openPortal(provider: Provider) {
@@ -94,7 +100,7 @@ export function ProvidersScreen({
   async function fetchModels() {
     if (!draft) return
     setBusy('models')
-    setTestMessage('')
+    setTestFeedback(null)
     try {
       const result = await api.fetchModels(draft, apiKey || undefined)
       setDraft({
@@ -102,9 +108,15 @@ export function ProvidersScreen({
         models: result.models,
         model: result.models.includes(draft.model) ? draft.model : (result.models[0] || draft.model),
       })
-      setTestMessage(`Found ${result.models.length} available model${result.models.length === 1 ? '' : 's'}.`)
+      setTestFeedback({
+        text: `Found ${result.models.length} available model${result.models.length === 1 ? '' : 's'}.`,
+        tone: 'success',
+      })
     } catch (error) {
-      setTestMessage(error instanceof Error ? error.message : 'Could not fetch models.')
+      setTestFeedback({
+        text: error instanceof Error ? error.message : 'Could not fetch models.',
+        tone: 'danger',
+      })
     } finally {
       setBusy(null)
     }
@@ -113,12 +125,15 @@ export function ProvidersScreen({
   async function test() {
     if (!draft) return
     setBusy('test')
-    setTestMessage('')
+    setTestFeedback(null)
     try {
       const result = await api.testProvider(draft, apiKey || undefined)
-      setTestMessage(`${result.message} ${result.latencyMs} ms.`)
+      setTestFeedback({ text: `${result.message} ${result.latencyMs} ms.`, tone: 'success' })
     } catch (error) {
-      setTestMessage(error instanceof Error ? error.message : 'Connection test failed.')
+      setTestFeedback({
+        text: error instanceof Error ? error.message : 'Connection test failed.',
+        tone: 'danger',
+      })
     } finally {
       setBusy(null)
     }
@@ -145,16 +160,45 @@ export function ProvidersScreen({
     <div className="screen providers-screen">
       <section className="provider-summary-row">
         <div>
-          <span className="section-kicker">Model connections</span>
           <h2>Choose where SwiftSlate thinks</h2>
           <p>Credentials are encrypted with Windows DPAPI and never returned to this interface.</p>
         </div>
         <div className="provider-summary-stats">
-          <div><strong>{connected}</strong><span>connected</span></div>
-          <div><strong>{freeCount}</strong><span>free-ready</span></div>
-          <div><ShieldCheck size={18} strokeWidth={1.85} aria-hidden="true" /><span>keys protected</span></div>
+          <div><strong>{connected}</strong><span>ready</span></div>
+          <div><strong>{freeCount}</strong><span>free-tier</span></div>
+          <div><ShieldCheck size={17} strokeWidth={1.85} aria-hidden="true" /><span>DPAPI bound</span></div>
         </div>
       </section>
+
+      {activeRecord ? (
+        <SpotlightCard className="active-routing-banner">
+          <div className="active-routing-main">
+            <span className={`provider-mark ${getProviderTileClass(activeRecord.id)}`}>
+              <ProviderLogo id={activeRecord.id} size={21} />
+            </span>
+            <div className="active-routing-copy">
+              <div className="active-routing-title">
+                <strong>{activeRecord.name}</strong>
+                <Badge tone="accent">Active routing</Badge>
+              </div>
+              <span>
+                Model <code>{activeRecord.model || 'default'}</code> ·{' '}
+                {activeRecord.local
+                  ? 'Local loopback'
+                  : activeRecord.endpoint.replace(/^https?:\/\//, '').split('/')[0] || 'Custom HTTPS'}
+              </span>
+            </div>
+          </div>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<SlidersHorizontal size={15} strokeWidth={1.85} aria-hidden="true" />}
+            onClick={() => open(activeRecord)}
+          >
+            Edit active routing
+          </Button>
+        </SpotlightCard>
+      ) : null}
 
       <div className="provider-toolbar">
         <div className="filter-search">
@@ -221,7 +265,7 @@ export function ProvidersScreen({
                     ) : null}
                     {active ? (
                       <Badge tone="accent">Active</Badge>
-                    ) : provider.connected ? (
+                    ) : provider.connected || provider.keyConfigured ? (
                       <Badge tone="success">Ready</Badge>
                     ) : provider.freeTier && !provider.local ? (
                       <Badge tone="success"><Sparkles size={12} strokeWidth={1.85} aria-hidden="true" />Free tier</Badge>
@@ -238,7 +282,7 @@ export function ProvidersScreen({
                     <strong title={provider.model}>{provider.model || 'Not selected'}</strong>
                   </div>
                   <div>
-                    <span>Endpoint</span>
+                    <span>Host</span>
                     <strong title={provider.endpoint}>
                       {provider.local
                         ? 'Local machine'
@@ -249,17 +293,17 @@ export function ProvidersScreen({
                 <div className="provider-card-footer">
                   <span className="credential-state">
                     {provider.local ? (
-                      <><Server size={16} strokeWidth={1.85} aria-hidden="true" /> No key required</>
+                      <><Server size={15} strokeWidth={1.85} aria-hidden="true" /> No key required</>
                     ) : provider.keyConfigured ? (
-                      <><KeyRound size={16} strokeWidth={1.85} aria-hidden="true" /> Key protected</>
+                      <><KeyRound size={15} strokeWidth={1.85} aria-hidden="true" /> Key protected</>
                     ) : (
-                      <><KeyRound size={16} strokeWidth={1.85} aria-hidden="true" /> Add a key</>
+                      <><KeyRound size={15} strokeWidth={1.85} aria-hidden="true" /> Add a key</>
                     )}
                   </span>
                   <Button
-                    variant={active ? 'ghost' : 'secondary'}
+                    variant={active ? 'primary' : 'secondary'}
                     size="sm"
-                    icon={<Settings2 size={16} strokeWidth={1.85} aria-hidden="true" />}
+                    icon={<Settings2 size={15} strokeWidth={1.85} aria-hidden="true" />}
                     onClick={() => open(provider)}
                   >
                     Configure
@@ -294,7 +338,7 @@ export function ProvidersScreen({
               variant="primary"
               loading={busy === 'save'}
               onClick={() => save(true)}
-              icon={<Check size={16} />}
+              icon={<Check size={16} aria-hidden="true" />}
             >
               {draft?.id === activeProvider ? 'Save changes' : 'Save & use provider'}
             </Button>
@@ -346,18 +390,12 @@ export function ProvidersScreen({
                     </button>
                   ) : null}
                 </div>
-                <div className="input-with-icon">
-                  <KeyRound size={16} strokeWidth={1.85} aria-hidden="true" />
-                  <input
-                    id="provider-api-key-input"
-                    type="password"
-                    value={apiKey}
-                    onChange={(event) => setApiKey(event.target.value)}
-                    placeholder={draft.keyConfigured ? '••••••••••••••••' : 'Paste a key…'}
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </div>
+                <SecretInput
+                  id="provider-api-key-input"
+                  value={apiKey}
+                  onChange={setApiKey}
+                  placeholder={draft.keyConfigured ? '••••••••••••••••' : 'Paste a key…'}
+                />
                 <span className="field-hint">
                   {draft.keyConfigured
                     ? 'Leave blank to keep the protected key already on this device.'
@@ -368,12 +406,12 @@ export function ProvidersScreen({
             <div className="provider-test-panel">
               <div>
                 <strong>Validate this connection</strong>
-                <p>Fetch models checks availability. Test provider sends a tiny request to the selected model.</p>
+                <p>Fetch models checks availability. Test provider sends a fixed probe to the selected model.</p>
               </div>
               <div className="provider-test-actions">
                 <Button
                   size="sm"
-                  icon={busy === 'models' ? <LoaderCircle size={16} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <RefreshCw size={16} strokeWidth={1.85} aria-hidden="true" />}
+                  icon={busy === 'models' ? <LoaderCircle size={15} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <RefreshCw size={15} strokeWidth={1.85} aria-hidden="true" />}
                   disabled={Boolean(busy)}
                   onClick={fetchModels}
                 >
@@ -381,7 +419,7 @@ export function ProvidersScreen({
                 </Button>
                 <Button
                   size="sm"
-                  icon={busy === 'test' ? <LoaderCircle size={16} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <TestTube2 size={16} strokeWidth={1.85} aria-hidden="true" />}
+                  icon={busy === 'test' ? <LoaderCircle size={15} strokeWidth={1.85} className="spin" aria-hidden="true" /> : <TestTube2 size={15} strokeWidth={1.85} aria-hidden="true" />}
                   disabled={Boolean(busy)}
                   onClick={test}
                 >
@@ -389,7 +427,17 @@ export function ProvidersScreen({
                 </Button>
               </div>
             </div>
-            {testMessage ? <div className="inline-message"><Check size={16} strokeWidth={1.85} aria-hidden="true" />{testMessage}</div> : null}
+            {testFeedback ? (
+              <div
+                className={`inline-message ${testFeedback.tone === 'danger' ? 'inline-message-danger' : ''}`}
+                role={testFeedback.tone === 'danger' ? 'alert' : 'status'}
+              >
+                {testFeedback.tone === 'danger'
+                  ? <AlertCircle size={16} strokeWidth={1.85} aria-hidden="true" />
+                  : <Check size={16} strokeWidth={1.85} aria-hidden="true" />}
+                {testFeedback.text}
+              </div>
+            ) : null}
           </div>
         ) : null}
       </Modal>

@@ -1,11 +1,11 @@
-import { ArrowLeft, ArrowRight, Check, Command, ExternalLink, KeyRound, ShieldCheck, Zap } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Check, Command, ExternalLink, ShieldCheck, Zap } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api'
 import type { Provider, ProviderId } from '../types'
 import { BrandLogo } from './BrandLogo'
 import { ProviderLogo, getProviderPortalUrl, getProviderTileClass } from './ProviderLogo'
-import { Button } from './ui'
+import { Button, SecretInput } from './ui'
 
 export function Onboarding({
   open,
@@ -22,7 +22,7 @@ export function Onboarding({
   const [completing, setCompleting] = useState(false)
   const [error, setError] = useState('')
   const panelRef = useRef<HTMLElement>(null)
-  const choices = providers.filter((item) => ['gemini', 'groq', 'openai', 'ollama'].includes(item.id))
+  const choices = providers.filter((item) => ['gemini', 'groq', 'cerebras', 'ollama'].includes(item.id))
   const selectedProvider = providers.find((item) => item.id === provider)
   const selectedPortalUrl = getProviderPortalUrl(provider, selectedProvider?.portalAvailable)
 
@@ -80,24 +80,22 @@ export function Onboarding({
 
   const steps = [
     {
-      eyebrow: 'Welcome to SwiftSlate',
       title: 'Write faster in every Windows app.',
-      copy: 'Type a short command after your text. SwiftSlate transforms it in place, then gets out of your way.',
+      copy: 'Type a short inline trigger after any sentence. SwiftSlate rewrites it in place and steps out of your way.',
     },
     {
-      eyebrow: 'Choose a provider',
-      title: 'Connect the intelligence you prefer.',
-      copy: 'You can add more providers and switch models at any time.',
+      title: 'Choose where SwiftSlate thinks.',
+      copy: 'Pick a free-tier cloud API or a local runtime. All 16 providers stay available later.',
     },
     {
-      eyebrow: 'Protected credential',
       title: provider === 'ollama' ? 'Your local server needs no key.' : 'Add an API key securely.',
-      copy: provider === 'ollama' ? 'SwiftSlate will connect only to the Ollama server on this computer.' : 'Your key is encrypted with Windows DPAPI and cannot be read by another user or machine.',
+      copy: provider === 'ollama'
+        ? 'SwiftSlate connects only to the local Ollama server on 127.0.0.1.'
+        : 'Encrypted with Windows DPAPI so no other account or machine can decrypt it.',
     },
     {
-      eyebrow: 'Ready',
-      title: 'Your fastest workflow starts now.',
-      copy: 'SwiftSlate will stay in the tray and listen for inline commands. Start with the examples below.',
+      title: 'Ready in your system tray.',
+      copy: 'SwiftSlate stays lightweight in the background and listens globally. Try any trigger below.',
     },
   ]
 
@@ -121,12 +119,32 @@ export function Onboarding({
             exit={{ opacity: 0, y: 6, scale: 0.99, transition: { duration: 0.12, ease: [0.23, 1, 0.32, 1] } }}
           >
             <div className="onboarding-art" aria-hidden="true">
-              <div className="onboarding-logo"><BrandLogo size={58} /></div>
-              <div className="onboarding-orbit orbit-one" /><div className="onboarding-orbit orbit-two" />
-              <div className="floating-command command-a"><span>Before</span><strong>can u review this pls .formal</strong></div>
-              <div className="transform-beam" />
-              <div className="floating-command command-b"><span>After</span><strong>Could you please review this?</strong></div>
-              <div className="privacy-pill"><ShieldCheck size={16} strokeWidth={1.85} /> Private by design</div>
+              <div className="onboarding-stage-top">
+                <div className="onboarding-logo"><BrandLogo size={46} /></div>
+                <div>
+                  <strong>SwiftSlate</strong>
+                  <span>Windows inline engine</span>
+                </div>
+              </div>
+
+              <div className="onboarding-app-frame">
+                <div className="app-frame-bar">
+                  <span>Release notes — Editor</span>
+                  <code>.formal</code>
+                </div>
+                <div className="app-frame-body">
+                  <div className="app-frame-line app-frame-before">
+                    <span>Typed</span>
+                    <p>can u review this pls <code>.formal</code></p>
+                  </div>
+                  <div className="app-frame-line app-frame-after">
+                    <span>In-place result</span>
+                    <p>Could you please review this?</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="privacy-pill"><ShieldCheck size={15} strokeWidth={1.85} /> DPAPI encrypted · Zero telemetry</div>
             </div>
 
             <div className="onboarding-content">
@@ -134,14 +152,14 @@ export function Onboarding({
                 {steps.map((_, index) => <span key={index} className={index <= step ? 'progress-active' : ''} />)}
               </div>
               <div key={step} className="onboarding-step">
-                <span className="section-kicker">{steps[step].eyebrow}</span>
+                <span className="step-counter">Step {step + 1} of {steps.length}</span>
                 <h1 id="onboarding-title">{steps[step].title}</h1>
                 <p>{steps[step].copy}</p>
 
                 {step === 0 ? (
                   <div className="onboarding-features">
-                    <div><Zap size={18} strokeWidth={1.85} aria-hidden="true" /><span><strong>Instant</strong>System-wide triggers</span></div>
-                    <div><ShieldCheck size={18} strokeWidth={1.85} aria-hidden="true" /><span><strong>Private</strong>Local-first behavior</span></div>
+                    <div><Zap size={18} strokeWidth={1.85} aria-hidden="true" /><span><strong>In-place</strong>Works inside any text box</span></div>
+                    <div><ShieldCheck size={18} strokeWidth={1.85} aria-hidden="true" /><span><strong>Private</strong>Local styles never use network</span></div>
                   </div>
                 ) : null}
 
@@ -151,7 +169,7 @@ export function Onboarding({
                       <button key={item.id} className={provider === item.id ? 'selected' : ''} type="button" onClick={() => setProvider(item.id)}>
                         <span className={`onboarding-provider-tile ${getProviderTileClass(item.id)}`}><ProviderLogo id={item.id} size={18} /></span>
                         <strong>{item.name}</strong>
-                        <small>{item.local ? 'Runs on this PC' : item.description}</small>
+                        <small>{item.local ? 'Runs on this PC' : item.freeTier ? 'Free tier ready' : item.description}</small>
                         {provider === item.id ? <i aria-hidden="true"><Check size={12} strokeWidth={2.2} /></i> : null}
                       </button>
                     ))}
@@ -172,18 +190,12 @@ export function Onboarding({
                           </button>
                         ) : null}
                       </div>
-                      <div className="onboarding-key-input">
-                        <KeyRound size={16} strokeWidth={1.85} aria-hidden="true" />
-                        <input
-                          id="onboarding-api-key-input"
-                          type="password"
-                          value={key}
-                          onChange={(event) => setKey(event.target.value)}
-                          placeholder="Paste your key…"
-                          autoComplete="off"
-                          spellCheck={false}
-                        />
-                      </div>
+                      <SecretInput
+                        id="onboarding-api-key-input"
+                        value={key}
+                        onChange={setKey}
+                        placeholder="Paste your key…"
+                      />
                       <small>You may skip this and use offline styles first.</small>
                     </div>
                   )
@@ -198,7 +210,7 @@ export function Onboarding({
                 ) : null}
               </div>
 
-              {error ? <div className="inline-message onboarding-error">{error}</div> : null}
+              {error ? <div className="inline-message inline-message-danger onboarding-error" role="alert">{error}</div> : null}
               <div className="onboarding-actions">
                 {step > 0 ? <Button variant="ghost" icon={<ArrowLeft size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setStep(step - 1)}>Back</Button> : <span />}
                 {step < steps.length - 1

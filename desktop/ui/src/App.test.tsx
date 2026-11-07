@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import axe from 'axe-core'
 import { useState } from 'react'
 import { describe, expect, it, vi } from 'vitest'
+import { api } from './api'
 import App from './App'
 import { Select } from './components/ui'
 
@@ -283,5 +284,82 @@ describe('SwiftSlate dashboard', () => {
     } finally {
       openSpy.mockRestore()
     }
+  })
+
+  it('supports skip link, Overview trigger handoff, and Playground Ctrl+Enter with output chaining', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    const skipLink = screen.getByRole('link', { name: 'Skip to main content' })
+    expect(skipLink).toHaveAttribute('href', '#main-content')
+
+    await user.click(screen.getByRole('button', { name: '.shorten' }))
+    expect(await screen.findByRole('heading', { name: 'Command playground' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Command')).toHaveTextContent('.shorten')
+
+    const inputArea = screen.getByLabelText('Source draft') as HTMLTextAreaElement
+    inputArea.focus()
+    await user.keyboard('{Control>}{Enter}{/Control}')
+
+    const useAsInputButton = await screen.findByRole('button', { name: 'Use as input' })
+    expect(useAsInputButton).toBeInTheDocument()
+
+    const axeResult = await axe.run(document.body, {
+      rules: { 'color-contrast': { enabled: false } },
+    })
+    expect(axeResult.violations).toEqual([])
+
+    await user.click(useAsInputButton)
+    expect(inputArea.value).not.toContain('because the current time')
+  })
+
+  it('toggles API key visibility with SecretInput and renders danger alerts on failed provider tests', async () => {
+    const user = userEvent.setup()
+    const testSpy = vi.spyOn(api, 'testProvider').mockRejectedValueOnce(new Error('401 Invalid API key'))
+    try {
+      render(<App />)
+      await screen.findByText('SwiftSlate is listening')
+      await user.click(screen.getByRole('button', { name: 'Providers' }))
+      await screen.findByText('Choose where SwiftSlate thinks')
+
+      const deepseekCard = screen.getByRole('heading', { name: 'DeepSeek' }).closest('.provider-card') as HTMLElement
+      await user.click(within(deepseekCard).getByRole('button', { name: 'Configure' }))
+      const dialog = await screen.findByRole('dialog', { name: /Configure DeepSeek/i })
+
+      const keyInput = within(dialog).getByLabelText('API key') as HTMLInputElement
+      expect(keyInput.type).toBe('password')
+      await user.type(keyInput, 'sk-test-secret')
+
+      const revealBtn = within(dialog).getByRole('button', { name: 'Show API key' })
+      expect(revealBtn).toHaveAttribute('aria-pressed', 'false')
+      await user.click(revealBtn)
+      expect(keyInput.type).toBe('text')
+
+      const hideBtn = within(dialog).getByRole('button', { name: 'Hide API key' })
+      expect(hideBtn).toHaveAttribute('aria-pressed', 'true')
+      await user.click(hideBtn)
+      expect(keyInput.type).toBe('password')
+
+      await user.click(within(dialog).getByRole('button', { name: 'Test provider' }))
+      const alertBanner = await within(dialog).findByRole('alert')
+      expect(alertBanner).toHaveTextContent('401 Invalid API key')
+      expect(alertBanner).toHaveClass('inline-message-danger')
+    } finally {
+      testSpy.mockRestore()
+    }
+  })
+
+  it('supports provider search and Enter navigation inside the Ctrl+K command palette', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    await user.keyboard('{Control>}k{/Control}')
+    const dialog = await screen.findByRole('dialog', { name: 'Search SwiftSlate' })
+    const searchInput = within(dialog).getByPlaceholderText('Search screens and commands…')
+    await user.type(searchInput, 'Cerebras{Enter}')
+
+    expect(await screen.findByText('Choose where SwiftSlate thinks')).toBeInTheDocument()
   })
 })

@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowUpRight,
   Bot,
   Command,
   Gauge,
@@ -10,12 +11,14 @@ import {
 } from 'lucide-react'
 import { MotionConfig } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api } from './api'
 import { BrandLogo } from './components/BrandLogo'
 import { Onboarding } from './components/Onboarding'
+import { ProviderLogo, getProviderTileClass } from './components/ProviderLogo'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
-import { Button, Modal, Skeleton, Toasts, type ToastItem } from './components/ui'
+import { Button, Modal, Skeleton, Toasts, cn, type ToastItem } from './components/ui'
 import { CommandsScreen } from './screens/Commands'
 import { DiagnosticsScreen } from './screens/Diagnostics'
 import { Overview } from './screens/Overview'
@@ -26,13 +29,13 @@ import { StylesScreen } from './screens/Styles'
 import type { AppSnapshot, PageId, Provider, ProviderId, ThemeId } from './types'
 
 const pages: Array<{ id: PageId; label: string; description: string; icon: typeof Gauge }> = [
-  { id: 'overview', label: 'Overview', description: 'Runtime and activity', icon: Gauge },
-  { id: 'playground', label: 'Playground', description: 'Try a command', icon: TerminalSquare },
-  { id: 'providers', label: 'Providers', description: 'Models and credentials', icon: Bot },
+  { id: 'overview', label: 'Overview', description: 'Runtime telemetry and routing', icon: Gauge },
+  { id: 'playground', label: 'Playground', description: 'Test a trigger in a safe split buffer', icon: TerminalSquare },
+  { id: 'providers', label: 'Providers', description: 'Models, endpoints, and credentials', icon: Bot },
   { id: 'commands', label: 'Commands', description: 'Inline trigger library', icon: Command },
-  { id: 'styles', label: 'Styles', description: 'Offline text styles', icon: Palette },
-  { id: 'settings', label: 'Settings', description: 'Behavior and appearance', icon: Settings },
-  { id: 'diagnostics', label: 'Diagnostics', description: 'Health checks and logs', icon: Activity },
+  { id: 'styles', label: 'Styles', description: 'Offline Unicode text foundry', icon: Palette },
+  { id: 'settings', label: 'Settings', description: 'Behavior, startup, and theme', icon: Settings },
+  { id: 'diagnostics', label: 'Diagnostics', description: 'Health matrix and debug logs', icon: Activity },
 ]
 
 const themeOptions: Array<{ id: ThemeId; name: string; color: string }> = [
@@ -43,12 +46,21 @@ const themeOptions: Array<{ id: ThemeId; name: string; color: string }> = [
   { id: 'rose', name: 'Rose', color: '#ffafc8' },
 ]
 
+type PaletteAction = {
+  key: string
+  group: 'Screens' | 'Commands' | 'Providers'
+  title: string
+  subtitle: string
+  run: () => void
+  icon?: typeof Gauge
+  providerId?: ProviderId
+}
+
 function LoadingShell() {
   return (
     <div className="loading-screen">
       <Skeleton className="loading-hero" />
-      <div className="loading-row"><Skeleton/><Skeleton/><Skeleton/><Skeleton/></div>
-      <div className="loading-columns"><Skeleton/><Skeleton/></div>
+      <div className="loading-columns"><Skeleton /><Skeleton /></div>
     </div>
   )
 }
@@ -56,12 +68,15 @@ function LoadingShell() {
 export default function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [page, setPage] = useState<PageId>('overview')
+  const [playgroundPreset, setPlaygroundPreset] = useState<string | undefined>(undefined)
   const [collapsed, setCollapsed] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [themeOpen, setThemeOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [paletteIndex, setPaletteIndex] = useState(0)
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const [error, setError] = useState('')
+  const mainRef = useRef<HTMLElement>(null)
   const toastId = useRef(0)
 
   const notify = useCallback((message: string, tone: 'success' | 'danger' | 'neutral' = 'neutral') => {
@@ -79,6 +94,7 @@ export default function App() {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
         setSearchOpen(true)
+        setPaletteIndex(0)
       }
       if (event.key === 'Escape') {
         setSearchOpen(false)
@@ -93,17 +109,78 @@ export default function App() {
     setPage(next)
     setSearchOpen(false)
     setSearch('')
+    setPaletteIndex(0)
+    if (mainRef.current) mainRef.current.scrollTop = 0
   }, [])
 
-  const searchResults = useMemo(() => {
+  const openPlaygroundWith = useCallback((trigger: string) => {
+    setPlaygroundPreset(trigger)
+    setPage('playground')
+    setSearchOpen(false)
+    setSearch('')
+    setPaletteIndex(0)
+    if (mainRef.current) mainRef.current.scrollTop = 0
+  }, [])
+
+  const paletteActions = useMemo<PaletteAction[]>(() => {
     const normalized = search.toLowerCase().trim()
-    const pageItems = pages.filter((item) => !normalized || `${item.label} ${item.description}`.toLowerCase().includes(normalized))
-    const commandItems = (snapshot?.commands || []).filter((item) => normalized && `${item.trigger} ${item.prompt}`.toLowerCase().includes(normalized)).slice(0, 5)
-    return { pageItems, commandItems }
-  }, [search, snapshot])
+    const prefix = snapshot?.runtime.prefix || '.'
+    const screenItems: PaletteAction[] = pages
+      .filter((item) => !normalized || `${item.label} ${item.description}`.toLowerCase().includes(normalized))
+      .map((item) => ({
+        key: `page-${item.id}`,
+        group: 'Screens',
+        title: item.label,
+        subtitle: item.description,
+        icon: item.icon,
+        run: () => navigate(item.id),
+      }))
+
+    const commandItems: PaletteAction[] = (snapshot?.commands || [])
+      .filter((item) => normalized && `${item.trigger} ${item.prompt} ${item.value}`.toLowerCase().includes(normalized))
+      .slice(0, 5)
+      .map((item) => ({
+        key: `cmd-${item.id}`,
+        group: 'Commands',
+        title: `${prefix}${item.trigger}`,
+        subtitle: item.prompt || item.value || 'Built-in command',
+        icon: Command,
+        run: () => (item.type === 'ai' || item.type === 'style' ? openPlaygroundWith(item.trigger) : navigate('commands')),
+      }))
+
+    const providerItems: PaletteAction[] = (snapshot?.providers || [])
+      .filter((item) => normalized && `${item.name} ${item.id} ${item.model} ${item.description}`.toLowerCase().includes(normalized))
+      .slice(0, 4)
+      .map((item) => ({
+        key: `prov-${item.id}`,
+        group: 'Providers',
+        title: item.name,
+        subtitle: `${item.model} · ${item.local ? 'Local runtime' : item.freeTier ? 'Free tier ready' : 'Cloud API'}`,
+        providerId: item.id,
+        run: () => navigate('providers'),
+      }))
+
+    return [...screenItems, ...commandItems, ...providerItems]
+  }, [navigate, openPlaygroundWith, search, snapshot])
+
+  function handlePaletteKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
+    if (!paletteActions.length) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      setPaletteIndex((prev) => (prev + 1) % paletteActions.length)
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      setPaletteIndex((prev) => (prev - 1 + paletteActions.length) % paletteActions.length)
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      const chosen = paletteActions[Math.min(paletteIndex, paletteActions.length - 1)]
+      chosen?.run()
+    }
+  }
 
   async function togglePause() {
     if (!snapshot) return
+    const previous = snapshot
     const paused = !snapshot.runtime.paused
     setSnapshot({ ...snapshot, runtime: { ...snapshot.runtime, paused } })
     try {
@@ -111,7 +188,7 @@ export default function App() {
       setSnapshot((current) => current ? { ...current, runtime } : current)
       notify(paused ? 'Inline commands paused.' : 'Inline commands resumed.', 'success')
     } catch (reason) {
-      setSnapshot({ ...snapshot })
+      setSnapshot(previous)
       notify(reason instanceof Error ? reason.message : 'Runtime state could not be changed.', 'danger')
     }
   }
@@ -129,10 +206,14 @@ export default function App() {
 
   function changeTheme(theme: ThemeId) {
     if (!snapshot) return
+    const previous = snapshot.runtime
     const runtime = { ...snapshot.runtime, theme }
     setSnapshot({ ...snapshot, runtime })
     setThemeOpen(false)
-    void api.saveRuntime({ theme }).catch(() => undefined)
+    void api.saveRuntime({ theme }).catch((reason) => {
+      setSnapshot((current) => current ? { ...current, runtime: previous } : current)
+      notify(reason instanceof Error ? reason.message : 'Theme could not be saved.', 'danger')
+    })
   }
 
   async function completeOnboarding(providerId: ProviderId, apiKey: string) {
@@ -151,32 +232,45 @@ export default function App() {
   }
 
   if (error) {
-    return <div className="fatal-state"><BrandFallback/><h1>SwiftSlate could not open</h1><p>{error}</p><Button variant="primary" onClick={() => window.location.reload()}>Try again</Button></div>
+    return <div className="fatal-state"><BrandFallback /><h1>SwiftSlate could not open</h1><p>{error}</p><Button variant="primary" onClick={() => window.location.reload()}>Try again</Button></div>
   }
 
   const theme = snapshot?.runtime.theme || 'lavender'
   const reducedMotion = snapshot?.runtime.reducedMotion || false
+  const activeProviderRecord = snapshot?.providers.find((item) => item.id === snapshot.runtime.provider)
+  const clampedPaletteIndex = paletteActions.length ? Math.min(paletteIndex, paletteActions.length - 1) : -1
 
   return (
     <MotionConfig reducedMotion={reducedMotion ? 'always' : 'user'}>
       <div className="app" data-theme={theme} data-reduced-motion={reducedMotion || undefined}>
+        <a href="#main-content" className="skip-link">Skip to main content</a>
         <div className="ambient" aria-hidden="true" />
         <Sidebar
           collapsed={collapsed}
           paused={snapshot?.runtime.paused || false}
           active={page}
+          activeProvider={snapshot?.runtime.provider}
+          activeProviderName={activeProviderRecord?.name || snapshot?.runtime.provider}
+          activeModel={snapshot?.runtime.model}
           onNavigate={navigate}
           onCollapse={() => setCollapsed(!collapsed)}
         />
         <div className="app-main">
-          <Topbar page={page} paused={snapshot?.runtime.paused || false} onPause={togglePause} onSearch={() => setSearchOpen(true)} onTheme={() => setThemeOpen(true)} />
-          <main className="content" id="main-content">
+          <Topbar
+            page={page}
+            paused={snapshot?.runtime.paused || false}
+            prefix={snapshot?.runtime.prefix || '.'}
+            onPause={togglePause}
+            onSearch={() => { setSearchOpen(true); setPaletteIndex(0) }}
+            onTheme={() => setThemeOpen(true)}
+          />
+          <main ref={mainRef} className="content" id="main-content" tabIndex={-1}>
             {!snapshot ? <LoadingShell /> : (
               <div key={page} className="page-motion">
-                {page === 'overview' ? <Overview snapshot={snapshot} onNavigate={navigate} onPause={togglePause} /> : null}
-                {page === 'playground' ? <Playground commands={snapshot.commands} prefix={snapshot.runtime.prefix} notify={notify} /> : null}
+                {page === 'overview' ? <Overview snapshot={snapshot} onNavigate={navigate} onTryCommand={openPlaygroundWith} onPause={togglePause} /> : null}
+                {page === 'playground' ? <Playground commands={snapshot.commands} prefix={snapshot.runtime.prefix} initialTrigger={playgroundPreset} notify={notify} /> : null}
                 {page === 'providers' ? <ProvidersScreen providers={snapshot.providers} activeProvider={snapshot.runtime.provider} onChange={changeProvider} notify={notify} /> : null}
-                {page === 'commands' ? <CommandsScreen commands={snapshot.commands} prefix={snapshot.runtime.prefix} onChange={(commands) => setSnapshot({ ...snapshot, commands })} notify={notify} /> : null}
+                {page === 'commands' ? <CommandsScreen commands={snapshot.commands} prefix={snapshot.runtime.prefix} onChange={(commands) => setSnapshot({ ...snapshot, commands })} onTryCommand={openPlaygroundWith} notify={notify} /> : null}
                 {page === 'styles' ? <StylesScreen prefix={snapshot.runtime.prefix} notify={notify} /> : null}
                 {page === 'settings' ? <SettingsScreen runtime={snapshot.runtime} onChange={(runtime) => setSnapshot({ ...snapshot, runtime })} notify={notify} /> : null}
                 {page === 'diagnostics' ? <DiagnosticsScreen initial={snapshot.diagnostics} initialLogs={snapshot.logs} notify={notify} /> : null}
@@ -185,32 +279,75 @@ export default function App() {
           </main>
         </div>
 
-        <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search SwiftSlate" description="Jump to a screen or find a command." size="md">
+        <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search SwiftSlate" description="Jump to a screen, switch providers, or launch a command." size="md">
           <div className="command-palette">
-            <div className="palette-search"><Search size={16} strokeWidth={1.85} aria-hidden="true" /><input data-autofocus="" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search screens and commands…" /></div>
+            <div className="palette-search">
+              <Search size={16} strokeWidth={1.85} aria-hidden="true" />
+              <input
+                data-autofocus=""
+                value={search}
+                onChange={(event) => { setSearch(event.target.value); setPaletteIndex(0) }}
+                onKeyDown={handlePaletteKeyDown}
+                placeholder="Search screens and commands…"
+              />
+              <kbd aria-hidden="true">↵</kbd>
+            </div>
             <div className="palette-results">
-              {searchResults.pageItems.length ? <span className="palette-heading">Screens</span> : null}
-              {searchResults.pageItems.map((item) => { const Icon = item.icon; return <button type="button" key={item.id} onClick={() => navigate(item.id)}><span aria-hidden="true"><Icon size={16} strokeWidth={1.85} /></span><div><strong>{item.label}</strong><small>{item.description}</small></div></button> })}
-              {searchResults.commandItems.length ? <span className="palette-heading">Commands</span> : null}
-              {searchResults.commandItems.map((item) => <button type="button" key={item.id} onClick={() => navigate('commands')}><span aria-hidden="true"><Command size={16} strokeWidth={1.85} /></span><div><strong>.{item.trigger}</strong><small>{item.prompt || item.value}</small></div></button>)}
-              {!searchResults.pageItems.length && !searchResults.commandItems.length ? <div className="palette-empty">No results for “{search}”</div> : null}
+              {(['Screens', 'Commands', 'Providers'] as const).map((group) => {
+                const groupItems = paletteActions
+                  .map((item, idx) => ({ item, idx }))
+                  .filter(({ item }) => item.group === group)
+                if (!groupItems.length) return null
+                return (
+                  <div key={group} className="palette-group">
+                    <span className="palette-heading">{group}</span>
+                    {groupItems.map(({ item, idx }) => {
+                      const Icon = item.icon
+                      const isActive = idx === clampedPaletteIndex
+                      return (
+                        <button
+                          type="button"
+                          key={item.key}
+                          className={cn(isActive && 'palette-item-active')}
+                          onMouseEnter={() => setPaletteIndex(idx)}
+                          onClick={item.run}
+                        >
+                          {item.providerId ? (
+                            <span className={cn('palette-provider-tile', getProviderTileClass(item.providerId))} aria-hidden="true">
+                              <ProviderLogo id={item.providerId} size={15} />
+                            </span>
+                          ) : Icon ? (
+                            <span className="palette-icon-tile" aria-hidden="true"><Icon size={16} strokeWidth={1.85} /></span>
+                          ) : null}
+                          <div>
+                            <strong>{item.title}</strong>
+                            <small>{item.subtitle}</small>
+                          </div>
+                          <ArrowUpRight size={14} strokeWidth={1.85} className="palette-enter-icon" aria-hidden="true" />
+                        </button>
+                      )
+                    })}
+                  </div>
+                )
+              })}
+              {!paletteActions.length ? <div className="palette-empty">No results for “{search}”</div> : null}
             </div>
           </div>
         </Modal>
 
         <Modal open={themeOpen} onClose={() => setThemeOpen(false)} title="Choose a theme" description="The dark surfaces stay consistent; only the product accent changes." size="sm">
           <div className="theme-modal-list">
-            {themeOptions.map((item) => <button key={item.id} type="button" className={theme === item.id ? 'active' : ''} onClick={() => changeTheme(item.id)}><i style={{ background: item.color }}/><strong>{item.name}</strong>{theme === item.id ? <span>Active</span> : null}</button>)}
+            {themeOptions.map((item) => <button key={item.id} type="button" className={theme === item.id ? 'active' : ''} onClick={() => changeTheme(item.id)}><i style={{ background: item.color }} /><strong>{item.name}</strong>{theme === item.id ? <span>Active</span> : null}</button>)}
           </div>
         </Modal>
 
-        {snapshot ? <Onboarding open={snapshot.runtime.firstRun || new URLSearchParams(window.location.search).has('onboarding')} providers={snapshot.providers} onComplete={completeOnboarding}/> : null}
-        <Toasts items={toasts}/>
+        {snapshot ? <Onboarding open={snapshot.runtime.firstRun || new URLSearchParams(window.location.search).has('onboarding')} providers={snapshot.providers} onComplete={completeOnboarding} /> : null}
+        <Toasts items={toasts} />
       </div>
     </MotionConfig>
   )
 }
 
 function BrandFallback() {
-  return <span className="brand-mark brand-mark-large"><BrandLogo size={52}/></span>
+  return <span className="brand-mark brand-mark-large"><BrandLogo size={52} /></span>
 }

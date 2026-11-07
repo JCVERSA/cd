@@ -1,18 +1,21 @@
-import { ArrowRight, Check, Clipboard, Clock3, Eraser, Play, Sparkles } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { ArrowLeftRight, ArrowRight, Check, Clipboard, Clock3, Eraser, Play, Sparkles } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
-import { Badge, Button, Select, SpotlightCard } from '../components/ui'
+import { Badge, Button, Select, SpotlightCard, cn } from '../components/ui'
 import type { Command as CommandType } from '../types'
 
 const sample = 'hey team just wanted to check if we can move the meeting to tomorrow afternoon because the current time does not work well for everyone'
+const quickPresets = ['fix', 'improve', 'shorten', 'formal', 'bold'] as const
 
 export function Playground({
   commands,
   prefix = '.',
+  initialTrigger,
   notify,
 }: {
   commands: CommandType[]
   prefix?: string
+  initialTrigger?: string
   notify: (message: string, tone?: 'success' | 'danger') => void
 }) {
   const available = useMemo(() => commands.filter((command) => command.type === 'ai' || command.type === 'style'), [commands])
@@ -25,7 +28,11 @@ export function Playground({
     })),
     [available, prefix],
   )
-  const [selected, setSelected] = useState(available[0]?.trigger || 'fix')
+  const [selected, setSelected] = useState(
+    initialTrigger && available.some((item) => item.trigger === initialTrigger)
+      ? initialTrigger
+      : (available[0]?.trigger || 'fix'),
+  )
   const [input, setInput] = useState(sample)
   const [output, setOutput] = useState('')
   const [runCount, setRunCount] = useState(0)
@@ -34,8 +41,24 @@ export function Playground({
   const [copied, setCopied] = useState(false)
   const copyTimer = useRef<number | null>(null)
 
+  useEffect(() => {
+    if (initialTrigger && available.some((item) => item.trigger === initialTrigger)) {
+      setSelected(initialTrigger)
+    }
+  }, [available, initialTrigger])
+
+  const wordCount = useMemo(() => {
+    const trimmed = input.trim()
+    return trimmed ? trimmed.split(/\s+/).length : 0
+  }, [input])
+
+  const activeCommand = useMemo(
+    () => available.find((command) => command.trigger === selected),
+    [available, selected],
+  )
+
   async function run() {
-    if (!input.trim()) return
+    if (!input.trim() || running) return
     setRunning(true)
     try {
       const result = await api.runPlayground({ command: selected, input })
@@ -66,20 +89,14 @@ export function Playground({
   return (
     <div className="screen playground-screen">
       <SpotlightCard className="playground-shell">
-        <div className="playground-toolbar">
-          <div>
-            <span className="section-kicker">Safe testing</span>
+        <div className="playground-studio-bar">
+          <div className="playground-title-block">
             <h2>Command playground</h2>
+            <p>{activeCommand?.prompt || 'Transform text safely without modifying any external window.'}</p>
           </div>
-          <div className="toolbar-meta">
-            <Badge tone="accent"><Sparkles size={12} strokeWidth={1.85} aria-hidden="true" /> {selected}</Badge>
-            <span>Nothing is pasted automatically</span>
-          </div>
-        </div>
 
-        <div className="playground-grid">
-          <section className="editor-pane">
-            <div className="pane-heading">
+          <div className="playground-controls">
+            <div className="playground-select-group">
               <label htmlFor="playground-command">Command</label>
               <Select
                 id="playground-command"
@@ -90,20 +107,65 @@ export function Playground({
                 onChange={setSelected}
               />
             </div>
-            <label className="editor-label" htmlFor="playground-input">Input text</label>
+            <Button
+              variant="primary"
+              icon={<Play size={15} strokeWidth={1.85} aria-hidden="true" />}
+              loading={running}
+              disabled={!input.trim()}
+              onClick={run}
+            >
+              Run command
+            </Button>
+          </div>
+        </div>
+
+        <div className="playground-preset-strip">
+          <span className="preset-strip-label">Quick pick</span>
+          <div className="preset-pills">
+            {quickPresets
+              .filter((trigger) => available.some((item) => item.trigger === trigger))
+              .map((trigger) => (
+                <button
+                  key={trigger}
+                  type="button"
+                  className={cn('preset-pill', selected === trigger && 'preset-pill-active')}
+                  aria-pressed={selected === trigger}
+                  onClick={() => setSelected(trigger)}
+                >
+                  {prefix}{trigger}
+                </button>
+              ))}
+          </div>
+          <span className="shortcut-hint">Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to run</span>
+        </div>
+
+        <div className="playground-grid">
+          <section className="editor-pane">
+            <div className="pane-heading">
+              <label htmlFor="playground-input">Source draft</label>
+              <span className="inline-suffix-preview" title="How you trigger this in any Windows app">
+                … <code>{prefix}{selected}</code>
+              </span>
+            </div>
             <textarea
               id="playground-input"
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                  event.preventDefault()
+                  void run()
+                }
+              }}
               placeholder="Enter text to transform…"
               spellCheck
             />
             <div className="editor-footer">
-              <span>{input.length} characters</span>
+              <span>{wordCount} {wordCount === 1 ? 'word' : 'words'} · {input.length} chars</span>
               <Button
                 variant="ghost"
                 size="sm"
-                icon={<Eraser size={16} strokeWidth={1.85} aria-hidden="true" />}
+                icon={<Eraser size={15} strokeWidth={1.85} aria-hidden="true" />}
                 onClick={() => setInput('')}
               >
                 Clear
@@ -117,47 +179,46 @@ export function Playground({
 
           <section className="editor-pane result-pane">
             <div className="pane-heading">
-              <span>Result</span>
-              {output ? <Badge tone="success"><Check size={12} strokeWidth={1.85} aria-hidden="true" /> Complete</Badge> : <Badge>Waiting</Badge>}
+              <span>Transformed output</span>
+              {output ? <Badge tone="success"><Check size={12} strokeWidth={1.85} aria-hidden="true" /> Ready</Badge> : <Badge>Idle</Badge>}
             </div>
             <div className="result-output" aria-live="polite">
               {output ? (
                 <div key={runCount} className="result-text-reveal">{output}</div>
               ) : (
                 <div className="result-placeholder">
-                  <Sparkles size={28} strokeWidth={1.85} aria-hidden="true" />
-                  <p>Your transformed text will appear here.</p>
+                  <Sparkles size={24} strokeWidth={1.85} aria-hidden="true" />
+                  <p>Run <code>{prefix}{selected}</code> to preview the inline replacement.</p>
                 </div>
               )}
             </div>
             <div className="editor-footer">
-              <span>{output ? <><Clock3 size={14} strokeWidth={1.85} aria-hidden="true" /> {duration} ms</> : 'Ready when you are'}</span>
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={copied
-                  ? <Check size={16} strokeWidth={1.85} aria-hidden="true" />
-                  : <Clipboard size={16} strokeWidth={1.85} aria-hidden="true" />}
-                disabled={!output}
-                onClick={copy}
-              >
-                {copied ? 'Copied' : 'Copy'}
-              </Button>
+              <span>{output ? <><Clock3 size={14} strokeWidth={1.85} aria-hidden="true" /> {duration} ms</> : 'Nothing pasted externally'}</span>
+              <div className="result-footer-actions">
+                {output ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<ArrowLeftRight size={14} strokeWidth={1.85} aria-hidden="true" />}
+                    onClick={() => { setInput(output); setOutput('') }}
+                  >
+                    Use as input
+                  </Button>
+                ) : null}
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={copied
+                    ? <Check size={15} strokeWidth={1.85} aria-hidden="true" />
+                    : <Clipboard size={15} strokeWidth={1.85} aria-hidden="true" />}
+                  disabled={!output}
+                  onClick={copy}
+                >
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
             </div>
           </section>
-        </div>
-
-        <div className="playground-actionbar">
-          <p><strong>Tip:</strong> In any app, type your prefix and command after the text you want to transform.</p>
-          <Button
-            variant="primary"
-            icon={<Play size={16} strokeWidth={1.85} aria-hidden="true" />}
-            loading={running}
-            disabled={!input.trim()}
-            onClick={run}
-          >
-            Run command
-          </Button>
         </div>
       </SpotlightCard>
     </div>

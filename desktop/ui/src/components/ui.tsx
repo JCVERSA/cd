@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useMotionTemplate, useMotionValue, useReducedMotion } from 'motion/react'
 import type { HTMLMotionProps } from 'motion/react'
-import { AlertCircle, Check, ChevronDown, LoaderCircle, Search, X } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, Eye, EyeOff, KeyRound, LoaderCircle, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, PropsWithChildren, ReactNode } from 'react'
@@ -248,6 +248,45 @@ export function Field({ label, hint, children }: PropsWithChildren<{ label: stri
       {children}
       {hint ? <span className="field-hint">{hint}</span> : null}
     </label>
+  )
+}
+
+export function SecretInput({
+  id,
+  value,
+  onChange,
+  placeholder,
+}: {
+  id: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+}) {
+  const [revealed, setRevealed] = useState(false)
+  return (
+    <div className="secret-input-wrap">
+      <KeyRound size={16} strokeWidth={1.85} aria-hidden="true" />
+      <input
+        id={id}
+        type={revealed ? 'text' : 'password'}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      <button
+        type="button"
+        className="secret-visibility-toggle"
+        aria-label={revealed ? 'Hide API key' : 'Show API key'}
+        aria-pressed={revealed}
+        onClick={() => setRevealed((current) => !current)}
+      >
+        {revealed
+          ? <EyeOff size={15} strokeWidth={1.85} aria-hidden="true" />
+          : <Eye size={15} strokeWidth={1.85} aria-hidden="true" />}
+      </button>
+    </div>
   )
 }
 
