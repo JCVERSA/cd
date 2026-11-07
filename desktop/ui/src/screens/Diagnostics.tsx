@@ -1,10 +1,12 @@
 import { useMemo, useRef, useState } from 'react'
 import { api } from '../api'
+import { JellyRadio } from '../components/JellyRadio'
 import { Badge, Button, SpotlightCard } from '../components/ui'
 import {
   AlertTriangleIcon,
   CheckCircleIcon,
   CopyCheckIcon,
+  InfoCircleIcon,
   PlayActionIcon,
   ShieldCheckIcon,
   SpinnerRingIcon,
@@ -128,19 +130,31 @@ export function DiagnosticsScreen({
               <span>Redacted before persistence</span>
             </div>
             <div className="log-actions">
-              <div className="segmented-control" role="group" aria-label="Log level filter">
-                {(['all', 'info', 'warn', 'error'] as const).map((lvl) => (
-                  <button
-                    key={lvl}
-                    type="button"
-                    className={levelFilter === lvl ? 'segment-active' : ''}
-                    aria-pressed={levelFilter === lvl}
-                    onClick={() => setLevelFilter(lvl)}
-                  >
-                    {lvl === 'all' ? 'All' : lvl.charAt(0).toUpperCase() + lvl.slice(1)}
-                  </button>
-                ))}
-              </div>
+              <JellyRadio
+                ariaLabel="Log level filter"
+                value={levelFilter}
+                onChange={(val) => setLevelFilter(val as LogFilter)}
+                chipColor="var(--surface-2)"
+                activeColor="var(--accent)"
+                textColor="var(--text-soft)"
+                activeTextColor="#110d18"
+                size="sm"
+                gap={5}
+                radius={14}
+                swell={0.13}
+                barge={3.5}
+                shrink={0.04}
+                jelly={1}
+                bounce={0.24}
+                stagger={18}
+                stiffness={580}
+                items={[
+                  { value: 'all', label: 'All' },
+                  { value: 'info', label: 'Info', icon: <InfoCircleIcon size={13} strokeWidth={1.9} aria-hidden="true" /> },
+                  { value: 'warn', label: 'Warn', icon: <AlertTriangleIcon size={13} strokeWidth={1.9} aria-hidden="true" /> },
+                  { value: 'error', label: 'Error', icon: <XCircleIcon size={13} strokeWidth={1.9} aria-hidden="true" /> },
+                ]}
+              />
               <Button variant="ghost" size="sm" loading={refreshingLogs} icon={<SyncArrowsIcon size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={refreshLogs}>Refresh</Button>
               <Button
                 variant="secondary"

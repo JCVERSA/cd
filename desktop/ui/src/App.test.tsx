@@ -8,6 +8,7 @@ import { api } from './api'
 import App from './App'
 import { ChromaGrid } from './components/ChromaGrid'
 import { GlideSelect } from './components/GlideSelect'
+import { JellyRadio } from './components/JellyRadio'
 import { SwipeRow } from './components/SwipeRow'
 import { Select } from './components/ui'
 import { GLYPH_CATALOG, pathSignature } from './icons'
@@ -85,15 +86,16 @@ describe('SwiftSlate dashboard', () => {
     expect(screen.getByText('Ctrl K')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Notifications' })).not.toBeInTheDocument()
 
-    // Commands screen: aria-pressed filter state + axe
+    // Commands screen: JellyRadio aria-checked filter state + axe
     await user.click(screen.getByRole('button', { name: 'Commands' }))
     await screen.findByText('Your command library')
-    const allFilter = screen.getByRole('button', { name: 'All' })
-    const aiFilter = screen.getByRole('button', { name: 'AI' })
-    expect(allFilter).toHaveAttribute('aria-pressed', 'true')
-    expect(aiFilter).toHaveAttribute('aria-pressed', 'false')
+    const commandTypeGroup = screen.getByRole('radiogroup', { name: 'Command type filter' })
+    const allFilter = within(commandTypeGroup).getByRole('radio', { name: 'All' })
+    const aiFilter = within(commandTypeGroup).getByRole('radio', { name: 'AI' })
+    expect(allFilter).toHaveAttribute('aria-checked', 'true')
+    expect(aiFilter).toHaveAttribute('aria-checked', 'false')
     await user.click(aiFilter)
-    expect(aiFilter).toHaveAttribute('aria-pressed', 'true')
+    expect(aiFilter).toHaveAttribute('aria-checked', 'true')
     expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
 
     // Styles screen: axe
@@ -268,15 +270,15 @@ describe('SwiftSlate dashboard', () => {
       expect(openSpy).toHaveBeenCalledWith('https://cloud.cerebras.ai/', '_blank', 'noopener,noreferrer')
 
       // Filter bar: Free tier (14 of 16), Local (2 of 16), search, and reset
-      const filterGroup = screen.getByRole('group', { name: 'Provider filter' })
-      await user.click(within(filterGroup).getByRole('button', { name: 'Free tier' }))
+      const filterGroup = screen.getByRole('radiogroup', { name: 'Provider filter' })
+      await user.click(within(filterGroup).getByRole('radio', { name: 'Free tier' }))
       expect(screen.getByText('14 of 16 providers')).toBeInTheDocument()
       expect(screen.queryByRole('heading', { name: 'OpenAI' })).not.toBeInTheDocument()
 
-      await user.click(within(filterGroup).getByRole('button', { name: 'Local' }))
+      await user.click(within(filterGroup).getByRole('radio', { name: 'Local' }))
       expect(screen.getByText('2 of 16 providers')).toBeInTheDocument()
 
-      await user.click(within(filterGroup).getByRole('button', { name: 'All' }))
+      await user.click(within(filterGroup).getByRole('radio', { name: 'All' }))
       const searchInput = screen.getByLabelText('Search providers')
       await user.type(searchInput, 'DeepSeek')
       expect(screen.getByText('2 of 16 providers')).toBeInTheDocument()
@@ -626,5 +628,83 @@ describe('SwiftSlate dashboard', () => {
     const lockedRow = screen.getByRole('group', { name: 'Right swipe item' })
     expect(lockedRow).toHaveAttribute('data-direction', 'right')
     expect(lockedRow).toHaveAttribute('data-disabled')
+  })
+
+  it('integrates JellyRadio across Providers, Commands, and Diagnostics with spring transforms, roving keyboard navigation, and axe compliance', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    // Navigate to Diagnostics and test Log level filter JellyRadio + axe
+    await user.click(screen.getByRole('button', { name: 'Diagnostics' }))
+    await screen.findByRole('button', { name: 'Run all checks' })
+
+    const logFilterGroup = screen.getByRole('radiogroup', { name: 'Log level filter' })
+    expect(logFilterGroup).toHaveClass('jelly-radio')
+
+    const allChip = within(logFilterGroup).getByRole('radio', { name: 'All' })
+    const errorChip = within(logFilterGroup).getByRole('radio', { name: 'Error' })
+    expect(allChip).toHaveAttribute('aria-checked', 'true')
+    expect(allChip).toHaveAttribute('tabindex', '0')
+    expect(errorChip).toHaveAttribute('tabindex', '-1')
+
+    // Active chip swells (scale > 1) while unchosen neighbors shrink and barge aside
+    expect(allChip.style.transform).toContain('scale(1.13')
+    expect(errorChip.style.transform).toContain('scale(0.96')
+
+    await user.click(errorChip)
+    expect(errorChip).toHaveAttribute('aria-checked', 'true')
+    expect(errorChip).toHaveAttribute('tabindex', '0')
+    expect(allChip).toHaveAttribute('tabindex', '-1')
+
+    const diagAxe = await axe.run(document.body, {
+      rules: { 'color-contrast': { enabled: false } },
+    })
+    expect(diagAxe.violations).toEqual([])
+
+    unmount()
+
+    // Standalone React Bits JellyRadio: string items + disabled item skipping + ArrowRight/Home/End
+    const onPick = vi.fn()
+    render(
+      <main className="app">
+        <JellyRadio defaultValue="Medium" onChange={onPick} ariaLabel="Intensity" />
+        <JellyRadio
+          ariaLabel="View mode"
+          defaultValue="list"
+          items={[
+            { value: 'list', label: 'List' },
+            { value: 'map', label: 'Map', disabled: true },
+            { value: 'grid', label: 'Grid' },
+          ]}
+        />
+      </main>,
+    )
+
+    const intensityGroup = screen.getByRole('radiogroup', { name: 'Intensity' })
+    const mediumRadio = within(intensityGroup).getByRole('radio', { name: 'Medium' })
+    expect(mediumRadio).toHaveAttribute('aria-checked', 'true')
+    expect(mediumRadio.style.transform).toContain('scale(1.2, 1.2)')
+
+    mediumRadio.focus()
+    await user.keyboard('{ArrowRight}')
+    expect(onPick).toHaveBeenCalledWith('High', 3)
+    expect(within(intensityGroup).getByRole('radio', { name: 'High' })).toHaveFocus()
+
+    await user.keyboard('{Home}')
+    expect(onPick).toHaveBeenLastCalledWith('Off', 0)
+
+    // Disabled item ('Map') is skipped by keyboard arrow navigation
+    const viewGroup = screen.getByRole('radiogroup', { name: 'View mode' })
+    const listRadio = within(viewGroup).getByRole('radio', { name: 'List' })
+    expect(within(viewGroup).getByRole('radio', { name: 'Map' })).toBeDisabled()
+    listRadio.focus()
+    await user.keyboard('{ArrowRight}')
+    expect(within(viewGroup).getByRole('radio', { name: 'Grid' })).toHaveAttribute('aria-checked', 'true')
+
+    const standaloneAxe = await axe.run(document.body, {
+      rules: { 'color-contrast': { enabled: false } },
+    })
+    expect(standaloneAxe.violations).toEqual([])
   })
 })

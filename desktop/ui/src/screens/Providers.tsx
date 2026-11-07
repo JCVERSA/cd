@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { ChromaGrid } from '../components/ChromaGrid'
 import { GlideSelect } from '../components/GlideSelect'
+import { JellyRadio } from '../components/JellyRadio'
 import { ProviderLogo, getProviderAccentColor, getProviderPortalUrl, getProviderTileClass } from '../components/ProviderLogo'
 import { Badge, Button, Field, Modal, SecretInput, Select, SpotlightCard } from '../components/ui'
 import {
@@ -9,6 +10,7 @@ import {
   CheckMarkIcon,
   ExternalLaunchIcon,
   KeyVaultIcon,
+  OfflineCloudIcon,
   ProbeFlaskIcon,
   SearchIcon,
   ServerStackIcon,
@@ -22,13 +24,6 @@ import type { Provider } from '../types'
 
 type ProviderFilter = 'all' | 'free' | 'cloud' | 'local'
 type ProviderSort = 'recommended' | 'ready' | 'name' | 'local'
-
-const filterOptions: Array<{ id: ProviderFilter; label: string }> = [
-  { id: 'all', label: 'All' },
-  { id: 'free', label: 'Free tier' },
-  { id: 'cloud', label: 'Cloud' },
-  { id: 'local', label: 'Local' },
-]
 
 const sortOptions: Array<{ value: ProviderSort; label: string; tag: string }> = [
   { value: 'recommended', label: 'Recommended', tag: 'Default' },
@@ -231,19 +226,31 @@ export function ProvidersScreen({
             placeholder="Search providers or models…"
           />
         </div>
-        <div className="segmented-control" role="group" aria-label="Provider filter">
-          {filterOptions.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={filter === option.id ? 'segment-active' : ''}
-              aria-pressed={filter === option.id}
-              onClick={() => setFilter(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <JellyRadio
+          ariaLabel="Provider filter"
+          value={filter}
+          onChange={(val) => setFilter(val as ProviderFilter)}
+          chipColor="var(--surface-2)"
+          activeColor="var(--accent)"
+          textColor="var(--text-soft)"
+          activeTextColor="#110d18"
+          size="sm"
+          gap={6}
+          radius={14}
+          swell={0.14}
+          barge={4}
+          shrink={0.04}
+          jelly={1}
+          bounce={0.25}
+          stagger={20}
+          stiffness={580}
+          items={[
+            { value: 'all', label: 'All' },
+            { value: 'free', label: 'Free tier', icon: <SparkleIcon size={13} strokeWidth={1.9} aria-hidden="true" /> },
+            { value: 'cloud', label: 'Cloud', icon: <ServerStackIcon size={13} strokeWidth={1.9} aria-hidden="true" /> },
+            { value: 'local', label: 'Local', icon: <OfflineCloudIcon size={13} strokeWidth={1.9} aria-hidden="true" /> },
+          ]}
+        />
         <GlideSelect
           ariaLabel="Sort providers"
           options={sortOptions}

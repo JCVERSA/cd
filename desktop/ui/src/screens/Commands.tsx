@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { GlideSelect } from '../components/GlideSelect'
+import { JellyRadio } from '../components/JellyRadio'
 import { SwipeRow, type SwipeAction } from '../components/SwipeRow'
 import { Badge, Button, Field, Modal, Select, SpotlightCard, Switch } from '../components/ui'
 import {
@@ -125,19 +126,31 @@ export function CommandsScreen({
             <SearchIcon size={16} strokeWidth={1.85} morphed={Boolean(query)} aria-hidden="true" />
             <input aria-label="Search commands" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands…" />
           </div>
-          <div className="segmented-control" role="group" aria-label="Command type filter">
-            {(['all', 'ai', 'style', 'replacer-text'] as const).map((item) => (
-              <button
-                key={item}
-                className={type === item ? 'segment-active' : ''}
-                aria-pressed={type === item}
-                type="button"
-                onClick={() => setType(item)}
-              >
-                {item === 'all' ? 'All' : typeMeta[item].label}
-              </button>
-            ))}
-          </div>
+          <JellyRadio
+            ariaLabel="Command type filter"
+            value={type}
+            onChange={(val) => setType(val as 'all' | CommandType)}
+            chipColor="var(--surface-2)"
+            activeColor="var(--accent)"
+            textColor="var(--text-soft)"
+            activeTextColor="#110d18"
+            size="sm"
+            gap={6}
+            radius={14}
+            swell={0.14}
+            barge={4}
+            shrink={0.04}
+            jelly={1}
+            bounce={0.25}
+            stagger={20}
+            stiffness={580}
+            items={[
+              { value: 'all', label: 'All' },
+              { value: 'ai', label: 'AI', icon: <ProvidersIcon size={13} strokeWidth={1.9} aria-hidden="true" /> },
+              { value: 'style', label: 'Local style', icon: <SparkleIcon size={13} strokeWidth={1.9} aria-hidden="true" /> },
+              { value: 'replacer-text', label: 'Text', icon: <TypeGlyphIcon size={13} strokeWidth={1.9} aria-hidden="true" /> },
+            ]}
+          />
           <GlideSelect
             ariaLabel="Sort commands"
             value={sortBy}
