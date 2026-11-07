@@ -5,7 +5,6 @@ import {
   DiagnosticsIcon,
   OverviewIcon,
   PlaygroundIcon,
-  ProvidersIcon,
   SettingsIcon,
   SidebarToggleIcon,
   StylesIcon,
@@ -18,8 +17,7 @@ import { cn } from './ui'
 const nav: Array<{ id: PageId; label: string; icon: typeof OverviewIcon; dividerBefore?: boolean }> = [
   { id: 'overview', label: 'Overview', icon: OverviewIcon },
   { id: 'playground', label: 'Playground', icon: PlaygroundIcon },
-  { id: 'providers', label: 'Providers', icon: ProvidersIcon, dividerBefore: true },
-  { id: 'commands', label: 'Commands', icon: CommandsIcon },
+  { id: 'commands', label: 'Commands', icon: CommandsIcon, dividerBefore: true },
   { id: 'styles', label: 'Styles', icon: StylesIcon },
   { id: 'settings', label: 'Settings', icon: SettingsIcon, dividerBefore: true },
   { id: 'diagnostics', label: 'Diagnostics', icon: DiagnosticsIcon },
@@ -88,8 +86,9 @@ export function Sidebar({
       <div className="sidebar-dock">
         <button
           type="button"
-          className="sidebar-provider-pod"
+          className={cn('sidebar-provider-pod', active === 'providers' && 'sidebar-provider-pod-active')}
           onClick={() => onNavigate('providers')}
+          aria-current={active === 'providers' ? 'page' : undefined}
           aria-label={`Active model: ${activeProviderName} (${activeModel}). Switch engine`}
           title={collapsed ? `${activeProviderName} · ${activeModel}` : undefined}
         >
@@ -100,7 +99,13 @@ export function Sidebar({
             <strong>{activeProviderName}</strong>
             <span>{activeModel || 'Select model'}</span>
           </span>
-          <ChevronRightIcon size={14} strokeWidth={1.85} className={cn('sidebar-pod-arrow', collapsed && 'nav-label-hidden')} aria-hidden="true" />
+          <ChevronRightIcon
+            size={14}
+            strokeWidth={1.85}
+            morphed={active === 'providers'}
+            className={cn('sidebar-pod-arrow', collapsed && 'nav-label-hidden')}
+            aria-hidden="true"
+          />
         </button>
 
         <div className="sidebar-runtime">

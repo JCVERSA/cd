@@ -169,8 +169,10 @@
   .nav-label-hidden { width: 0 !important; opacity: 0; overflow: hidden; pointer-events: none; }
 
   .sidebar-dock { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
-  .sidebar-provider-pod { display: flex; width: 100%; min-height: 46px; align-items: center; padding: 7px 9px; gap: 9px; color: var(--text-soft); border: 1px solid var(--border); border-radius: 11px; background: rgba(255,255,255,.024); cursor: pointer; text-align: left; white-space: nowrap; transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease, transform var(--duration-press) var(--ease-out); }
+  .sidebar-provider-pod { display: flex; width: 100%; min-height: 46px; align-items: center; padding: 7px 9px; gap: 9px; color: var(--text-soft); border: 1px solid var(--border); border-radius: 11px; background: rgba(255,255,255,.024); cursor: pointer; text-align: left; white-space: nowrap; transition: border-color var(--duration-fast) ease, background-color var(--duration-fast) ease, color var(--duration-fast) ease, transform var(--duration-press) var(--ease-out); }
   .sidebar-provider-pod:active { transform: scale(0.985); }
+  .sidebar-provider-pod-active { color: var(--text); border-color: rgba(var(--accent-rgb), .28); background: rgba(var(--accent-rgb), .085); }
+  .sidebar-provider-pod-active .sidebar-pod-arrow { color: var(--accent); }
   .sidebar-provider-mark { display: grid; flex: 0 0 28px; width: 28px; height: 28px; place-items: center; border-width: 1px; border-style: solid; border-radius: 8px; }
   .sidebar-provider-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; overflow: hidden; }
   .sidebar-provider-copy strong { overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; }

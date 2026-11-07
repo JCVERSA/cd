@@ -23,15 +23,19 @@ describe('SwiftSlate dashboard', () => {
     const user = userEvent.setup()
     render(<App />)
     expect(await screen.findByText('SwiftSlate is listening')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Providers' }))
+    const mainNav = screen.getByRole('navigation', { name: 'Main navigation' })
+    expect(within(mainNav).queryByRole('button', { name: 'Providers' })).not.toBeInTheDocument()
+    const providerPod = screen.getByRole('button', { name: /Switch engine/i })
+    await user.click(providerPod)
     expect(await screen.findByText('Choose where SwiftSlate thinks')).toBeInTheDocument()
+    expect(providerPod).toHaveAttribute('aria-current', 'page')
   })
 
   it('opens provider configuration without exposing a saved key', async () => {
     const user = userEvent.setup()
     render(<App />)
     await screen.findByText('SwiftSlate is listening')
-    await user.click(screen.getByRole('button', { name: 'Providers' }))
+    await user.click(screen.getByRole('button', { name: /Switch engine/i }))
     await screen.findByText('Choose where SwiftSlate thinks')
     const configureButtons = screen.getAllByRole('button', { name: 'Configure' })
     await user.click(configureButtons[0])
@@ -43,7 +47,7 @@ describe('SwiftSlate dashboard', () => {
     const user = userEvent.setup()
     render(<App />)
     await screen.findByText('SwiftSlate is listening')
-    await user.click(screen.getByRole('button', { name: 'Providers' }))
+    await user.click(screen.getByRole('button', { name: /Switch engine/i }))
     await screen.findByText('Choose where SwiftSlate thinks')
     const configure = screen.getAllByRole('button', { name: 'Configure' })[0]
     await user.click(configure)
@@ -157,7 +161,7 @@ describe('SwiftSlate dashboard', () => {
     render(<App />)
     await screen.findByText('SwiftSlate is listening')
 
-    await user.click(screen.getByRole('button', { name: 'Providers' }))
+    await user.click(screen.getByRole('button', { name: /Switch engine/i }))
     await screen.findByText('Choose where SwiftSlate thinks')
     await user.click(screen.getAllByRole('button', { name: 'Configure' })[0])
     const dialog = screen.getByRole('dialog', { name: /Configure Google Gemini/ })
@@ -230,7 +234,7 @@ describe('SwiftSlate dashboard', () => {
       const { container } = render(<App />)
       await screen.findByText('SwiftSlate is listening')
 
-      await user.click(screen.getByRole('button', { name: /Providers/i }))
+      await user.click(screen.getByRole('button', { name: /Switch engine/i }))
       await screen.findByText('Choose where SwiftSlate thinks')
 
       const logos = Array.from(container.querySelectorAll<HTMLImageElement>('.provider-card img.provider-logo-img'))
@@ -322,7 +326,7 @@ describe('SwiftSlate dashboard', () => {
     try {
       render(<App />)
       await screen.findByText('SwiftSlate is listening')
-      await user.click(screen.getByRole('button', { name: 'Providers' }))
+      await user.click(screen.getByRole('button', { name: /Switch engine/i }))
       await screen.findByText('Choose where SwiftSlate thinks')
 
       const deepseekCard = screen.getByRole('heading', { name: 'DeepSeek' }).closest('.provider-card') as HTMLElement
