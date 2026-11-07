@@ -6,7 +6,6 @@ import {
   CommandsIcon,
   CursorSparkIcon,
   PlayPauseCircleIcon,
-  ProvidersIcon,
   ShieldCheckIcon,
   StylesIcon,
 } from '../icons'
@@ -169,11 +168,6 @@ export function Overview({
               <button className="quick-action" type="button" onClick={() => onNavigate('commands')}>
                 <span className="quick-icon" aria-hidden="true"><CommandsIcon size={16} strokeWidth={1.85} /></span>
                 <span><strong>Create command</strong><small>Define a custom prompt or text snippet</small></span>
-                <ArrowRightIcon size={15} strokeWidth={1.85} aria-hidden="true" />
-              </button>
-              <button className="quick-action" type="button" onClick={() => onNavigate('providers')}>
-                <span className="quick-icon" aria-hidden="true"><ProvidersIcon size={16} strokeWidth={1.85} /></span>
-                <span><strong>Add provider</strong><small>14 free-tier and local engines ready</small></span>
                 <ArrowRightIcon size={15} strokeWidth={1.85} aria-hidden="true" />
               </button>
               <button className="quick-action" type="button" onClick={() => onNavigate('styles')}>

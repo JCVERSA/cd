@@ -25,6 +25,8 @@ describe('SwiftSlate dashboard', () => {
     expect(await screen.findByText('SwiftSlate is listening')).toBeInTheDocument()
     const mainNav = screen.getByRole('navigation', { name: 'Main navigation' })
     expect(within(mainNav).queryByRole('button', { name: 'Providers' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Add provider/i })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Switch or configure model/i })).toBeInTheDocument()
     const providerPod = screen.getByRole('button', { name: /Switch engine/i })
     await user.click(providerPod)
     expect(await screen.findByText('Choose where SwiftSlate thinks')).toBeInTheDocument()
