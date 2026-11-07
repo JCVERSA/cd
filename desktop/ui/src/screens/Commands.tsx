@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { GlideSelect } from '../components/GlideSelect'
+import { SwipeRow, type SwipeAction } from '../components/SwipeRow'
 import { Badge, Button, Field, Modal, Select, SpotlightCard, Switch } from '../components/ui'
 import {
   EditPenIcon,
@@ -87,6 +88,18 @@ export function CommandsScreen({
     }
   }
 
+  async function removeImmediate(target: Command) {
+    const previous = commands
+    onChange(commands.filter((command) => command.id !== target.id))
+    try {
+      await api.deleteCommand(target.id)
+      notify(`.${target.trigger} removed.`, 'success')
+    } catch (error) {
+      onChange(previous)
+      notify(error instanceof Error ? error.message : 'Command could not be removed.', 'danger')
+    }
+  }
+
   async function toggle(command: Command, enabled: boolean) {
     try {
       const saved = await api.saveCommand({ ...command, enabled })
@@ -101,7 +114,7 @@ export function CommandsScreen({
       <section className="screen-intro-row">
         <div>
           <h2>Your command library</h2>
-          <p>{enabledCount} active triggers ready after any sentence across Windows applications.</p>
+          <p>{enabledCount} active triggers ready after any sentence across Windows applications. Swipe rows left for quick actions.</p>
         </div>
         <Button variant="primary" icon={<PlusCreateIcon size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing(blankCommand())}>New command</Button>
       </section>
@@ -142,55 +155,98 @@ export function CommandsScreen({
           <span className="table-count">{filtered.length} command{filtered.length === 1 ? '' : 's'}</span>
         </div>
 
-        <div className="command-table" role="table" aria-label="Commands">
-          <div role="rowgroup">
-            <div className="command-row command-header" role="row">
-              <span role="columnheader">Trigger</span>
-              <span role="columnheader">Instruction</span>
-              <span role="columnheader">Kind</span>
-              <span role="columnheader">Uses</span>
-              <span role="columnheader">Active</span>
-              <span role="columnheader"><span className="sr-only">Actions</span></span>
-            </div>
+        <section className="command-table" aria-label="Commands">
+          <div className="command-row command-header" aria-hidden="true">
+            <span>Trigger</span>
+            <span>Instruction</span>
+            <span>Kind</span>
+            <span>Uses</span>
+            <span>Active</span>
+            <span><span className="sr-only">Actions</span></span>
           </div>
-          <div role="rowgroup">
+          <div className="command-rows-list">
             {filtered.map((command) => {
               const meta = typeMeta[command.type]
               const Icon = meta.icon
               const canTry = Boolean(onTryCommand) && (command.type === 'ai' || command.type === 'style')
+              const swipeActions: SwipeAction[] = command.type === 'system'
+                ? []
+                : [
+                    {
+                      id: 'delete',
+                      label: 'Delete',
+                      icon: <TrashBinIcon size={17} strokeWidth={1.9} aria-hidden="true" />,
+                    },
+                    {
+                      id: 'edit',
+                      label: 'Edit',
+                      color: '#2e2c44',
+                      icon: <EditPenIcon size={16} strokeWidth={1.9} aria-hidden="true" />,
+                      onSelect: () => setEditing({ ...command }),
+                    },
+                    ...(canTry
+                      ? [
+                          {
+                            id: 'try',
+                            label: 'Try',
+                            color: '#26384a',
+                            icon: <PlayActionIcon size={16} strokeWidth={1.9} aria-hidden="true" />,
+                            onSelect: () => onTryCommand?.(command.trigger),
+                          },
+                        ]
+                      : []),
+                  ]
+
               return (
-                <div className="command-row" role="row" key={command.id}>
-                  <div className="command-trigger" role="cell"><span className="trigger-prefix">{prefix}</span><strong>{command.trigger}</strong></div>
-                  <div className="command-behavior" role="cell">
-                    <strong>{command.prompt || command.value || 'Built-in action'}</strong>
-                    <small>{command.type === 'ai' ? 'Uses active provider' : 'Runs offline on device'}</small>
+                <SwipeRow
+                  key={command.id}
+                  className="command-swipe-row"
+                  label={`Command ${prefix}${command.trigger}`}
+                  actions={swipeActions}
+                  height={58}
+                  radius={0}
+                  actionWidth={74}
+                  rowColor="var(--surface-1)"
+                  drawerColor="#242334"
+                  actionColor="#e5484d"
+                  textColor="var(--text)"
+                  onCommit={() => {
+                    void removeImmediate(command)
+                  }}
+                >
+                  <div className="command-row">
+                    <div className="command-trigger"><span className="trigger-prefix">{prefix}</span><strong>{command.trigger}</strong></div>
+                    <div className="command-behavior">
+                      <strong>{command.prompt || command.value || 'Built-in action'}</strong>
+                      <small>{command.type === 'ai' ? 'Uses active provider' : 'Runs offline on device'}</small>
+                    </div>
+                    <div><Badge tone={meta.tone}><Icon size={12} strokeWidth={1.85} aria-hidden="true" />{meta.label}</Badge></div>
+                    <span className="uses-count">{command.uses}</span>
+                    <div>
+                      {command.type === 'system'
+                        ? <Badge tone="neutral">Built in</Badge>
+                        : <Switch checked={command.enabled} onChange={(value) => toggle(command, value)} label={`${command.enabled ? 'Disable' : 'Enable'} .${command.trigger}`} />}
+                    </div>
+                    <div className="row-actions">
+                      {canTry ? (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Try .${command.trigger} in Playground`}
+                          title={`Try ${prefix}${command.trigger}`}
+                          icon={<PlayActionIcon size={14} strokeWidth={1.85} aria-hidden="true" />}
+                          onClick={() => onTryCommand?.(command.trigger)}
+                        />
+                      ) : null}
+                      {command.type === 'system' ? null : (
+                        <>
+                          <Button variant="ghost" size="icon" aria-label={`Edit .${command.trigger}`} icon={<EditPenIcon size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing({ ...command })} />
+                          <Button variant="ghost" size="icon" aria-label={`Delete .${command.trigger}`} icon={<TrashBinIcon size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setConfirmDelete(command)} />
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div role="cell"><Badge tone={meta.tone}><Icon size={12} strokeWidth={1.85} aria-hidden="true" />{meta.label}</Badge></div>
-                  <span className="uses-count" role="cell">{command.uses}</span>
-                  <div role="cell">
-                    {command.type === 'system'
-                      ? <Badge tone="neutral">Built in</Badge>
-                      : <Switch checked={command.enabled} onChange={(value) => toggle(command, value)} label={`${command.enabled ? 'Disable' : 'Enable'} .${command.trigger}`} />}
-                  </div>
-                  <div className="row-actions" role="cell">
-                    {canTry ? (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Try .${command.trigger} in Playground`}
-                        title={`Try ${prefix}${command.trigger}`}
-                        icon={<PlayActionIcon size={14} strokeWidth={1.85} aria-hidden="true" />}
-                        onClick={() => onTryCommand?.(command.trigger)}
-                      />
-                    ) : null}
-                    {command.type === 'system' ? null : (
-                      <>
-                        <Button variant="ghost" size="icon" aria-label={`Edit .${command.trigger}`} icon={<EditPenIcon size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setEditing({ ...command })} />
-                        <Button variant="ghost" size="icon" aria-label={`Delete .${command.trigger}`} icon={<TrashBinIcon size={15} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setConfirmDelete(command)} />
-                      </>
-                    )}
-                  </div>
-                </div>
+                </SwipeRow>
               )
             })}
           </div>
@@ -201,7 +257,7 @@ export function CommandsScreen({
               <span>Try another search or filter.</span>
             </div>
           ) : null}
-        </div>
+        </section>
       </SpotlightCard>
 
       <Modal

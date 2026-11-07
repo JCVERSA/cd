@@ -557,7 +557,11 @@
 
   .activity-card { min-height: 268px; padding: 20px; }
   .activity-list { margin-top: 14px; }
-  .activity-row { display: grid; grid-template-columns: 28px minmax(110px,1fr) 76px 76px; align-items: center; min-height: 46px; gap: 8px; border-top: 1px solid rgba(255,255,255,.055); }
+  .activity-swipe-row { margin-bottom: 6px; }
+  .activity-swipe-row:last-child { margin-bottom: 0; }
+  .activity-swipe-row .swipe-row__clip { border: 1px solid rgba(255,255,255,.055); }
+  .activity-swipe-row .swipe-row__surface { padding: 0 12px; gap: 0; }
+  .activity-row { display: grid; grid-template-columns: 28px minmax(110px,1fr) 76px 76px; width: 100%; align-items: center; min-height: 46px; gap: 8px; }
   .activity-status { display: grid; width: 24px; height: 24px; place-items: center; color: var(--success); border-radius: 7px; background: rgba(var(--success-rgb),.08); }
   .activity-main { display: flex; min-width: 0; align-items: baseline; gap: 9px; overflow: hidden; }
   .activity-main strong { font-family: "Cascadia Code", Consolas, monospace; font-size: 12.5px; }
@@ -715,8 +719,12 @@
   .segmented-control button { height: 28px; padding: 0 10px; color: var(--muted); border-radius: 6px; background: transparent; font-size: 12px; font-weight: 560; cursor: pointer; transition: color var(--duration-press) ease, background-color var(--duration-press) ease; }
   .segmented-control .segment-active { color: var(--text); background: rgba(255,255,255,.09); }
   .table-count { margin-left: auto; color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
-  .command-table { overflow-x: auto; overscroll-behavior: contain; }
-  .command-row { display: grid; grid-template-columns: minmax(115px,.75fr) minmax(220px,1.8fr) 114px 60px 72px 104px; min-width: 790px; min-height: 58px; align-items: center; padding: 0 16px; gap: 8px; border-top: 1px solid rgba(255,255,255,.05); }
+  .command-table { overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; border-radius: 0 0 14px 14px; }
+  .command-rows-list { display: flex; flex-direction: column; }
+  .command-swipe-row { min-width: 790px; border-top: 1px solid rgba(255,255,255,.05); }
+  .command-swipe-row .swipe-row__surface { padding: 0; gap: 0; }
+  .command-row { display: grid; grid-template-columns: minmax(115px,.75fr) minmax(220px,1.8fr) 114px 60px 72px 104px; width: 100%; min-width: 790px; min-height: 58px; align-items: center; padding: 0 16px; gap: 8px; border-top: 1px solid rgba(255,255,255,.05); }
+  .command-swipe-row .command-row { min-height: 100%; border-top: 0; }
   .command-header { min-height: 38px; color: var(--faint); border-top: 0; background: rgba(0,0,0,.16); font-size: 11.5px; font-weight: 580; }
   .command-trigger { display: flex; align-items: center; font-family: "Cascadia Code", Consolas, monospace; font-size: 13px; }
   .trigger-prefix { color: var(--accent); }

@@ -1,10 +1,14 @@
+import { useState } from 'react'
 import { ProviderLogo, getProviderTileClass } from '../components/ProviderLogo'
+import { SwipeRow } from '../components/SwipeRow'
 import { Badge, Button, SpotlightCard } from '../components/ui'
 import {
   ArrowRightIcon,
   CheckCircleIcon,
+  CloseXIcon,
   CommandsIcon,
   CursorSparkIcon,
+  PlayActionIcon,
   PlayPauseCircleIcon,
   ShieldCheckIcon,
   StylesIcon,
@@ -31,6 +35,8 @@ export function Overview({
   onPause: () => void
 }) {
   const { runtime, activity } = snapshot
+  const [dismissedIds, setDismissedIds] = useState<string[]>([])
+  const visibleActivity = activity.filter((item) => !dismissedIds.includes(item.id))
   const activeProviderRecord = snapshot.providers.find((item) => item.id === runtime.provider)
   const isProviderReady = Boolean(
     activeProviderRecord?.connected || activeProviderRecord?.local || activeProviderRecord?.keyConfigured,
@@ -193,17 +199,52 @@ export function Overview({
             <Button variant="ghost" size="sm" onClick={() => onNavigate('diagnostics')}>View logs</Button>
           </div>
           <div className="activity-list">
-            {activity.length ? activity.map((item) => (
-              <div className="activity-row" key={item.id}>
-                <span className="activity-status" aria-hidden="true"><CheckCircleIcon size={15} strokeWidth={1.85} /></span>
-                <div className="activity-main">
-                  <strong>{item.command}</strong>
-                  <span>{item.provider}</span>
-                </div>
-                <span className="activity-duration">{item.durationMs} ms</span>
-                <time>{item.time}</time>
-              </div>
-            )) : (
+            {visibleActivity.length ? visibleActivity.map((item) => {
+              const rawTrigger = item.command.startsWith(runtime.prefix)
+                ? item.command.slice(runtime.prefix.length)
+                : item.command.replace(/^\./, '')
+              return (
+                <SwipeRow
+                  key={item.id}
+                  className="activity-swipe-row"
+                  label={`Execution ${item.command}`}
+                  height={48}
+                  radius={10}
+                  actionWidth={72}
+                  rowColor="var(--surface-2)"
+                  drawerColor="#242336"
+                  actionColor="#d9485f"
+                  textColor="var(--text)"
+                  actions={[
+                    {
+                      id: 'dismiss',
+                      label: 'Dismiss',
+                      icon: <CloseXIcon size={16} strokeWidth={1.9} aria-hidden="true" />,
+                    },
+                    {
+                      id: 'rerun',
+                      label: 'Try live',
+                      color: '#2d3b4e',
+                      icon: <PlayActionIcon size={15} strokeWidth={1.9} aria-hidden="true" />,
+                      onSelect: () => onTryCommand(rawTrigger),
+                    },
+                  ]}
+                  onCommit={() => {
+                    setDismissedIds((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]))
+                  }}
+                >
+                  <div className="activity-row">
+                    <span className="activity-status" aria-hidden="true"><CheckCircleIcon size={15} strokeWidth={1.85} /></span>
+                    <div className="activity-main">
+                      <strong>{item.command}</strong>
+                      <span>{item.provider}</span>
+                    </div>
+                    <span className="activity-duration">{item.durationMs} ms</span>
+                    <time>{item.time}</time>
+                  </div>
+                </SwipeRow>
+              )
+            }) : (
               <div className="activity-empty">
                 <p>No inline commands triggered yet.</p>
                 <span>Type <code>{runtime.prefix}fix</code> or <code>{runtime.prefix}bold</code> at the end of text in any app, or test one in Playground.</span>

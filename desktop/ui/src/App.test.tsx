@@ -8,6 +8,7 @@ import { api } from './api'
 import App from './App'
 import { ChromaGrid } from './components/ChromaGrid'
 import { GlideSelect } from './components/GlideSelect'
+import { SwipeRow } from './components/SwipeRow'
 import { Select } from './components/ui'
 import { GLYPH_CATALOG, pathSignature } from './icons'
 
@@ -518,5 +519,112 @@ describe('SwiftSlate dashboard', () => {
     await user.keyboard('{Enter}w{Enter}')
     expect(onPick).toHaveBeenCalledWith('webp', expect.objectContaining({ value: 'webp', tag: 'Modern' }))
     expect(formatTrigger).toHaveTextContent('WebP')
+  })
+
+  it('integrates SwipeRow across Commands and Overview with pointer drag, full-swipe commit, keyboard actions, and axe compliance', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    // Overview Recent executions rows are wrapped in SwipeRow
+    const overviewRow = screen.getByRole('group', { name: /Execution \.fix/i })
+    expect(overviewRow).toHaveClass('swipe-row', 'activity-swipe-row')
+
+    // Navigate to Commands screen and verify SwipeRow drawer + Switch click preservation + axe compliance
+    await user.click(screen.getByRole('button', { name: 'Commands' }))
+    await screen.findByText('Your command library')
+
+    const fixRow = screen.getByRole('group', { name: 'Command .fix' })
+    expect(fixRow).toHaveClass('swipe-row', 'command-swipe-row')
+    expect(fixRow).not.toHaveAttribute('data-open')
+
+    // Inner Switch clicks are never hijacked by SwipeRow surface pointer listener
+    const fixSwitch = within(fixRow).getByRole('switch', { name: /Disable \.fix/i })
+    await user.click(fixSwitch)
+    expect(within(fixRow).getByRole('switch', { name: /Enable \.fix/i })).toBeInTheDocument()
+
+    // Keyboard toggle opens action rail, passes axe-core while open, and Delete commits removal
+    const toggleBtn = within(fixRow).getByRole('button', { name: /Command \.fix: 3 actions/i })
+    toggleBtn.focus()
+    await user.keyboard('{ArrowLeft}')
+    expect(fixRow).toHaveAttribute('data-open')
+
+    const openRowAxe = await axe.run(document.body, {
+      rules: { 'color-contrast': { enabled: false } },
+    })
+    expect(openRowAxe.violations).toEqual([])
+
+    // Secondary drawer action ('Edit') opens edit modal and closes the drawer
+    await user.click(within(fixRow).getByRole('button', { name: 'Edit' }))
+    const editDialog = await screen.findByRole('dialog', { name: 'Edit command' })
+    await user.click(within(editDialog).getByRole('button', { name: 'Cancel' }))
+
+    // Re-open with keyboard and commit primary Delete via Delete key
+    toggleBtn.focus()
+    await user.keyboard('{ArrowLeft}{Delete}')
+    expect(fixRow).toHaveAttribute('data-phase', 'collapsing')
+    await waitFor(() => {
+      expect(screen.queryByRole('group', { name: 'Command .fix' })).not.toBeInTheDocument()
+    })
+
+    unmount()
+
+    // Standalone React Bits SwipeRow pointer drag, snap-open, tap-to-close, right direction, and full-swipe commit
+    const onCommit = vi.fn()
+    const onAction = vi.fn()
+    const onOpenChange = vi.fn()
+    const { container } = render(
+      <main className="app">
+        <SwipeRow
+          label="Draft note"
+          collapseMs={40}
+          actionWidth={80}
+          onCommit={onCommit}
+          onAction={onAction}
+          onOpenChange={onOpenChange}
+          actions={[
+            { id: 'delete', label: 'Delete' },
+            { id: 'pin', label: 'Pin', color: '#eab308' },
+          ]}
+        >
+          <span>Quarterly roadmap</span>
+        </SwipeRow>
+        <SwipeRow direction="right" label="Right swipe item" disabled>
+          <span>Locked item</span>
+        </SwipeRow>
+      </main>,
+    )
+
+    const draftRow = screen.getByRole('group', { name: 'Draft note' })
+    const surface = container.querySelector('.swipe-row__surface') as HTMLElement
+
+    // Drag left by 130px (> HYST 10 and > D/2 = 80, < commitPoint 216) -> snaps open
+    fireEvent.pointerDown(surface, { pointerId: 1, button: 0, clientX: 300, clientY: 20 })
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 280, clientY: 20 })
+    fireEvent.pointerMove(window, { pointerId: 1, clientX: 160, clientY: 20 })
+    fireEvent.pointerUp(window, { pointerId: 1, clientX: 160, clientY: 20 })
+
+    expect(draftRow).toHaveAttribute('data-open')
+    expect(onOpenChange).toHaveBeenCalledWith(true)
+
+    // Tapping surface without dragging closes the open drawer
+    fireEvent.pointerDown(surface, { pointerId: 2, button: 0, clientX: 200, clientY: 20 })
+    fireEvent.pointerUp(window, { pointerId: 2, clientX: 200, clientY: 20 })
+    expect(draftRow).not.toHaveAttribute('data-open')
+    expect(onOpenChange).toHaveBeenCalledWith(false)
+
+    // Full-swipe past commitPoint (w=360, commitAt=0.6 => 216px exposed) commits primary action
+    fireEvent.pointerDown(surface, { pointerId: 3, button: 0, clientX: 350, clientY: 20 })
+    fireEvent.pointerMove(window, { pointerId: 3, clientX: 330, clientY: 20 })
+    fireEvent.pointerMove(window, { pointerId: 3, clientX: 10, clientY: 20 })
+    fireEvent.pointerUp(window, { pointerId: 3, clientX: 10, clientY: 20 })
+
+    await waitFor(() => {
+      expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ id: 'delete', label: 'Delete' }))
+    })
+
+    const lockedRow = screen.getByRole('group', { name: 'Right swipe item' })
+    expect(lockedRow).toHaveAttribute('data-direction', 'right')
+    expect(lockedRow).toHaveAttribute('data-disabled')
   })
 })
