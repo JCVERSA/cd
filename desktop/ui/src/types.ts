@@ -34,12 +34,18 @@ export type ProviderId =
   | 'openai'
   | 'gemini'
   | 'groq'
+  | 'cerebras'
+  | 'sambanova'
   | 'openrouter'
+  | 'cohere'
+  | 'huggingface'
   | 'mistral'
   | 'deepseek'
+  | 'nvidia'
+  | 'xai'
+  | 'qwen'
   | 'ollama'
   | 'lmstudio'
-  | 'nvidia'
   | 'custom'
 
 export type Provider = {
@@ -50,6 +56,7 @@ export type Provider = {
   model: string
   connected: boolean
   local: boolean
+  freeTier?: boolean
   keyConfigured: boolean
   portalAvailable?: boolean
   models?: string[]

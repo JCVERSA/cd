@@ -177,7 +177,8 @@ describe('SwiftSlate dashboard', () => {
 
     // Reopen and choose another model with keyboard
     await user.click(modelTrigger)
-    await screen.findByRole('listbox', { name: 'Model' })
+    const reopenedListbox = await screen.findByRole('listbox', { name: 'Model' })
+    await waitFor(() => expect(reopenedListbox).toHaveFocus())
     await user.keyboard('{ArrowDown}{Enter}')
     await waitFor(() => expect(screen.queryByRole('listbox', { name: 'Model' })).not.toBeInTheDocument())
     expect(modelTrigger).toHaveTextContent('gemini-3.6-flash')
@@ -230,26 +231,46 @@ describe('SwiftSlate dashboard', () => {
       await screen.findByText('Choose where SwiftSlate thinks')
 
       const logos = Array.from(container.querySelectorAll<HTMLImageElement>('.provider-card img.provider-logo-img'))
-      expect(logos).toHaveLength(10)
+      expect(logos).toHaveLength(16)
       const uniqueSources = new Set(logos.map((img) => img.getAttribute('src')))
-      expect(uniqueSources.size).toBe(10)
+      expect(uniqueSources.size).toBe(16)
 
       expect(screen.getByRole('button', { name: 'Get Google Gemini API key' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Get Groq API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get Cerebras API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get SambaNova API key' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Get OpenAI API key' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Get OpenRouter API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get Cohere API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get Hugging Face API key' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Get Mistral AI API key' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Get DeepSeek API key' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Get NVIDIA NIM API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get xAI (Grok) API key' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Get Qwen (Alibaba) API key' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Get Ollama' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Get LM Studio' })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /Get Custom endpoint/i })).not.toBeInTheDocument()
 
-      await user.click(screen.getByRole('button', { name: 'Get Groq API key' }))
-      expect(openSpy).toHaveBeenCalledWith('https://console.groq.com/keys', '_blank', 'noopener,noreferrer')
+      await user.click(screen.getByRole('button', { name: 'Get Cerebras API key' }))
+      expect(openSpy).toHaveBeenCalledWith('https://cloud.cerebras.ai/', '_blank', 'noopener,noreferrer')
 
-      const configureButtons = screen.getAllByRole('button', { name: 'Configure' })
-      await user.click(configureButtons[5])
+      // Filter bar: Free tier (14 of 16), Local (2 of 16), search, and reset
+      const filterGroup = screen.getByRole('group', { name: 'Provider filter' })
+      await user.click(within(filterGroup).getByRole('button', { name: 'Free tier' }))
+      expect(screen.getByText('14 of 16 providers')).toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'OpenAI' })).not.toBeInTheDocument()
+
+      await user.click(within(filterGroup).getByRole('button', { name: 'Local' }))
+      expect(screen.getByText('2 of 16 providers')).toBeInTheDocument()
+
+      await user.click(within(filterGroup).getByRole('button', { name: 'All' }))
+      const searchInput = screen.getByLabelText('Search providers')
+      await user.type(searchInput, 'DeepSeek')
+      expect(screen.getByText('2 of 16 providers')).toBeInTheDocument()
+
+      const deepseekCard = screen.getByRole('heading', { name: 'DeepSeek' }).closest('.provider-card') as HTMLElement
+      await user.click(within(deepseekCard).getByRole('button', { name: 'Configure' }))
       const dialog = await screen.findByRole('dialog', { name: /Configure DeepSeek/i })
       const modalKeyButton = within(dialog).getByRole('button', { name: 'Get DeepSeek API key' })
       await user.click(modalKeyButton)

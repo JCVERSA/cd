@@ -87,8 +87,9 @@ class DesktopPackagingTest(unittest.TestCase):
         provider_logo = (ROOT / "ui" / "src" / "components" / "ProviderLogo.tsx").read_text(encoding="utf-8")
         providers_dir = ROOT / "ui" / "src" / "assets" / "providers"
         for provider_id in (
-            "gemini", "groq", "openai", "openrouter", "mistral",
-            "deepseek", "nvidia", "ollama", "lmstudio", "custom",
+            "gemini", "groq", "cerebras", "sambanova", "openai", "openrouter",
+            "cohere", "huggingface", "mistral", "deepseek", "nvidia", "xai",
+            "qwen", "ollama", "lmstudio", "custom",
         ):
             svg_path = providers_dir / f"{provider_id}.svg"
             self.assertTrue(svg_path.is_file(), f"Missing provider logo {svg_path}")

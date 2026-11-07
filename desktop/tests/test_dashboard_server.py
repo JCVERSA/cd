@@ -150,7 +150,7 @@ class DashboardServerTests(unittest.TestCase):
     def test_snapshot_contains_all_providers_and_no_credentials(self):
         status, payload, _ = self.request("GET", "/api/v1/snapshot", origin=False)
         self.assertEqual(status, 200)
-        self.assertEqual(len(payload["providers"]), 10)
+        self.assertEqual(len(payload["providers"]), 16)
         self.assertNotIn("api_key", json.dumps(payload))
         self.assertGreaterEqual(len(payload["commands"]), 18)
 
@@ -190,13 +190,20 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(payload["url"], "https://platform.deepseek.com/api_keys")
         self.assertEqual(self.opened_urls, ["https://platform.deepseek.com/api_keys"])
 
+        status_cerebras, payload_cerebras, _ = self.request("POST", "/api/v1/providers/cerebras/portal", {})
+        self.assertEqual(status_cerebras, 200)
+        self.assertEqual(payload_cerebras["url"], "https://cloud.cerebras.ai/")
+
         status_custom, payload_custom, _ = self.request("POST", "/api/v1/providers/custom/portal", {})
         self.assertEqual(status_custom, 400)
         self.assertIn("portal", payload_custom["error"].lower())
 
         status_missing, _, _ = self.request("POST", "/api/v1/providers/unknown/portal", {})
         self.assertEqual(status_missing, 404)
-        self.assertEqual(self.opened_urls, ["https://platform.deepseek.com/api_keys"])
+        self.assertEqual(
+            self.opened_urls,
+            ["https://platform.deepseek.com/api_keys", "https://cloud.cerebras.ai/"],
+        )
 
     def test_static_server_serves_svg_with_image_svg_xml_mime(self):
         connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=5)

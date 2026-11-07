@@ -92,19 +92,44 @@ class ProviderCatalogTests(unittest.TestCase):
     def test_public_records_expose_verified_https_portal_urls(self):
         from provider_catalog import PROVIDERS
 
-        records = {item["id"]: item["portalAvailable"] for item in public_provider_records({})}
+        records = {item["id"]: item for item in public_provider_records({})}
+        self.assertEqual(len(PROVIDERS), 16)
         self.assertEqual(PROVIDERS["gemini"].portal_url, "https://aistudio.google.com/apikey")
         self.assertEqual(PROVIDERS["groq"].portal_url, "https://console.groq.com/keys")
+        self.assertEqual(PROVIDERS["cerebras"].portal_url, "https://cloud.cerebras.ai/")
+        self.assertEqual(PROVIDERS["sambanova"].portal_url, "https://cloud.sambanova.ai/apis")
         self.assertEqual(PROVIDERS["openai"].portal_url, "https://platform.openai.com/api-keys")
         self.assertEqual(PROVIDERS["openrouter"].portal_url, "https://openrouter.ai/keys")
+        self.assertEqual(PROVIDERS["cohere"].portal_url, "https://dashboard.cohere.com/api-keys")
+        self.assertEqual(PROVIDERS["cohere"].endpoint, "https://api.cohere.ai/compatibility/v1")
+        self.assertEqual(PROVIDERS["huggingface"].portal_url, "https://huggingface.co/settings/tokens")
         self.assertEqual(PROVIDERS["mistral"].portal_url, "https://console.mistral.ai/api-keys")
         self.assertEqual(PROVIDERS["deepseek"].portal_url, "https://platform.deepseek.com/api_keys")
         self.assertEqual(PROVIDERS["nvidia"].portal_url, "https://build.nvidia.com/settings/api-keys")
+        self.assertEqual(PROVIDERS["xai"].portal_url, "https://console.x.ai")
+        self.assertEqual(PROVIDERS["qwen"].portal_url, "https://bailian.console.alibabacloud.com/?apiKey=1")
         self.assertEqual(PROVIDERS["ollama"].portal_url, "https://ollama.com/download")
         self.assertEqual(PROVIDERS["lmstudio"].portal_url, "https://lmstudio.ai")
         self.assertEqual(PROVIDERS["custom"].portal_url, "")
-        for provider_id, available in records.items():
-            self.assertEqual(available, provider_id != "custom")
+        for provider_id, record in records.items():
+            self.assertEqual(record["portalAvailable"], provider_id != "custom")
+            self.assertEqual(record["freeTier"], provider_id not in ("openai", "custom"))
+
+    def test_tier1_free_providers_use_openai_compatible_models_and_chat_paths(self):
+        for provider_id in ("cerebras", "sambanova", "cohere", "huggingface", "xai", "qwen"):
+            with self.subTest(provider=provider_id):
+                models_opener = _Opener({"data": [{"id": "model-alpha"}]})
+                self.assertEqual(
+                    fetch_models(provider_id, api_key="test-key", opener=models_opener),
+                    ["model-alpha"],
+                )
+                self.assertEqual(models_opener.request.get_header("Authorization"), "Bearer test-key")
+                self.assertTrue(models_opener.request.full_url.endswith("/v1/models"))
+
+                test_opener = _Opener({"choices": [{"message": {"content": "OK"}}]})
+                probe = probe_provider(provider_id, api_key="test-key", opener=test_opener)
+                self.assertTrue(probe["ok"])
+                self.assertTrue(test_opener.request.full_url.endswith("/v1/chat/completions"))
 
 
 if __name__ == "__main__":

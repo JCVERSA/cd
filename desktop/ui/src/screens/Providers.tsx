@@ -4,9 +4,11 @@ import {
   KeyRound,
   LoaderCircle,
   RefreshCw,
+  Search,
   Server,
   Settings2,
   ShieldCheck,
+  Sparkles,
   TestTube2,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -14,6 +16,15 @@ import { api } from '../api'
 import { ProviderLogo, getProviderPortalUrl, getProviderTileClass } from '../components/ProviderLogo'
 import { Badge, Button, Field, Modal, Select, SpotlightCard } from '../components/ui'
 import type { Provider } from '../types'
+
+type ProviderFilter = 'all' | 'free' | 'cloud' | 'local'
+
+const filterOptions: Array<{ id: ProviderFilter; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'free', label: 'Free tier' },
+  { id: 'cloud', label: 'Cloud' },
+  { id: 'local', label: 'Local' },
+]
 
 export function ProvidersScreen({
   providers,
@@ -26,6 +37,8 @@ export function ProvidersScreen({
   onChange: (provider: Provider, activated: boolean) => void
   notify: (message: string, tone?: 'success' | 'danger') => void
 }) {
+  const [query, setQuery] = useState('')
+  const [filter, setFilter] = useState<ProviderFilter>('all')
   const [editing, setEditing] = useState<Provider | null>(null)
   const [draft, setDraft] = useState<Provider | null>(null)
   const [apiKey, setApiKey] = useState('')
@@ -33,6 +46,28 @@ export function ProvidersScreen({
   const [testMessage, setTestMessage] = useState('')
 
   const connected = useMemo(() => providers.filter((provider) => provider.connected).length, [providers])
+  const freeCount = useMemo(
+    () => providers.filter((provider) => provider.freeTier || provider.local).length,
+    [providers],
+  )
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return providers.filter((provider) => {
+      const matchesFilter =
+        filter === 'all' ||
+        (filter === 'free' && Boolean(provider.freeTier || provider.local)) ||
+        (filter === 'cloud' && !provider.local) ||
+        (filter === 'local' && provider.local)
+      if (!matchesFilter) return false
+      if (!q) return true
+      return (
+        provider.name.toLowerCase().includes(q) ||
+        provider.description.toLowerCase().includes(q) ||
+        provider.model.toLowerCase().includes(q) ||
+        provider.endpoint.toLowerCase().includes(q)
+      )
+    })
+  }, [providers, filter, query])
 
   function open(provider: Provider) {
     setEditing(provider)
@@ -116,91 +151,132 @@ export function ProvidersScreen({
         </div>
         <div className="provider-summary-stats">
           <div><strong>{connected}</strong><span>connected</span></div>
-          <div><strong>{providers.length}</strong><span>available</span></div>
+          <div><strong>{freeCount}</strong><span>free-ready</span></div>
           <div><ShieldCheck size={18} strokeWidth={1.85} aria-hidden="true" /><span>keys protected</span></div>
         </div>
       </section>
 
-      <section className="provider-grid">
-        {providers.map((provider, index) => {
-          const active = provider.id === activeProvider
-          const portalUrl = getProviderPortalUrl(provider.id, provider.portalAvailable)
-          const portalActionLabel = provider.local ? 'Get app' : 'Get key'
-          const portalAriaLabel = provider.local
-            ? `Get ${provider.name}`
-            : `Get ${provider.name} API key`
-          return (
-            <SpotlightCard
-              key={provider.id}
-              interactive
-              className={`provider-card ${active ? 'provider-card-active' : ''}`}
-              delay={Math.min(index * 0.02, 0.14)}
+      <div className="provider-toolbar">
+        <div className="filter-search">
+          <Search size={16} strokeWidth={1.85} aria-hidden="true" />
+          <input
+            aria-label="Search providers"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search providers or models…"
+          />
+        </div>
+        <div className="segmented-control" role="group" aria-label="Provider filter">
+          {filterOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={filter === option.id ? 'segment-active' : ''}
+              aria-pressed={filter === option.id}
+              onClick={() => setFilter(option.id)}
             >
-              <div className="provider-card-top">
-                <span className={`provider-mark ${getProviderTileClass(provider.id)}`}>
-                  <ProviderLogo id={provider.id} size={21} />
-                </span>
-                <div className="provider-state">
-                  {portalUrl ? (
-                    <button
-                      type="button"
-                      className="provider-key-button"
-                      aria-label={portalAriaLabel}
-                      title={portalAriaLabel}
-                      onClick={() => void openPortal(provider)}
-                    >
-                      <span>{portalActionLabel}</span>
-                      <ExternalLink size={12} strokeWidth={1.85} aria-hidden="true" />
-                    </button>
-                  ) : null}
-                  {active ? (
-                    <Badge tone="accent">Active</Badge>
-                  ) : provider.connected ? (
-                    <Badge tone="success">Ready</Badge>
-                  ) : (
-                    <Badge>Not configured</Badge>
-                  )}
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <span className="table-count">
+          {filtered.length === providers.length
+            ? `${providers.length} providers`
+            : `${filtered.length} of ${providers.length} providers`}
+        </span>
+      </div>
+
+      {filtered.length ? (
+        <section className="provider-grid">
+          {filtered.map((provider, index) => {
+            const active = provider.id === activeProvider
+            const portalUrl = getProviderPortalUrl(provider.id, provider.portalAvailable)
+            const portalActionLabel = provider.local ? 'Get app' : 'Get key'
+            const portalAriaLabel = provider.local
+              ? `Get ${provider.name}`
+              : `Get ${provider.name} API key`
+            return (
+              <SpotlightCard
+                key={provider.id}
+                interactive
+                className={`provider-card ${active ? 'provider-card-active' : ''}`}
+                delay={Math.min(index * 0.02, 0.14)}
+              >
+                <div className="provider-card-top">
+                  <span className={`provider-mark ${getProviderTileClass(provider.id)}`}>
+                    <ProviderLogo id={provider.id} size={21} />
+                  </span>
+                  <div className="provider-state">
+                    {portalUrl ? (
+                      <button
+                        type="button"
+                        className="provider-key-button"
+                        aria-label={portalAriaLabel}
+                        title={portalAriaLabel}
+                        onClick={() => void openPortal(provider)}
+                      >
+                        <span>{portalActionLabel}</span>
+                        <ExternalLink size={12} strokeWidth={1.85} aria-hidden="true" />
+                      </button>
+                    ) : null}
+                    {active ? (
+                      <Badge tone="accent">Active</Badge>
+                    ) : provider.connected ? (
+                      <Badge tone="success">Ready</Badge>
+                    ) : provider.freeTier && !provider.local ? (
+                      <Badge tone="success"><Sparkles size={12} strokeWidth={1.85} aria-hidden="true" />Free tier</Badge>
+                    ) : (
+                      <Badge>Not configured</Badge>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <h3>{provider.name}</h3>
-              <p>{provider.description}</p>
-              <div className="provider-details">
-                <div>
-                  <span>Model</span>
-                  <strong title={provider.model}>{provider.model || 'Not selected'}</strong>
+                <h3>{provider.name}</h3>
+                <p>{provider.description}</p>
+                <div className="provider-details">
+                  <div>
+                    <span>Model</span>
+                    <strong title={provider.model}>{provider.model || 'Not selected'}</strong>
+                  </div>
+                  <div>
+                    <span>Endpoint</span>
+                    <strong title={provider.endpoint}>
+                      {provider.local
+                        ? 'Local machine'
+                        : provider.endpoint.replace(/^https?:\/\//, '').split('/')[0] || 'Custom'}
+                    </strong>
+                  </div>
                 </div>
-                <div>
-                  <span>Endpoint</span>
-                  <strong title={provider.endpoint}>
-                    {provider.local
-                      ? 'Local machine'
-                      : provider.endpoint.replace(/^https?:\/\//, '').split('/')[0] || 'Custom'}
-                  </strong>
+                <div className="provider-card-footer">
+                  <span className="credential-state">
+                    {provider.local ? (
+                      <><Server size={16} strokeWidth={1.85} aria-hidden="true" /> No key required</>
+                    ) : provider.keyConfigured ? (
+                      <><KeyRound size={16} strokeWidth={1.85} aria-hidden="true" /> Key protected</>
+                    ) : (
+                      <><KeyRound size={16} strokeWidth={1.85} aria-hidden="true" /> Add a key</>
+                    )}
+                  </span>
+                  <Button
+                    variant={active ? 'ghost' : 'secondary'}
+                    size="sm"
+                    icon={<Settings2 size={16} strokeWidth={1.85} aria-hidden="true" />}
+                    onClick={() => open(provider)}
+                  >
+                    Configure
+                  </Button>
                 </div>
-              </div>
-              <div className="provider-card-footer">
-                <span className="credential-state">
-                  {provider.local ? (
-                    <><Server size={16} strokeWidth={1.85} aria-hidden="true" /> No key required</>
-                  ) : provider.keyConfigured ? (
-                    <><KeyRound size={16} strokeWidth={1.85} aria-hidden="true" /> Key protected</>
-                  ) : (
-                    <><KeyRound size={16} strokeWidth={1.85} aria-hidden="true" /> Add a key</>
-                  )}
-                </span>
-                <Button
-                  variant={active ? 'ghost' : 'secondary'}
-                  size="sm"
-                  icon={<Settings2 size={16} strokeWidth={1.85} aria-hidden="true" />}
-                  onClick={() => open(provider)}
-                >
-                  Configure
-                </Button>
-              </div>
-            </SpotlightCard>
-          )
-        })}
-      </section>
+              </SpotlightCard>
+            )
+          })}
+        </section>
+      ) : (
+        <SpotlightCard className="provider-empty">
+          <Search size={24} strokeWidth={1.85} aria-hidden="true" />
+          <strong>No matching providers</strong>
+          <span>Try another search term or switch back to all providers.</span>
+          <Button size="sm" onClick={() => { setQuery(''); setFilter('all') }}>Clear filters</Button>
+        </SpotlightCard>
+      )}
 
       <Modal
         open={Boolean(editing && draft)}

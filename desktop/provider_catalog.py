@@ -32,6 +32,7 @@ class ProviderSpec:
     key_required: bool = True
     auth: str = "bearer"  # bearer | google | none
     portal_url: str = ""
+    free_tier: bool = False
 
 
 PROVIDERS: dict[str, ProviderSpec] = {
@@ -39,57 +40,93 @@ PROVIDERS: dict[str, ProviderSpec] = {
         "gemini", "Google Gemini", "Fast multimodal models with a generous developer tier.",
         "https://generativelanguage.googleapis.com", "gemini-3.5-flash-lite",
         "/v1beta/models", "https://generativelanguage.googleapis.com", auth="google",
-        portal_url="https://aistudio.google.com/apikey",
+        portal_url="https://aistudio.google.com/apikey", free_tier=True,
     ),
     "groq": ProviderSpec(
         "groq", "Groq", "Low-latency inference for open models.",
         "https://api.groq.com", "openai/gpt-oss-120b", "/openai/v1/models",
         "https://api.groq.com/openai/v1",
-        portal_url="https://console.groq.com/keys",
+        portal_url="https://console.groq.com/keys", free_tier=True,
+    ),
+    "cerebras": ProviderSpec(
+        "cerebras", "Cerebras", "Wafer-scale open-model inference with a permanent free tier.",
+        "https://api.cerebras.ai/v1", "llama-3.3-70b", "/models",
+        "https://api.cerebras.ai/v1",
+        portal_url="https://cloud.cerebras.ai/", free_tier=True,
+    ),
+    "sambanova": ProviderSpec(
+        "sambanova", "SambaNova", "High-speed RDU cloud for Llama and DeepSeek models.",
+        "https://api.sambanova.ai/v1", "Meta-Llama-3.3-70B-Instruct", "/models",
+        "https://api.sambanova.ai/v1",
+        portal_url="https://cloud.sambanova.ai/apis", free_tier=True,
     ),
     "openai": ProviderSpec(
         "openai", "OpenAI", "OpenAI chat and reasoning models.",
         "https://api.openai.com/v1", "gpt-5-mini", "/models", "https://api.openai.com/v1",
-        portal_url="https://platform.openai.com/api-keys",
+        portal_url="https://platform.openai.com/api-keys", free_tier=False,
     ),
     "openrouter": ProviderSpec(
-        "openrouter", "OpenRouter", "One endpoint for hundreds of hosted models.",
+        "openrouter", "OpenRouter", "One endpoint for hundreds of hosted and free models.",
         "https://openrouter.ai/api/v1", "openai/gpt-5-mini", "/models",
         "https://openrouter.ai/api/v1",
-        portal_url="https://openrouter.ai/keys",
+        portal_url="https://openrouter.ai/keys", free_tier=True,
+    ),
+    "cohere": ProviderSpec(
+        "cohere", "Cohere", "Command A and R+ models tuned for editing and rewriting.",
+        "https://api.cohere.ai/compatibility/v1", "command-a-03-2025", "/models",
+        "https://api.cohere.ai/compatibility/v1",
+        portal_url="https://dashboard.cohere.com/api-keys", free_tier=True,
+    ),
+    "huggingface": ProviderSpec(
+        "huggingface", "Hugging Face", "Unified Inference Router for open community models.",
+        "https://router.huggingface.co/v1", "meta-llama/Llama-3.1-8B-Instruct", "/models",
+        "https://router.huggingface.co/v1",
+        portal_url="https://huggingface.co/settings/tokens", free_tier=True,
     ),
     "mistral": ProviderSpec(
         "mistral", "Mistral AI", "Efficient European open and commercial models.",
         "https://api.mistral.ai/v1", "mistral-small-latest", "/models",
         "https://api.mistral.ai/v1",
-        portal_url="https://console.mistral.ai/api-keys",
+        portal_url="https://console.mistral.ai/api-keys", free_tier=True,
     ),
     "deepseek": ProviderSpec(
         "deepseek", "DeepSeek", "Reasoning and coding models through an OpenAI-compatible API.",
         "https://api.deepseek.com", "deepseek-chat", "/models", "https://api.deepseek.com",
-        portal_url="https://platform.deepseek.com/api_keys",
+        portal_url="https://platform.deepseek.com/api_keys", free_tier=True,
     ),
     "nvidia": ProviderSpec(
         "nvidia", "NVIDIA NIM", "Accelerated inference through NVIDIA API Catalog.",
         "https://integrate.api.nvidia.com/v1", "meta/llama-3.3-70b-instruct", "/models",
         "https://integrate.api.nvidia.com/v1",
-        portal_url="https://build.nvidia.com/settings/api-keys",
+        portal_url="https://build.nvidia.com/settings/api-keys", free_tier=True,
+    ),
+    "xai": ProviderSpec(
+        "xai", "xAI (Grok)", "Grok chat and reasoning models via an OpenAI-compatible API.",
+        "https://api.x.ai/v1", "grok-3-mini", "/models",
+        "https://api.x.ai/v1",
+        portal_url="https://console.x.ai", free_tier=True,
+    ),
+    "qwen": ProviderSpec(
+        "qwen", "Qwen (Alibaba)", "Qwen3 models via Alibaba Cloud Model Studio.",
+        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "qwen-plus", "/models",
+        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+        portal_url="https://bailian.console.alibabacloud.com/?apiKey=1", free_tier=True,
     ),
     "ollama": ProviderSpec(
         "ollama", "Ollama", "Private local inference with models installed on this PC.",
         "http://127.0.0.1:11434", "llama3.2:latest", "/api/tags",
         "http://127.0.0.1:11434/v1", local=True, key_required=False, auth="none",
-        portal_url="https://ollama.com/download",
+        portal_url="https://ollama.com/download", free_tier=True,
     ),
     "lmstudio": ProviderSpec(
         "lmstudio", "LM Studio", "Use the local LM Studio OpenAI-compatible server.",
         "http://127.0.0.1:1234/v1", "local-model", "/models",
         "http://127.0.0.1:1234/v1", local=True, key_required=False, auth="none",
-        portal_url="https://lmstudio.ai",
+        portal_url="https://lmstudio.ai", free_tier=True,
     ),
     "custom": ProviderSpec(
         "custom", "Custom endpoint", "Connect any OpenAI-compatible service.",
-        "", "", "/models", "",
+        "", "", "/models", "", free_tier=False,
     ),
 }
 
@@ -326,6 +363,7 @@ def public_provider_records(config: dict | None = None) -> list[dict]:
             "model": model,
             "connected": provider_id == active and (not spec.key_required or key_configured),
             "local": spec.local,
+            "freeTier": spec.free_tier or spec.local,
             "keyConfigured": not spec.key_required or key_configured,
             "portalAvailable": bool(spec.portal_url),
         }

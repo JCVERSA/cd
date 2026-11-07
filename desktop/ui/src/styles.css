@@ -411,12 +411,16 @@
   .playground-actionbar p { color: var(--muted); font-size: 12px; }.playground-actionbar p strong { color: var(--text-soft); }
 
   /* Providers */
-  .provider-summary-row { display: flex; align-items: flex-end; justify-content: space-between; margin: 2px 0 20px; gap: 16px; }
+  .provider-summary-row { display: flex; align-items: flex-end; justify-content: space-between; margin: 2px 0 16px; gap: 16px; }
   .provider-summary-stats { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
   .provider-summary-stats > div { display: flex; min-width: 92px; height: 46px; align-items: center; justify-content: center; padding: 0 13px; gap: 7px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255,255,255,.028); }
   .provider-summary-stats strong { font-size: 16px; font-variant-numeric: tabular-nums; }.provider-summary-stats span { color: var(--muted); font-size: 11.5px; }
   .provider-summary-stats svg { color: var(--success); }
+  .provider-toolbar { display: flex; flex-wrap: wrap; align-items: center; margin-bottom: 14px; padding: 10px 12px; gap: 10px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-1); backdrop-filter: blur(18px) saturate(125%); }
   .provider-grid { display: grid; grid-template-columns: repeat(3, minmax(255px, 1fr)); gap: 12px; }
+  .provider-empty { display: flex; min-height: 220px; padding: 28px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: var(--muted); text-align: center; }
+  .provider-empty strong { color: var(--text-soft); font-size: 14px; }
+  .provider-empty span { margin-bottom: 6px; font-size: 12px; }
   .provider-card { display: flex; min-height: 244px; flex-direction: column; padding: 18px; }
   .provider-card-active { border-color: rgba(var(--accent-rgb),.28); box-shadow: 0 0 0 1px rgba(var(--accent-rgb),.06), 0 16px 46px rgba(0,0,0,.24); }
   .provider-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -425,11 +429,17 @@
   .provider-logo-img { display: block; object-fit: contain; pointer-events: none; user-select: none; }
   .provider-gemini { border-color: rgba(96,150,255,.32); background: radial-gradient(circle at 30% 25%, rgba(71,150,227,.18), rgba(14,18,32,.9)); }
   .provider-groq { border-color: rgba(245,80,54,.34); background: radial-gradient(circle at 30% 25%, rgba(245,80,54,.18), rgba(28,16,15,.92)); }
+  .provider-cerebras { border-color: rgba(241,90,41,.36); background: radial-gradient(circle at 30% 25%, rgba(241,90,41,.2), rgba(27,15,12,.93)); }
+  .provider-sambanova { border-color: rgba(238,118,36,.36); background: radial-gradient(circle at 30% 25%, rgba(238,118,36,.19), rgba(28,17,11,.93)); }
   .provider-openai { border-color: rgba(255,255,255,.2); background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.1), rgba(16,18,24,.94)); }
   .provider-openrouter { border-color: rgba(200,255,0,.32); background: radial-gradient(circle at 30% 25%, rgba(200,255,0,.15), rgba(13,16,9,.94)); }
+  .provider-cohere { border-color: rgba(209,142,226,.34); background: radial-gradient(circle at 30% 25%, rgba(84,163,131,.2), rgba(22,16,27,.93)); }
+  .provider-huggingface { border-color: rgba(255,210,30,.36); background: radial-gradient(circle at 30% 25%, rgba(255,210,30,.18), rgba(28,22,11,.93)); }
   .provider-mistral { border-color: rgba(255,140,20,.34); background: radial-gradient(circle at 30% 25%, rgba(255,130,5,.18), rgba(29,18,12,.92)); }
   .provider-deepseek { border-color: rgba(77,107,254,.38); background: radial-gradient(circle at 30% 25%, rgba(77,107,254,.2), rgba(15,20,38,.92)); }
   .provider-nvidia { border-color: rgba(116,183,27,.36); background: radial-gradient(circle at 30% 25%, rgba(116,183,27,.18), rgba(16,25,13,.92)); }
+  .provider-xai { border-color: rgba(255,255,255,.24); background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.12), rgba(13,13,18,.95)); }
+  .provider-qwen { border-color: rgba(124,108,255,.4); background: radial-gradient(circle at 30% 25%, rgba(124,108,255,.22), rgba(16,15,34,.93)); }
   .provider-ollama { border-color: rgba(247,245,251,.22); background: radial-gradient(circle at 30% 25%, rgba(247,245,251,.1), rgba(18,18,25,.94)); }
   .provider-lmstudio { border-color: rgba(129,140,248,.44); background: linear-gradient(135deg, #3c469e 0%, #2a1266 100%); }
   .provider-custom { border-color: rgba(96,213,255,.36); background: radial-gradient(circle at 28% 24%, rgba(96,213,255,.16), rgba(10,12,24,.94)); }
