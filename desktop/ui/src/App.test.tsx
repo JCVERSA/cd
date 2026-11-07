@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { api } from './api'
 import App from './App'
 import { ChromaGrid } from './components/ChromaGrid'
+import { GlideSelect } from './components/GlideSelect'
 import { Select } from './components/ui'
 import { GLYPH_CATALOG, pathSignature } from './icons'
 
@@ -459,5 +460,63 @@ describe('SwiftSlate dashboard', () => {
     expect(mediaContainer.querySelectorAll('img.chroma-mono')).toHaveLength(2)
     expect(mediaContainer.querySelectorAll('img.chroma-color')).toHaveLength(2)
     expect(mediaContainer.querySelector('a.chroma-card')).toHaveAttribute('href', 'https://example.com')
+  })
+
+  it('integrates GlideSelect with gliding pill physics, tags, keyboard typeahead, and axe compliance', async () => {
+    const user = userEvent.setup()
+    const { container, unmount } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    await user.click(screen.getByRole('button', { name: /Switch engine/i }))
+    await screen.findByText('Choose where SwiftSlate thinks')
+
+    const sortProviders = screen.getByRole('combobox', { name: 'Sort providers' })
+    expect(sortProviders).toHaveTextContent('Recommended')
+
+    fireEvent.pointerDown(sortProviders, { button: 0 })
+    const listbox = await screen.findByRole('listbox', { name: 'Sort providers' })
+    expect(within(listbox).getByText('Offline')).toBeInTheDocument()
+
+    // Hovering option index 3 ('Local first') glides the pill vertically
+    const localOption = within(listbox).getByRole('option', { name: /Local first/i })
+    fireEvent.pointerOver(localOption)
+    const pill = listbox.querySelector('.glide-select__pill') as HTMLElement
+    expect(pill).not.toBeNull()
+    expect(pill.style.transform).toContain('translateY(')
+
+    const openGlideAxe = await axe.run(document.body, {
+      rules: { 'color-contrast': { enabled: false } },
+    })
+    expect(openGlideAxe.violations).toEqual([])
+
+    await user.click(localOption)
+    expect(sortProviders).toHaveTextContent('Local first')
+    const firstCardHeading = container.querySelector('.provider-card h3')
+    expect(firstCardHeading?.textContent).toMatch(/Ollama|LM Studio/)
+
+    unmount()
+
+    // Standalone React Bits GlideSelect uncontrolled + keyboard typeahead verification
+    const onPick = vi.fn()
+    render(
+      <main className="app">
+        <GlideSelect
+          ariaLabel="Export format"
+          defaultValue="png"
+          onChange={onPick}
+          showTags
+          options={[
+            { value: 'png', label: 'PNG', tag: 'Lossless' },
+            { value: 'webp', label: 'WebP', tag: 'Modern' },
+            { value: 'svg', label: 'SVG', tag: 'Vector' },
+          ]}
+        />
+      </main>,
+    )
+    const formatTrigger = screen.getByRole('combobox', { name: 'Export format' })
+    formatTrigger.focus()
+    await user.keyboard('{Enter}w{Enter}')
+    expect(onPick).toHaveBeenCalledWith('webp', expect.objectContaining({ value: 'webp', tag: 'Modern' }))
+    expect(formatTrigger).toHaveTextContent('WebP')
   })
 })

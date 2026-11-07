@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { ChromaGrid } from '../components/ChromaGrid'
+import { GlideSelect } from '../components/GlideSelect'
 import { ProviderLogo, getProviderAccentColor, getProviderPortalUrl, getProviderTileClass } from '../components/ProviderLogo'
 import { Badge, Button, Field, Modal, SecretInput, Select, SpotlightCard } from '../components/ui'
 import {
@@ -20,12 +21,20 @@ import {
 import type { Provider } from '../types'
 
 type ProviderFilter = 'all' | 'free' | 'cloud' | 'local'
+type ProviderSort = 'recommended' | 'ready' | 'name' | 'local'
 
 const filterOptions: Array<{ id: ProviderFilter; label: string }> = [
   { id: 'all', label: 'All' },
   { id: 'free', label: 'Free tier' },
   { id: 'cloud', label: 'Cloud' },
   { id: 'local', label: 'Local' },
+]
+
+const sortOptions: Array<{ value: ProviderSort; label: string; tag: string }> = [
+  { value: 'recommended', label: 'Recommended', tag: 'Default' },
+  { value: 'ready', label: 'Ready first', tag: 'Connected' },
+  { value: 'name', label: 'Alphabetical', tag: 'A–Z' },
+  { value: 'local', label: 'Local first', tag: 'Offline' },
 ]
 
 export function ProvidersScreen({
@@ -41,6 +50,7 @@ export function ProvidersScreen({
 }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<ProviderFilter>('all')
+  const [sortBy, setSortBy] = useState<ProviderSort>('recommended')
   const [editing, setEditing] = useState<Provider | null>(null)
   const [draft, setDraft] = useState<Provider | null>(null)
   const [apiKey, setApiKey] = useState('')
@@ -58,7 +68,7 @@ export function ProvidersScreen({
   )
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
-    return providers.filter((provider) => {
+    const matched = providers.filter((provider) => {
       const matchesFilter =
         filter === 'all' ||
         (filter === 'free' && Boolean(provider.freeTier || provider.local)) ||
@@ -73,7 +83,18 @@ export function ProvidersScreen({
         provider.endpoint.toLowerCase().includes(q)
       )
     })
-  }, [providers, filter, query])
+    if (sortBy === 'recommended') return matched
+    const copy = [...matched]
+    if (sortBy === 'name') {
+      return copy.sort((a, b) => a.name.localeCompare(b.name))
+    }
+    if (sortBy === 'ready') {
+      const rank = (p: Provider) =>
+        p.id === activeProvider ? 0 : (p.connected || p.keyConfigured || p.local) ? 1 : p.freeTier ? 2 : 3
+      return copy.sort((a, b) => rank(a) - rank(b))
+    }
+    return copy.sort((a, b) => Number(Boolean(b.local)) - Number(Boolean(a.local)))
+  }, [activeProvider, providers, filter, query, sortBy])
 
   function open(provider: Provider) {
     setEditing(provider)
@@ -223,6 +244,18 @@ export function ProvidersScreen({
             </button>
           ))}
         </div>
+        <GlideSelect
+          ariaLabel="Sort providers"
+          options={sortOptions}
+          value={sortBy}
+          onChange={(val) => setSortBy(val as ProviderSort)}
+          showTags
+          size="md"
+          radius={11}
+          menuWidth={198}
+          placement="bottom"
+          align="left"
+        />
         <span className="table-count">
           {filtered.length === providers.length
             ? `${providers.length} providers`

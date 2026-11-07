@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { api } from '../api'
+import { GlideSelect } from '../components/GlideSelect'
 import { Badge, Button, Field, Modal, Select, SpotlightCard, Switch } from '../components/ui'
 import {
   EditPenIcon,
@@ -40,15 +41,22 @@ export function CommandsScreen({
 }) {
   const [query, setQuery] = useState('')
   const [type, setType] = useState<'all' | CommandType>('all')
+  const [sortBy, setSortBy] = useState<'default' | 'uses' | 'alpha'>('default')
   const [editing, setEditing] = useState<Command | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<Command | null>(null)
   const [saving, setSaving] = useState(false)
 
   const enabledCount = useMemo(() => commands.filter((command) => command.enabled).length, [commands])
-  const filtered = useMemo(() => commands.filter((command) => {
-    const matchQuery = !query || command.trigger.toLowerCase().includes(query.toLowerCase()) || command.prompt.toLowerCase().includes(query.toLowerCase())
-    return matchQuery && (type === 'all' || command.type === type)
-  }), [commands, query, type])
+  const filtered = useMemo(() => {
+    const matched = commands.filter((command) => {
+      const matchQuery = !query || command.trigger.toLowerCase().includes(query.toLowerCase()) || command.prompt.toLowerCase().includes(query.toLowerCase())
+      return matchQuery && (type === 'all' || command.type === type)
+    })
+    if (sortBy === 'default') return matched
+    const copy = [...matched]
+    if (sortBy === 'uses') return copy.sort((a, b) => b.uses - a.uses)
+    return copy.sort((a, b) => a.trigger.localeCompare(b.trigger))
+  }, [commands, query, sortBy, type])
 
   async function save() {
     if (!editing || !editing.trigger.trim()) return
@@ -117,6 +125,20 @@ export function CommandsScreen({
               </button>
             ))}
           </div>
+          <GlideSelect
+            ariaLabel="Sort commands"
+            value={sortBy}
+            onChange={(val) => setSortBy(val as 'default' | 'uses' | 'alpha')}
+            showTags
+            size="md"
+            radius={11}
+            menuWidth={188}
+            options={[
+              { value: 'default', label: 'Default order', tag: 'Curated' },
+              { value: 'uses', label: 'Most used', tag: 'Activity' },
+              { value: 'alpha', label: 'Trigger A–Z', tag: 'Alpha' },
+            ]}
+          />
           <span className="table-count">{filtered.length} command{filtered.length === 1 ? '' : 's'}</span>
         </div>
 

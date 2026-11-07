@@ -346,8 +346,11 @@ export function Select<T extends string = string>({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const popoverRef = useRef<HTMLDivElement>(null)
   const listboxRef = useRef<HTMLDivElement>(null)
+  const glidePillRef = useRef<HTMLSpanElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const instantGlideRef = useRef(true)
   const [open, setOpen] = useState(false)
+  const [swapping, setSwapping] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
   const [position, setPosition] = useState<SelectPopoverPosition>({
@@ -428,6 +431,7 @@ export function Select<T extends string = string>({
   const openMenu = useCallback((preferredDirection?: 'first' | 'last') => {
     if (disabled) return
     setQuery('')
+    instantGlideRef.current = true
     const currentIdx = options.findIndex((option) => option.value === value)
     if (preferredDirection === 'first') {
       setActiveIndex(0)
@@ -451,6 +455,23 @@ export function Select<T extends string = string>({
     })
     return () => window.cancelAnimationFrame(frame)
   }, [isSearchable, open, updatePosition])
+
+  useLayoutEffect(() => {
+    const pill = glidePillRef.current
+    const list = listboxRef.current
+    if (!pill || !list || !open) return
+    const activeEl = list.querySelector<HTMLElement>('[data-active="true"]')
+    if (!activeEl) {
+      pill.style.opacity = '0'
+      return
+    }
+    const jump = instantGlideRef.current || pill.style.opacity !== '1'
+    pill.style.transitionDuration = jump ? '0ms, 0ms, 140ms' : ''
+    pill.style.transform = `translateY(${activeEl.offsetTop}px)`
+    pill.style.height = `${activeEl.offsetHeight}px`
+    pill.style.opacity = '1'
+    instantGlideRef.current = false
+  }, [activeIndex, open, visibleOptions])
 
   useEffect(() => {
     if (!open) return
@@ -492,9 +513,12 @@ export function Select<T extends string = string>({
     }
   }, [closeMenu, open, updatePosition])
 
-  function selectAt(index: number) {
+  function selectAt(index: number, viaPointer = false) {
     const chosen = visibleOptions[index]
     if (!chosen) return
+    if (chosen.value !== value && viaPointer) {
+      setSwapping(true)
+    }
     onChange(chosen.value)
     closeMenu(true)
   }
@@ -560,6 +584,7 @@ export function Select<T extends string = string>({
         id={id}
         type="button"
         data-select-trigger=""
+        data-swap={swapping ? '' : undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
@@ -570,6 +595,9 @@ export function Select<T extends string = string>({
           open && 'select-trigger-open',
           className,
         )}
+        onAnimationEnd={(event) => {
+          if (event.animationName === 'gs-swap') setSwapping(false)
+        }}
         onClick={(event) => {
           event.stopPropagation()
           if (open) closeMenu(true)
@@ -642,6 +670,7 @@ export function Select<T extends string = string>({
                     style={{ maxHeight: isSearchable ? Math.max(120, position.maxHeight - 40) : position.maxHeight }}
                     onKeyDown={!isSearchable ? (event) => handleMenuKeyDown(event, false) : undefined}
                   >
+                    <span ref={glidePillRef} className="select-glide-pill" aria-hidden="true" />
                     {visibleOptions.length ? (
                       visibleOptions.map((option, index) => {
                         const isSelected = option.value === value
@@ -660,7 +689,7 @@ export function Select<T extends string = string>({
                             )}
                             onMouseEnter={() => setActiveIndex(index)}
                             onMouseDown={(event) => event.preventDefault()}
-                            onClick={() => selectAt(index)}
+                            onClick={() => selectAt(index, true)}
                           >
                             <span className="select-option-copy">
                               <strong className={cn(option.mono && 'select-mono')}>{option.label}</strong>
