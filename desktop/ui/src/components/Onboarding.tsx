@@ -6,13 +6,13 @@ import {
   ArrowRightIcon,
   BoltInstantIcon,
   CheckMarkIcon,
-  CommandsIcon,
   ExternalLaunchIcon,
   ShieldCheckIcon,
 } from '../icons'
 import type { Provider, ProviderId } from '../types'
 import { BrandLogo } from './BrandLogo'
 import { ProviderLogo, getProviderPortalUrl, getProviderTileClass } from './ProviderLogo'
+import { SlideCommit } from './SlideCommit'
 import { Button, SecretInput } from './ui'
 
 export function Onboarding({
@@ -27,7 +27,6 @@ export function Onboarding({
   const [step, setStep] = useState(0)
   const [provider, setProvider] = useState<ProviderId>('gemini')
   const [key, setKey] = useState('')
-  const [completing, setCompleting] = useState(false)
   const [error, setError] = useState('')
   const panelRef = useRef<HTMLElement>(null)
   const choices = providers.filter((item) => ['gemini', 'groq', 'cerebras', 'ollama'].includes(item.id))
@@ -66,15 +65,8 @@ export function Onboarding({
   }, [open])
 
   async function finish() {
-    setCompleting(true)
     setError('')
-    try {
-      await onComplete(provider, key.trim())
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Setup could not be saved.')
-    } finally {
-      setCompleting(false)
-    }
+    await onComplete(provider, key.trim())
   }
 
   async function openSelectedPortal() {
@@ -221,9 +213,27 @@ export function Onboarding({
               {error ? <div className="inline-message inline-message-danger onboarding-error" role="alert">{error}</div> : null}
               <div className="onboarding-actions">
                 {step > 0 ? <Button variant="ghost" icon={<ArrowLeftIcon size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setStep(step - 1)}>Back</Button> : <span />}
-                {step < steps.length - 1
-                  ? <Button variant="primary" onClick={() => setStep(step + 1)}>Continue <ArrowRightIcon size={16} strokeWidth={1.85} aria-hidden="true" /></Button>
-                  : <Button variant="primary" loading={completing} icon={<CommandsIcon size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={finish}>Open SwiftSlate</Button>}
+                {step < steps.length - 1 ? (
+                  <Button variant="primary" onClick={() => setStep(step + 1)}>Continue <ArrowRightIcon size={16} strokeWidth={1.85} aria-hidden="true" /></Button>
+                ) : (
+                  <SlideCommit
+                    label="Slide to launch SwiftSlate"
+                    doneLabel="SwiftSlate ready"
+                    errorLabel="Setup failed"
+                    width={256}
+                    height={42}
+                    radius={21}
+                    holdMs={500}
+                    trackColor="var(--surface-2)"
+                    handleColor="var(--accent)"
+                    successColor="#22c55e"
+                    dangerColor="#e5484d"
+                    onConfirm={finish}
+                    onError={(reason) => {
+                      setError(reason instanceof Error ? reason.message : 'Setup could not be saved.')
+                    }}
+                  />
+                )}
               </div>
             </div>
           </motion.section>

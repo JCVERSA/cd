@@ -8,8 +8,10 @@ import { api } from './api'
 import App from './App'
 import { ChromaGrid } from './components/ChromaGrid'
 import { GlideSelect } from './components/GlideSelect'
+import { HoldButton } from './components/HoldButton'
 import { JellyRadio } from './components/JellyRadio'
 import { RubberSegment } from './components/RubberSegment'
+import { SlideCommit } from './components/SlideCommit'
 import { SwipeRow } from './components/SwipeRow'
 import { Select } from './components/ui'
 import { GLYPH_CATALOG, pathSignature } from './icons'
@@ -793,5 +795,165 @@ describe('SwiftSlate dashboard', () => {
     expect(onPick).toHaveBeenLastCalledWith('Year', 3)
 
     expect(screen.getByRole('radiogroup', { name: 'Disabled segment' })).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('integrates HoldButton across Commands delete modal and Settings factory defaults with tap abort, hold completion, and axe compliance', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    // 1. Settings screen Hold to reset button + axe
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    await screen.findByText('Command behavior')
+    const resetHoldBtn = screen.getByRole('button', { name: 'Hold to reset' })
+    expect(resetHoldBtn).toHaveClass('hold-button')
+    expect(resetHoldBtn).toHaveAttribute('data-phase', 'idle')
+
+    // 2. Commands Delete command? modal HoldButton + short tap does NOT delete
+    await user.click(screen.getByRole('button', { name: 'Commands' }))
+    await screen.findByText('Your command library')
+    await user.click(screen.getByRole('button', { name: 'Delete .fix' }))
+    const deleteDialog = await screen.findByRole('dialog', { name: 'Delete command?' })
+    const holdDeleteBtn = within(deleteDialog).getByRole('button', { name: 'Hold to delete' })
+    expect(holdDeleteBtn).toHaveClass('hold-button')
+
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+
+    // Quick pointer tap (< 250ms) aborts without deleting .fix
+    fireEvent.pointerDown(holdDeleteBtn, { pointerId: 1, button: 0, clientX: 10, clientY: 10 })
+    expect(holdDeleteBtn).toHaveAttribute('data-phase', 'holding')
+    fireEvent.pointerUp(holdDeleteBtn, { pointerId: 1, clientX: 10, clientY: 10 })
+    expect(holdDeleteBtn).toHaveAttribute('data-phase', 'idle')
+    expect(screen.getByRole('dialog', { name: 'Delete command?' })).toBeInTheDocument()
+    await user.click(within(deleteDialog).getByRole('button', { name: 'Cancel' }))
+
+    unmount()
+
+    // 3. Standalone React Bits HoldButton: early tap callback + full hold completion + auto-reset
+    const onHold = vi.fn()
+    const onTap = vi.fn()
+    render(
+      <main className="app">
+        <HoldButton
+          holdTime={70}
+          releaseTime={30}
+          resetAfter={80}
+          fillDirection="up"
+          doneLabel="Purged"
+          onHold={onHold}
+          onTap={onTap}
+        >
+          Hold to purge
+        </HoldButton>
+      </main>,
+    )
+
+    const purgeBtn = screen.getByRole('button', { name: 'Hold to purge' })
+    expect(purgeBtn).toHaveAttribute('data-direction', 'up')
+
+    fireEvent.pointerDown(purgeBtn, { pointerId: 2, button: 0, clientX: 5, clientY: 5 })
+    fireEvent.pointerUp(purgeBtn, { pointerId: 2, clientX: 5, clientY: 5 })
+    expect(onTap).toHaveBeenCalledTimes(1)
+    expect(onHold).not.toHaveBeenCalled()
+
+    // Hold past holdTime (70ms) -> completes and transitions to done -> resets back to idle
+    fireEvent.pointerDown(purgeBtn, { pointerId: 3, button: 0, clientX: 5, clientY: 5 })
+    await waitFor(() => {
+      expect(onHold).toHaveBeenCalledTimes(1)
+    })
+    fireEvent.pointerUp(purgeBtn, { pointerId: 3, clientX: 5, clientY: 5 })
+    await waitFor(() => {
+      expect(purgeBtn).toHaveAttribute('data-phase', 'idle')
+    })
+
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+  })
+
+  it('integrates SlideCommit across Overview engine stage, Providers activation modal, and async promise pending/done/error states', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    // 1. Overview hero SlideCommit toggles global keyboard hook via keyboard End
+    const overviewSlider = screen.getByRole('slider', { name: 'Slide to pause hook' })
+    expect(overviewSlider).toHaveAttribute('aria-valuenow', '0')
+    overviewSlider.focus()
+    await user.keyboard('{End}')
+    expect(await screen.findByText('SwiftSlate is paused')).toBeInTheDocument()
+
+    // 2. Providers Configure DeepSeek modal renders Slide to activate
+    await user.click(screen.getByRole('button', { name: /Switch engine/i }))
+    await screen.findByText('Choose where SwiftSlate thinks')
+    const deepseekCard = screen.getByRole('heading', { name: 'DeepSeek' }).closest('.provider-card') as HTMLElement
+    await user.click(within(deepseekCard).getByRole('button', { name: 'Configure' }))
+    const providerDialog = await screen.findByRole('dialog', { name: /Configure DeepSeek/i })
+    const activateSlider = within(providerDialog).getByRole('slider', { name: 'Slide to activate' })
+    expect(activateSlider).toBeInTheDocument()
+
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+    await user.click(within(providerDialog).getByRole('button', { name: 'Cancel' }))
+
+    unmount()
+
+    // 3. Standalone React Bits SlideCommit: pointer drag to end + async Promise resolve & reject
+    const onDone = vi.fn()
+    const onError = vi.fn()
+    let shouldFail = false
+    const onConfirm = vi.fn(
+      () =>
+        new Promise<void>((res, rej) => {
+          setTimeout(() => (shouldFail ? rej(new Error('Declined')) : res()), 20)
+        }),
+    )
+
+    const { container } = render(
+      <main className="app">
+        <SlideCommit
+          label="Slide to deploy"
+          doneLabel="Deployed"
+          errorLabel="Deploy failed"
+          width={280}
+          height={56}
+          holdMs={120}
+          onConfirm={onConfirm}
+          onDone={onDone}
+          onError={onError}
+        />
+      </main>,
+    )
+
+    const root = container.querySelector('.slide-commit') as HTMLElement
+    const track = container.querySelector('.slide-commit__track') as HTMLElement
+    const slider = screen.getByRole('slider', { name: 'Slide to deploy' })
+
+    // Drag handle all the way right (TRAVEL = 280 - 8 - 48 = 224)
+    fireEvent.pointerDown(track, { pointerId: 10, button: 0, clientX: 10, timeStamp: 10 })
+    fireEvent.pointerMove(window, { pointerId: 10, clientX: 10, timeStamp: 20 })
+    fireEvent.pointerMove(window, { pointerId: 10, clientX: 250, timeStamp: 60 })
+    expect(slider).toHaveAttribute('aria-valuenow', '100')
+    fireEvent.pointerUp(window, { pointerId: 10, clientX: 250, timeStamp: 80 })
+
+    expect(root).toHaveAttribute('data-phase', 'pending')
+    expect(slider).toHaveAttribute('aria-busy', 'true')
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledTimes(1)
+      expect(root).toHaveAttribute('data-phase', 'done')
+    })
+
+    // Wait for holdMs settle back to idle, then test promise rejection -> error phase
+    await waitFor(() => {
+      expect(root).toHaveAttribute('data-phase', 'idle')
+    })
+
+    shouldFail = true
+    slider.focus()
+    await user.keyboard('{End}')
+    await waitFor(() => {
+      expect(onError).toHaveBeenCalledTimes(1)
+      expect(root).toHaveAttribute('data-phase', 'error')
+    })
+
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
   })
 })

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { ProviderLogo, getProviderTileClass } from '../components/ProviderLogo'
+import { SlideCommit } from '../components/SlideCommit'
 import { SwipeRow } from '../components/SwipeRow'
 import { Badge, Button, SpotlightCard } from '../components/ui'
 import {
@@ -9,7 +10,6 @@ import {
   CommandsIcon,
   CursorSparkIcon,
   PlayActionIcon,
-  PlayPauseCircleIcon,
   ShieldCheckIcon,
   StylesIcon,
 } from '../icons'
@@ -32,7 +32,7 @@ export function Overview({
   snapshot: AppSnapshot
   onNavigate: (page: PageId) => void
   onTryCommand: (trigger: string) => void
-  onPause: () => void
+  onPause: () => void | Promise<void>
 }) {
   const { runtime, activity } = snapshot
   const [dismissedIds, setDismissedIds] = useState<string[]>([])
@@ -62,13 +62,20 @@ export function Overview({
                   : <>Finish any sentence with <code>{runtime.prefix}fix</code>, <code>{runtime.prefix}improve</code>, or a custom trigger to rewrite text in place.</>}
               </p>
               <div className="hero-actions">
-                <Button
-                  variant="primary"
-                  icon={<PlayPauseCircleIcon size={16} strokeWidth={1.85} morphed={runtime.paused} aria-hidden="true" />}
-                  onClick={onPause}
-                >
-                  {runtime.paused ? 'Resume engine' : 'Pause engine'}
-                </Button>
+                <SlideCommit
+                  label={runtime.paused ? 'Slide to resume hook' : 'Slide to pause hook'}
+                  doneLabel={runtime.paused ? 'Hook paused' : 'Hook active'}
+                  errorLabel="Toggle failed"
+                  width={228}
+                  height={40}
+                  radius={20}
+                  holdMs={900}
+                  trackColor="var(--surface-2)"
+                  handleColor={runtime.paused ? '#68d6aa' : 'var(--accent)'}
+                  successColor="#22c55e"
+                  dangerColor="#e5484d"
+                  onConfirm={() => onPause()}
+                />
                 <Button
                   variant="secondary"
                   icon={<CursorSparkIcon size={16} strokeWidth={1.85} aria-hidden="true" />}

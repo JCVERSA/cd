@@ -4,6 +4,7 @@ import { ChromaGrid } from '../components/ChromaGrid'
 import { GlideSelect } from '../components/GlideSelect'
 import { JellyRadio } from '../components/JellyRadio'
 import { ProviderLogo, getProviderAccentColor, getProviderPortalUrl, getProviderTileClass } from '../components/ProviderLogo'
+import { SlideCommit } from '../components/SlideCommit'
 import { Badge, Button, Field, Modal, SecretInput, Select, SpotlightCard } from '../components/ui'
 import {
   AlertCircleIcon,
@@ -168,6 +169,13 @@ export function ProvidersScreen({
     } finally {
       setBusy(null)
     }
+  }
+
+  async function commitActivateSlide() {
+    if (!draft) return
+    const saved = await api.saveProvider(draft, apiKey || undefined, true)
+    onChange(saved, true)
+    notify(`${saved.name} is now active.`, 'success')
   }
 
   const draftPortalUrl = draft ? getProviderPortalUrl(draft.id, draft.portalAvailable) : ''
@@ -384,16 +392,40 @@ export function ProvidersScreen({
           <>
             <Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button>
             {draft?.id !== activeProvider ? (
-              <Button variant="secondary" disabled={Boolean(busy)} onClick={() => save(false)}>Save only</Button>
-            ) : null}
-            <Button
-              variant="primary"
-              loading={busy === 'save'}
-              onClick={() => save(true)}
-              icon={<CheckMarkIcon size={16} aria-hidden="true" />}
-            >
-              {draft?.id === activeProvider ? 'Save changes' : 'Save & use provider'}
-            </Button>
+              <>
+                <Button variant="secondary" disabled={Boolean(busy)} onClick={() => save(false)}>Save only</Button>
+                <SlideCommit
+                  label="Slide to activate"
+                  doneLabel="Provider active"
+                  errorLabel="Activation failed"
+                  width={216}
+                  height={38}
+                  radius={19}
+                  holdMs={500}
+                  disabled={busy === 'models' || busy === 'test'}
+                  trackColor="var(--surface-2)"
+                  handleColor="var(--accent)"
+                  successColor="#22c55e"
+                  dangerColor="#e5484d"
+                  onConfirm={commitActivateSlide}
+                  onDone={() => {
+                    window.setTimeout(() => setEditing(null), 420)
+                  }}
+                  onError={(reason) => {
+                    notify(reason instanceof Error ? reason.message : 'Provider settings could not be saved.', 'danger')
+                  }}
+                />
+              </>
+            ) : (
+              <Button
+                variant="primary"
+                loading={busy === 'save'}
+                onClick={() => save(true)}
+                icon={<CheckMarkIcon size={16} aria-hidden="true" />}
+              >
+                Save changes
+              </Button>
+            )}
           </>
         }
       >

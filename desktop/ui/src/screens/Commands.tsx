@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { GlideSelect } from '../components/GlideSelect'
+import { HoldButton } from '../components/HoldButton'
 import { JellyRadio } from '../components/JellyRadio'
 import { RubberSegment } from '../components/RubberSegment'
 import { SwipeRow, type SwipeAction } from '../components/SwipeRow'
 import { Badge, Button, Field, Modal, SpotlightCard, Switch } from '../components/ui'
 import {
+  CheckMarkIcon,
   EditPenIcon,
   PlayActionIcon,
   PlusCreateIcon,
@@ -340,7 +342,30 @@ export function CommandsScreen({
         title="Delete command?"
         description={confirmDelete ? `.${confirmDelete.trigger} will stop working immediately.` : undefined}
         size="sm"
-        footer={<><Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button><Button variant="danger" icon={<TrashBinIcon size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={remove}>Delete</Button></>}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+            <HoldButton
+              size="sm"
+              radius={10}
+              holdTime={900}
+              resetAfter={800}
+              backgroundColor="var(--surface-3)"
+              fillColor="#e5484d"
+              textColor="var(--text)"
+              fillTextColor="#ffffff"
+              icon={<TrashBinIcon size={15} strokeWidth={1.9} aria-hidden="true" />}
+              doneIcon={<CheckMarkIcon size={15} strokeWidth={2.1} aria-hidden="true" />}
+              doneLabel="Deleted"
+              onHold={() => {
+                void remove()
+              }}
+              onTap={() => notify('Press and hold to delete command.')}
+            >
+              Hold to delete
+            </HoldButton>
+          </>
+        }
       >
         <div className="delete-warning"><TrashBinIcon size={18} strokeWidth={1.85} aria-hidden="true" /><p>This cannot be undone, but you can recreate the command later.</p></div>
       </Modal>

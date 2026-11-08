@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
+import { HoldButton } from '../components/HoldButton'
 import { Badge, Button, Field, Select, SpotlightCard, Switch, cn } from '../components/ui'
 import {
   CheckMarkIcon,
@@ -53,6 +54,27 @@ export function SettingsScreen({
       notify('Settings saved.', 'success')
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Settings could not be saved.', 'danger')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function restoreFactoryDefaults() {
+    setSaving(true)
+    try {
+      const defaults: Partial<RuntimeState> = {
+        prefix: '.',
+        keyDelay: 120,
+        spinner: 'animated',
+        theme: 'lavender',
+        reducedMotion: false,
+      }
+      const saved = await api.saveRuntime(defaults)
+      setDraft(saved)
+      onChange(saved)
+      notify('Factory defaults restored.', 'success')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Defaults could not be restored.', 'danger')
     } finally {
       setSaving(false)
     }
@@ -175,6 +197,28 @@ export function SettingsScreen({
               <div className="setting-row">
                 <div><strong>Reduce motion</strong><span>Disable spatial transitions in favor of instant calm state swaps.</span></div>
                 <Switch checked={draft.reducedMotion} onChange={(value) => setDraft({ ...draft, reducedMotion: value })} label="Reduce motion" />
+              </div>
+              <div className="setting-row">
+                <div><strong>Restore factory defaults</strong><span>Press and hold to reset prefix, delay, indicator, theme, and motion preferences.</span></div>
+                <HoldButton
+                  size="sm"
+                  radius={10}
+                  holdTime={1100}
+                  resetAfter={1200}
+                  backgroundColor="var(--surface-2)"
+                  fillColor="#d9485f"
+                  textColor="var(--text-soft)"
+                  fillTextColor="#ffffff"
+                  disabled={saving}
+                  icon={<ResetArcIcon size={14} strokeWidth={1.9} aria-hidden="true" />}
+                  doneIcon={<CheckMarkIcon size={14} strokeWidth={2.1} aria-hidden="true" />}
+                  doneLabel="Restored"
+                  onHold={() => {
+                    void restoreFactoryDefaults()
+                  }}
+                >
+                  Hold to reset
+                </HoldButton>
               </div>
             </div>
           </SpotlightCard>
