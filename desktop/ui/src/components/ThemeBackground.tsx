@@ -4,6 +4,7 @@ import AeroShards from './AeroShards'
 import Ballpit from './Ballpit'
 import LightPillar from './LightPillar'
 import Lightfall from './Lightfall'
+import Radar from './Radar'
 import './ThemeBackground.css'
 
 export interface ThemeBackgroundMeta {
@@ -11,22 +12,26 @@ export interface ThemeBackgroundMeta {
   label: string
 }
 
-export const THEME_BACKGROUNDS: Partial<Record<ThemeId, ThemeBackgroundMeta>> = {
+export const THEME_BACKGROUNDS: Record<ThemeId, ThemeBackgroundMeta> = {
   lavender: {
     id: 'aero-shards',
     label: 'Aero Shards',
+  },
+  amber: {
+    id: 'radar',
+    label: 'Radar',
   },
   sapphire: {
     id: 'lightfall',
     label: 'Lightfall',
   },
-  rose: {
-    id: 'light-pillar',
-    label: 'Light Pillar',
-  },
   emerald: {
     id: 'ballpit',
     label: 'Ballpit',
+  },
+  rose: {
+    id: 'light-pillar',
+    label: 'Light Pillar',
   },
 }
 
@@ -50,7 +55,7 @@ export function ThemeBackground({ theme, reducedMotion = false }: ThemeBackgroun
       ref={stageRef}
       className="theme-background"
       data-theme-background={theme}
-      data-background-id={activeMeta?.id ?? 'ambient'}
+      data-background-id={activeMeta.id}
       aria-hidden="true"
     >
       <div className="ambient" />
@@ -74,6 +79,37 @@ export function ThemeBackground({ theme, reducedMotion = false }: ThemeBackgroun
             paused={reducedMotion}
             dpr={1.75}
             onError={handleGpuError}
+          />
+        </div>
+      ) : null}
+      {theme === 'amber' ? (
+        <div className="theme-background-layer">
+          <Radar
+            color="#ffb347"
+            mode="sweep"
+            speed={0.82}
+            trail={0.42}
+            scale={1.14}
+            ringCount={7}
+            spokeCount={16}
+            ticks
+            targets={8}
+            clutter={0.32}
+            glow={1.18}
+            brightness={1.04}
+            gridOpacity={0.92}
+            lineWidth={1.05}
+            tilt={48}
+            centerX={0.56}
+            centerY={0.55}
+            grain={0.025}
+            fade={0.14}
+            mixBlendMode="screen"
+            mouseInteraction={!reducedMotion}
+            clickPing={!reducedMotion}
+            intro={!reducedMotion}
+            paused={reducedMotion}
+            dpr={1.75}
           />
         </div>
       ) : null}
