@@ -957,7 +957,7 @@ describe('SwiftSlate dashboard', () => {
     expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
   })
 
-  it('assigns AeroShards to the Sparkle Lavender theme background with WebGPU fallback and per-theme switching', async () => {
+  it('assigns dedicated backgrounds per theme (Sparkle Lavender -> AeroShards, Sapphire -> Lightfall) with clean switching', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
     await screen.findByRole('heading', { name: 'Overview' })
@@ -967,6 +967,7 @@ describe('SwiftSlate dashboard', () => {
     expect(stage).toHaveAttribute('data-theme-background', 'lavender')
     expect(stage).toHaveAttribute('data-background-id', 'aero-shards')
     expect(stage.querySelector('.aero-shards canvas.aero-shards-canvas')).not.toBeNull()
+    expect(stage.querySelector('.lightfall-container')).toBeNull()
 
     await waitFor(() => {
       expect(stage).toHaveAttribute('data-gpu-fallback', 'true')
@@ -975,11 +976,23 @@ describe('SwiftSlate dashboard', () => {
     await user.click(screen.getByRole('button', { name: 'Change color theme' }))
     const themeDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
     expect(within(themeDialog).getByText('Aero Shards')).toBeInTheDocument()
+    expect(within(themeDialog).getByText('Lightfall')).toBeInTheDocument()
     expect((await axe.run(themeDialog)).violations).toEqual([])
 
-    await user.click(within(themeDialog).getByRole('button', { name: /Cyber Amber/i }))
-    expect(stage).toHaveAttribute('data-theme-background', 'amber')
+    await user.click(within(themeDialog).getByRole('button', { name: /Sapphire/i }))
+    expect(stage).toHaveAttribute('data-theme-background', 'sapphire')
+    expect(stage).toHaveAttribute('data-background-id', 'lightfall')
     expect(stage.querySelector('.aero-shards')).toBeNull()
+    expect(stage.querySelector('.lightfall-container canvas.lightfall-canvas')).not.toBeNull()
+    expect((await axe.run(container)).violations).toEqual([])
+
+    await user.click(screen.getByRole('button', { name: 'Change color theme' }))
+    const amberDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
+    await user.click(within(amberDialog).getByRole('button', { name: /Cyber Amber/i }))
+    expect(stage).toHaveAttribute('data-theme-background', 'amber')
+    expect(stage).toHaveAttribute('data-background-id', 'ambient')
+    expect(stage.querySelector('.aero-shards')).toBeNull()
+    expect(stage.querySelector('.lightfall-container')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Change color theme' }))
     const reopenedDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })

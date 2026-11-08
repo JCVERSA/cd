@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react'
 import type { ThemeId } from '../types'
 import AeroShards from './AeroShards'
+import Lightfall from './Lightfall'
 import './ThemeBackground.css'
 
 export interface ThemeBackgroundMeta {
@@ -12,6 +13,10 @@ export const THEME_BACKGROUNDS: Partial<Record<ThemeId, ThemeBackgroundMeta>> = 
   lavender: {
     id: 'aero-shards',
     label: 'Aero Shards',
+  },
+  sapphire: {
+    id: 'lightfall',
+    label: 'Lightfall',
   },
 }
 
@@ -59,6 +64,32 @@ export function ThemeBackground({ theme, reducedMotion = false }: ThemeBackgroun
             paused={reducedMotion}
             dpr={1.75}
             onError={handleGpuError}
+          />
+        </div>
+      ) : null}
+      {theme === 'sapphire' ? (
+        <div className="theme-background-layer">
+          <Lightfall
+            colors={['#e4efff', '#88b8ff', '#5b8eee', '#3898ff']}
+            backgroundColor="#4b7fe8"
+            speed={0.65}
+            streakCount={6}
+            streakWidth={0.72}
+            streakLength={1.05}
+            density={0.9}
+            twinkle={0.5}
+            backgroundGlow={0.14}
+            headGlow={0.62}
+            bloom={0.52}
+            glow={1.15}
+            fade={0.12}
+            mouseInteraction={!reducedMotion}
+            mouseStrength={0.85}
+            mouseRadius={0.34}
+            holdToWarp={!reducedMotion}
+            intro={!reducedMotion}
+            paused={reducedMotion}
+            dpr={1.75}
           />
         </div>
       ) : null}
