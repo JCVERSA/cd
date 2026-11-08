@@ -1,8 +1,9 @@
 import { useCallback, useRef } from 'react'
 import type { ThemeId } from '../types'
 import AeroShards from './AeroShards'
-import Lightfall from './Lightfall'
+import Ballpit from './Ballpit'
 import LightPillar from './LightPillar'
+import Lightfall from './Lightfall'
 import './ThemeBackground.css'
 
 export interface ThemeBackgroundMeta {
@@ -22,6 +23,10 @@ export const THEME_BACKGROUNDS: Partial<Record<ThemeId, ThemeBackgroundMeta>> = 
   rose: {
     id: 'light-pillar',
     label: 'Light Pillar',
+  },
+  emerald: {
+    id: 'ballpit',
+    label: 'Ballpit',
   },
 }
 
@@ -101,12 +106,12 @@ export function ThemeBackground({ theme, reducedMotion = false }: ThemeBackgroun
       {theme === 'rose' ? (
         <div className="theme-background-layer">
           <LightPillar
-            topColor="#9c3d61"
+            topColor="#a83264"
             bottomColor="#ffafc8"
             intensity={1.08}
-            glowAmount={0.0022}
+            glowAmount={0.002}
             bloom={0.52}
-            pillarWidth={4.8}
+            pillarWidth={5.2}
             pillarHeight={0.4}
             pillarRotation={25}
             rotationSpeed={0.28}
@@ -118,6 +123,29 @@ export function ThemeBackground({ theme, reducedMotion = false }: ThemeBackgroun
             clickPulse={!reducedMotion}
             intro={!reducedMotion}
             paused={reducedMotion}
+          />
+        </div>
+      ) : null}
+      {theme === 'emerald' ? (
+        <div className="theme-background-layer">
+          <Ballpit
+            count={120}
+            colors={['#75e5bc', '#3db68c', '#218c68', '#b8f7de']}
+            material="frosted"
+            gravity={0}
+            drift={reducedMotion ? 0 : 0.72}
+            minSize={0.48}
+            maxSize={1.05}
+            followCursor={!reducedMotion}
+            grab={false}
+            clickEffect={reducedMotion ? 'none' : 'burst'}
+            lightColor="#75e5bc"
+            lightIntensity={1.1}
+            exposure={0.92}
+            shadows={0.6}
+            intro={!reducedMotion}
+            paused={reducedMotion}
+            dpr={1.75}
           />
         </div>
       ) : null}

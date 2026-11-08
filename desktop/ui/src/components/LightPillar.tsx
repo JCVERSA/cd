@@ -166,7 +166,7 @@ void main() {
     vec4 l6 = textureLod(uField, uv, 6.0);
     float halo = l3.a * 0.3 + l4.a * 0.3 + l5.a * 0.25 + l6.a * 0.15;
     vec3 tint = l4.rgb + l5.rgb;
-    tint /= max(max(tint.r, tint.g), max(tint.b, 0.001));
+    tint /= max(max(tint.r, max(tint.g, tint.b)), 0.001);
     vec3 glow = clamp(tint * halo * uBloom * 1.1, 0.0, 1.0);
     col = 1.0 - (1.0 - clamp(col, 0.0, 1.0)) * (1.0 - glow);
   }
@@ -422,8 +422,9 @@ const LightPillar = ({
     const toRgb = (value: string): [number, number, number] => {
       const cached = colorCache.get(value)
       if (cached) return cached
-      let rgb: [number, number, number] = parseHexRgb(value) ?? [1, 1, 1]
-      if (!parseHexRgb(value) && probe) {
+      const direct = parseHexRgb(value)
+      let rgb: [number, number, number] = direct ?? [1, 1, 1]
+      if (!direct && probe) {
         probe.clearRect(0, 0, 1, 1)
         probe.fillStyle = '#ffffff'
         probe.fillStyle = value
@@ -464,9 +465,9 @@ const LightPillar = ({
 
     const render = () => {
       const s = settingsRef.current
-      const renderScale = Math.max(MIN_SCALE, s.scale * state.governor)
-      const fieldWidth = Math.max(1, Math.round(view.width * renderScale))
-      const fieldHeight = Math.max(1, Math.round(view.height * renderScale))
+      const scale = Math.max(MIN_SCALE, s.scale * state.governor)
+      const fieldWidth = Math.max(1, Math.round(view.width * scale))
+      const fieldHeight = Math.max(1, Math.round(view.height * scale))
       sizeTarget(fieldWidth, fieldHeight)
 
       const grow = ease(state.intro)

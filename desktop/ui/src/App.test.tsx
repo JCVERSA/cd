@@ -957,7 +957,7 @@ describe('SwiftSlate dashboard', () => {
     expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
   })
 
-  it('assigns dedicated backgrounds per theme (Sparkle Lavender -> AeroShards, Sapphire -> Lightfall, Rose -> LightPillar) with clean switching', async () => {
+  it('assigns dedicated backgrounds per theme (Lavender -> AeroShards, Sapphire -> Lightfall, Rose -> LightPillar, Emerald -> Ballpit) with clean switching', async () => {
     const user = userEvent.setup()
     const { container } = render(<App />)
     await screen.findByRole('heading', { name: 'Overview' })
@@ -969,6 +969,7 @@ describe('SwiftSlate dashboard', () => {
     expect(stage.querySelector('.aero-shards canvas.aero-shards-canvas')).not.toBeNull()
     expect(stage.querySelector('.lightfall-container')).toBeNull()
     expect(stage.querySelector('.light-pillar-container')).toBeNull()
+    expect(stage.querySelector('.ballpit-container')).toBeNull()
 
     await waitFor(() => {
       expect(stage).toHaveAttribute('data-gpu-fallback', 'true')
@@ -979,6 +980,7 @@ describe('SwiftSlate dashboard', () => {
     expect(within(themeDialog).getByText('Aero Shards')).toBeInTheDocument()
     expect(within(themeDialog).getByText('Lightfall')).toBeInTheDocument()
     expect(within(themeDialog).getByText('Light Pillar')).toBeInTheDocument()
+    expect(within(themeDialog).getByText('Ballpit')).toBeInTheDocument()
     expect((await axe.run(themeDialog)).violations).toEqual([])
 
     await user.click(within(themeDialog).getByRole('button', { name: /Sapphire/i }))
@@ -987,6 +989,7 @@ describe('SwiftSlate dashboard', () => {
     expect(stage.querySelector('.aero-shards')).toBeNull()
     expect(stage.querySelector('.lightfall-container canvas.lightfall-canvas')).not.toBeNull()
     expect(stage.querySelector('.light-pillar-container')).toBeNull()
+    expect(stage.querySelector('.ballpit-container')).toBeNull()
     expect((await axe.run(container)).violations).toEqual([])
 
     await user.click(screen.getByRole('button', { name: 'Change color theme' }))
@@ -997,6 +1000,16 @@ describe('SwiftSlate dashboard', () => {
     expect(stage.querySelector('.aero-shards')).toBeNull()
     expect(stage.querySelector('.lightfall-container')).toBeNull()
     expect(stage.querySelector('.light-pillar-container canvas.light-pillar-canvas')).not.toBeNull()
+    expect(stage.querySelector('.ballpit-container')).toBeNull()
+    expect((await axe.run(container)).violations).toEqual([])
+
+    await user.click(screen.getByRole('button', { name: 'Change color theme' }))
+    const emeraldDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
+    await user.click(within(emeraldDialog).getByRole('button', { name: /Emerald/i }))
+    expect(stage).toHaveAttribute('data-theme-background', 'emerald')
+    expect(stage).toHaveAttribute('data-background-id', 'ballpit')
+    expect(stage.querySelector('.light-pillar-container')).toBeNull()
+    expect(stage.querySelector('.ballpit-container canvas.ballpit-canvas')).not.toBeNull()
     expect((await axe.run(container)).violations).toEqual([])
 
     await user.click(screen.getByRole('button', { name: 'Change color theme' }))
@@ -1007,6 +1020,7 @@ describe('SwiftSlate dashboard', () => {
     expect(stage.querySelector('.aero-shards')).toBeNull()
     expect(stage.querySelector('.lightfall-container')).toBeNull()
     expect(stage.querySelector('.light-pillar-container')).toBeNull()
+    expect(stage.querySelector('.ballpit-container')).toBeNull()
 
     await user.click(screen.getByRole('button', { name: 'Change color theme' }))
     const reopenedDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
