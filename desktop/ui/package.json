@@ -12,9 +12,14 @@
     "typecheck": "tsc -b --pretty false"
   },
   "dependencies": {
+    "@vgpu/wgsl": "0.6.0",
     "motion": "14.9.0",
     "react": "19.3.1",
-    "react-dom": "19.3.1"
+    "react-dom": "19.3.1",
+    "vgpu": "0.6.0"
+  },
+  "overrides": {
+    "@modelcontextprotocol/server": "2.4.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "6.9.1",

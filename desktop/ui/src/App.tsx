@@ -6,6 +6,7 @@ import { BrandLogo } from './components/BrandLogo'
 import { Onboarding } from './components/Onboarding'
 import { ProviderLogo, getProviderTileClass } from './components/ProviderLogo'
 import { Sidebar } from './components/Sidebar'
+import { THEME_BACKGROUNDS, ThemeBackground } from './components/ThemeBackground'
 import { Topbar } from './components/Topbar'
 import { Button, Modal, Skeleton, Toasts, cn, type ToastItem } from './components/ui'
 import {
@@ -244,7 +245,7 @@ export default function App() {
     <MotionConfig reducedMotion={reducedMotion ? 'always' : 'user'}>
       <div className="app" data-theme={theme} data-reduced-motion={reducedMotion || undefined}>
         <a href="#main-content" className="skip-link">Skip to main content</a>
-        <div className="ambient" aria-hidden="true" />
+        <ThemeBackground theme={theme} reducedMotion={reducedMotion} />
         <Sidebar
           collapsed={collapsed}
           paused={snapshot?.runtime.paused || false}
@@ -335,9 +336,21 @@ export default function App() {
           </div>
         </Modal>
 
-        <Modal open={themeOpen} onClose={() => setThemeOpen(false)} title="Choose a theme" description="The dark surfaces stay consistent; only the product accent changes." size="sm">
+        <Modal open={themeOpen} onClose={() => setThemeOpen(false)} title="Choose a theme" description="Switch SwiftSlate's accent palette and paired atmospheric backdrop." size="sm">
           <div className="theme-modal-list">
-            {themeOptions.map((item) => <button key={item.id} type="button" className={theme === item.id ? 'active' : ''} onClick={() => changeTheme(item.id)}><i style={{ background: item.color }} /><strong>{item.name}</strong>{theme === item.id ? <span>Active</span> : null}</button>)}
+            {themeOptions.map((item) => {
+              const bgMeta = THEME_BACKGROUNDS[item.id]
+              return (
+                <button key={item.id} type="button" className={theme === item.id ? 'active' : ''} onClick={() => changeTheme(item.id)}>
+                  <i style={{ background: item.color }} />
+                  <span className="theme-modal-copy">
+                    <strong>{item.name}</strong>
+                    {bgMeta ? <small>{bgMeta.label}</small> : null}
+                  </span>
+                  {theme === item.id ? <span className="theme-modal-active">Active</span> : null}
+                </button>
+              )
+            })}
           </div>
         </Modal>
 

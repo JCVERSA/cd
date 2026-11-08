@@ -113,14 +113,13 @@
     background: var(--surface-0);
   }
 
-  /* Quiet architectural atmosphere — zero continuous GPU blur loops */
+  /* Atmospheric theme stage base */
   .ambient {
-    position: fixed;
+    position: absolute;
     inset: 0;
-    z-index: -1;
     pointer-events: none;
     background:
-      radial-gradient(48vw 40vw at 8% -10%, color-mix(in srgb, var(--accent-strong) 10%, transparent), transparent 72%),
+      radial-gradient(48vw 40vw at 8% -10%, color-mix(in srgb, var(--accent-strong) 12%, transparent), transparent 72%),
       radial-gradient(40vw 36vw at 94% 106%, rgba(77, 121, 239, .065), transparent 72%);
   }
 
@@ -143,7 +142,7 @@
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 16px;
-    background: var(--surface-rail);
+    background: rgba(13, 13, 19, 0.86);
     box-shadow: inset 0 1px rgba(255,255,255,.04);
     transition: width var(--duration-ui) var(--ease-drawer);
   }
@@ -199,6 +198,8 @@
 
   /* Workspace Shell Frame */
   .app-main {
+    position: relative;
+    z-index: 4;
     display: flex;
     min-width: 500px;
     flex: 1;
@@ -206,7 +207,7 @@
     overflow: hidden;
     border: 1px solid var(--border);
     border-radius: 16px;
-    background: rgba(13, 13, 19, 0.72);
+    background: rgba(13, 13, 19, 0.68);
     box-shadow: inset 0 1px rgba(255,255,255,.035);
   }
   .topbar {
@@ -376,12 +377,14 @@
   .palette-empty { padding: 28px; color: var(--muted); font-size: 12.5px; text-align: center; }
 
   .theme-modal-list { display: flex; flex-direction: column; gap: 6px; }
-  .theme-modal-list button { display: flex; align-items: center; height: 42px; padding: 0 11px; gap: 10px; color: var(--text-soft); border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; transition: background-color var(--duration-press) ease, border-color var(--duration-press) ease, transform var(--duration-press) var(--ease-out); }
+  .theme-modal-list button { display: flex; align-items: center; min-height: 46px; padding: 6px 11px; gap: 10px; color: var(--text-soft); border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; transition: background-color var(--duration-press) ease, border-color var(--duration-press) ease, transform var(--duration-press) var(--ease-out); }
   .theme-modal-list button:active { transform: scale(0.985); }
   .theme-modal-list button.active { border-color: rgba(var(--accent-rgb),.24); background: rgba(var(--accent-rgb),.085); }
-  .theme-modal-list i { width: 17px; height: 17px; border: 3px solid rgba(255,255,255,.14); border-radius: 50%; }
-  .theme-modal-list strong { flex: 1; font-size: 13px; text-align: left; }
-  .theme-modal-list span { color: var(--accent); font-size: 11.5px; font-weight: 600; }
+  .theme-modal-list i { flex: 0 0 auto; width: 17px; height: 17px; border: 3px solid rgba(255,255,255,.14); border-radius: 50%; }
+  .theme-modal-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 1px; text-align: left; }
+  .theme-modal-copy strong { font-size: 13px; color: var(--text); }
+  .theme-modal-copy small { color: var(--muted); font-size: 11px; font-weight: 450; }
+  .theme-modal-active { color: var(--accent); font-size: 11.5px; font-weight: 600; }
 
   .fatal-state { display: flex; width: 100vw; height: 100vh; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: var(--text); background: var(--surface-0); }
   .fatal-state h1 { font-size: 21px; }
@@ -874,14 +877,16 @@
   .setting-row strong { font-size: 13px; font-weight: 580; }
   .setting-row span { color: var(--muted); font-size: 12px; line-height: 1.45; }
   .theme-options { display: flex; margin-top: 14px; flex-direction: column; gap: 5px; }
-  .theme-option { display: grid; grid-template-columns: 54px 1fr auto; min-height: 42px; align-items: center; padding: 0 10px; gap: 8px; color: var(--text-soft); border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; text-align: left; transition: background-color var(--duration-press) ease, border-color var(--duration-press) ease, transform var(--duration-press) var(--ease-out); }
+  .theme-option { display: grid; grid-template-columns: 54px 1fr auto; min-height: 46px; align-items: center; padding: 6px 10px; gap: 8px; color: var(--text-soft); border: 1px solid transparent; border-radius: 9px; background: transparent; cursor: pointer; text-align: left; transition: background-color var(--duration-press) ease, border-color var(--duration-press) ease, transform var(--duration-press) var(--ease-out); }
   .theme-option:active { transform: scale(0.985); }
   .theme-option-active { border-color: rgba(var(--accent-rgb),.22); background: rgba(var(--accent-rgb),.075); }
   .theme-dots { display: flex; }
   .theme-dots i { width: 18px; height: 18px; margin-left: -3px; border: 2px solid #18151f; border-radius: 50%; }
   .theme-dots i:first-child { margin-left: 0; }
-  .theme-option strong { font-size: 13px; }
-  .theme-option > span:last-child { color: var(--accent); font-size: 11.5px; font-weight: 600; }
+  .theme-option-copy { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+  .theme-option-copy strong { font-size: 13px; color: var(--text); }
+  .theme-option-copy small { color: var(--muted); font-size: 11px; font-weight: 450; }
+  .theme-option-selected { color: var(--accent); font-size: 11.5px; font-weight: 600; }
 
   /* Diagnostics — Side-by-Side Operations Console */
   .diagnostic-hero { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; margin: 0 0 16px; gap: 16px; }

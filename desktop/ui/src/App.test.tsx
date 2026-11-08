@@ -956,4 +956,36 @@ describe('SwiftSlate dashboard', () => {
 
     expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
   })
+
+  it('assigns AeroShards to the Sparkle Lavender theme background with WebGPU fallback and per-theme switching', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByRole('heading', { name: 'Overview' })
+
+    const stage = container.querySelector('.theme-background') as HTMLElement
+    expect(stage).not.toBeNull()
+    expect(stage).toHaveAttribute('data-theme-background', 'lavender')
+    expect(stage).toHaveAttribute('data-background-id', 'aero-shards')
+    expect(stage.querySelector('.aero-shards canvas.aero-shards-canvas')).not.toBeNull()
+
+    await waitFor(() => {
+      expect(stage).toHaveAttribute('data-gpu-fallback', 'true')
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Change color theme' }))
+    const themeDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
+    expect(within(themeDialog).getByText('Aero Shards')).toBeInTheDocument()
+    expect((await axe.run(themeDialog)).violations).toEqual([])
+
+    await user.click(within(themeDialog).getByRole('button', { name: /Cyber Amber/i }))
+    expect(stage).toHaveAttribute('data-theme-background', 'amber')
+    expect(stage.querySelector('.aero-shards')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Change color theme' }))
+    const reopenedDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
+    await user.click(within(reopenedDialog).getByRole('button', { name: /Sparkle Lavender/i }))
+    expect(stage).toHaveAttribute('data-theme-background', 'lavender')
+    expect(stage).toHaveAttribute('data-background-id', 'aero-shards')
+    expect(stage.querySelector('.aero-shards canvas.aero-shards-canvas')).not.toBeNull()
+  })
 })

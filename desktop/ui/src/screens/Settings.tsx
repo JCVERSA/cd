@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
 import { HoldButton } from '../components/HoldButton'
+import { THEME_BACKGROUNDS } from '../components/ThemeBackground'
 import { Badge, Button, Field, Select, SpotlightCard, Switch, cn } from '../components/ui'
 import {
   CheckMarkIcon,
@@ -115,22 +116,28 @@ export function SettingsScreen({
           <SpotlightCard className="theme-card">
             <div className="settings-card-heading">
               <span className="settings-heading-icon" aria-hidden="true"><ThemeSwatchIcon size={17} strokeWidth={1.85} /></span>
-              <div><h2>Color theme</h2><p>Surfaces stay dark and calm; only the active accent shifts.</p></div>
+              <div><h2>Color theme</h2><p>Each theme pairs a tuned accent palette with its own atmospheric backdrop.</p></div>
             </div>
             <div className="theme-options">
-              {themes.map((theme) => (
-                <button
-                  key={theme.id}
-                  type="button"
-                  className={`theme-option ${draft.theme === theme.id ? 'theme-option-active' : ''}`}
-                  aria-pressed={draft.theme === theme.id}
-                  onClick={() => setDraft({ ...draft, theme: theme.id })}
-                >
-                  <span className="theme-dots" aria-hidden="true">{theme.colors.map((color) => <i key={color} style={{ background: color }} />)}</span>
-                  <strong>{theme.name}</strong>
-                  {draft.theme === theme.id ? <span>Selected</span> : null}
-                </button>
-              ))}
+              {themes.map((theme) => {
+                const bgMeta = THEME_BACKGROUNDS[theme.id]
+                return (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    className={`theme-option ${draft.theme === theme.id ? 'theme-option-active' : ''}`}
+                    aria-pressed={draft.theme === theme.id}
+                    onClick={() => setDraft({ ...draft, theme: theme.id })}
+                  >
+                    <span className="theme-dots" aria-hidden="true">{theme.colors.map((color) => <i key={color} style={{ background: color }} />)}</span>
+                    <span className="theme-option-copy">
+                      <strong>{theme.name}</strong>
+                      {bgMeta ? <small>{bgMeta.label}</small> : null}
+                    </span>
+                    {draft.theme === theme.id ? <span className="theme-option-selected">Selected</span> : null}
+                  </button>
+                )
+              })}
             </div>
           </SpotlightCard>
 

@@ -207,15 +207,15 @@ export function Modal({ open, onClose, title, description, footer, children, siz
             animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.18, ease: EASE_OUT } }}
             exit={{ opacity: 0, scale: 0.985, y: 4, transition: { duration: 0.11, ease: EASE_OUT } }}
           >
-            <header className="modal-header">
+            <div className="modal-header">
               <div>
                 <h2 id={titleId}>{title}</h2>
                 {description ? <p id={descriptionId}>{description}</p> : null}
               </div>
               <Button variant="ghost" size="icon" aria-label="Close dialog" onClick={onClose} icon={<CloseXIcon size={17} strokeWidth={1.85} aria-hidden="true" />} />
-            </header>
+            </div>
             <div className="modal-body">{children}</div>
-            {footer ? <footer className="modal-footer">{footer}</footer> : null}
+            {footer ? <div className="modal-footer">{footer}</div> : null}
           </motion.section>
         </motion.div>
       ) : null}
