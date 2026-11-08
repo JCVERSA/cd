@@ -1,6 +1,5 @@
-import { PlayPauseIcon, SearchIcon, ThemeSwatchIcon } from '../icons'
+import { SearchIcon } from '../icons'
 import type { PageId } from '../types'
-import { Button } from './ui'
 
 const titles: Record<PageId, { title: string; subtitle: string }> = {
   overview: { title: 'Overview', subtitle: 'Live engine telemetry and routing' },
@@ -14,18 +13,12 @@ const titles: Record<PageId, { title: string; subtitle: string }> = {
 
 export function Topbar({
   page,
-  paused,
   prefix = '.',
-  onPause,
   onSearch,
-  onTheme,
 }: {
   page: PageId
-  paused: boolean
   prefix?: string
-  onPause: () => void
   onSearch: () => void
-  onTheme: () => void
 }) {
   const current = titles[page]
   return (
@@ -45,22 +38,6 @@ export function Topbar({
           <span>Jump or run…</span>
           <kbd aria-hidden="true">Ctrl K</kbd>
         </button>
-        <Button
-          variant="ghost"
-          size="icon"
-          icon={<ThemeSwatchIcon size={17} strokeWidth={1.85} aria-hidden="true" />}
-          aria-label="Change color theme"
-          onClick={onTheme}
-        />
-        <span className="topbar-divider" aria-hidden="true" />
-        <Button
-          variant={paused ? 'primary' : 'secondary'}
-          size="sm"
-          icon={<PlayPauseIcon size={14} morphed={paused} aria-hidden="true" />}
-          onClick={onPause}
-        >
-          {paused ? 'Resume' : 'Pause'}
-        </Button>
       </div>
     </header>
   )

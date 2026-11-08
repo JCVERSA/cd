@@ -6,7 +6,7 @@ import { BrandLogo } from './components/BrandLogo'
 import { Onboarding } from './components/Onboarding'
 import { ProviderLogo, getProviderTileClass } from './components/ProviderLogo'
 import { Sidebar } from './components/Sidebar'
-import { THEME_BACKGROUNDS, ThemeBackground } from './components/ThemeBackground'
+import { ThemeBackground } from './components/ThemeBackground'
 import { Topbar } from './components/Topbar'
 import { Button, Modal, Skeleton, Toasts, cn, type ToastItem } from './components/ui'
 import {
@@ -27,7 +27,7 @@ import { Playground } from './screens/Playground'
 import { ProvidersScreen } from './screens/Providers'
 import { SettingsScreen } from './screens/Settings'
 import { StylesScreen } from './screens/Styles'
-import type { AppSnapshot, PageId, Provider, ProviderId, ThemeId } from './types'
+import type { AppSnapshot, PageId, Provider, ProviderId } from './types'
 
 const pages: Array<{ id: PageId; label: string; description: string; icon: typeof OverviewIcon }> = [
   { id: 'overview', label: 'Overview', description: 'Runtime telemetry and routing', icon: OverviewIcon },
@@ -37,14 +37,6 @@ const pages: Array<{ id: PageId; label: string; description: string; icon: typeo
   { id: 'styles', label: 'Styles', description: 'Offline Unicode text foundry', icon: StylesIcon },
   { id: 'settings', label: 'Settings', description: 'Behavior, startup, and theme', icon: SettingsIcon },
   { id: 'diagnostics', label: 'Diagnostics', description: 'Health matrix and debug logs', icon: DiagnosticsIcon },
-]
-
-const themeOptions: Array<{ id: ThemeId; name: string; color: string }> = [
-  { id: 'lavender', name: 'Sparkle Lavender', color: '#d9c7ff' },
-  { id: 'amber', name: 'Cyber Amber', color: '#ffc76b' },
-  { id: 'sapphire', name: 'Sapphire', color: '#88b8ff' },
-  { id: 'emerald', name: 'Emerald', color: '#75e5bc' },
-  { id: 'rose', name: 'Rose', color: '#ffafc8' },
 ]
 
 type PaletteAction = {
@@ -72,7 +64,6 @@ export default function App() {
   const [playgroundPreset, setPlaygroundPreset] = useState<string | undefined>(undefined)
   const [collapsed, setCollapsed] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
-  const [themeOpen, setThemeOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [paletteIndex, setPaletteIndex] = useState(0)
   const [toasts, setToasts] = useState<ToastItem[]>([])
@@ -99,7 +90,6 @@ export default function App() {
       }
       if (event.key === 'Escape') {
         setSearchOpen(false)
-        setThemeOpen(false)
       }
     }
     window.addEventListener('keydown', keyboard)
@@ -205,18 +195,6 @@ export default function App() {
     })
   }
 
-  function changeTheme(theme: ThemeId) {
-    if (!snapshot) return
-    const previous = snapshot.runtime
-    const runtime = { ...snapshot.runtime, theme }
-    setSnapshot({ ...snapshot, runtime })
-    setThemeOpen(false)
-    void api.saveRuntime({ theme }).catch((reason) => {
-      setSnapshot((current) => current ? { ...current, runtime: previous } : current)
-      notify(reason instanceof Error ? reason.message : 'Theme could not be saved.', 'danger')
-    })
-  }
-
   async function completeOnboarding(providerId: ProviderId, apiKey: string) {
     if (!snapshot) return
     const selected = snapshot.providers.find((provider) => provider.id === providerId)
@@ -259,16 +237,13 @@ export default function App() {
         <div className="app-main">
           <Topbar
             page={page}
-            paused={snapshot?.runtime.paused || false}
             prefix={snapshot?.runtime.prefix || '.'}
-            onPause={togglePause}
             onSearch={() => { setSearchOpen(true); setPaletteIndex(0) }}
-            onTheme={() => setThemeOpen(true)}
           />
           <main ref={mainRef} className="content" id="main-content" tabIndex={-1}>
             {!snapshot ? <LoadingShell /> : (
               <div key={page} className="page-motion">
-                {page === 'overview' ? <Overview snapshot={snapshot} onNavigate={navigate} onTryCommand={openPlaygroundWith} onPause={togglePause} /> : null}
+                {page === 'overview' ? <Overview snapshot={snapshot} onTryCommand={openPlaygroundWith} onPause={togglePause} /> : null}
                 {page === 'playground' ? <Playground commands={snapshot.commands} prefix={snapshot.runtime.prefix} initialTrigger={playgroundPreset} notify={notify} /> : null}
                 {page === 'providers' ? <ProvidersScreen providers={snapshot.providers} activeProvider={snapshot.runtime.provider} onChange={changeProvider} notify={notify} /> : null}
                 {page === 'commands' ? <CommandsScreen commands={snapshot.commands} prefix={snapshot.runtime.prefix} onChange={(commands) => setSnapshot({ ...snapshot, commands })} onTryCommand={openPlaygroundWith} notify={notify} /> : null}
@@ -333,24 +308,6 @@ export default function App() {
               })}
               {!paletteActions.length ? <div className="palette-empty">No results for “{search}”</div> : null}
             </div>
-          </div>
-        </Modal>
-
-        <Modal open={themeOpen} onClose={() => setThemeOpen(false)} title="Choose a theme" description="Switch SwiftSlate's accent palette and paired atmospheric backdrop." size="sm">
-          <div className="theme-modal-list">
-            {themeOptions.map((item) => {
-              const bgMeta = THEME_BACKGROUNDS[item.id]
-              return (
-                <button key={item.id} type="button" className={theme === item.id ? 'active' : ''} onClick={() => changeTheme(item.id)}>
-                  <i style={{ background: item.color }} />
-                  <span className="theme-modal-copy">
-                    <strong>{item.name}</strong>
-                    {bgMeta ? <small>{bgMeta.label}</small> : null}
-                  </span>
-                  {theme === item.id ? <span className="theme-modal-active">Active</span> : null}
-                </button>
-              )
-            })}
           </div>
         </Modal>
 

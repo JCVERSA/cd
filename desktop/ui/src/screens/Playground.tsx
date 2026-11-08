@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { RubberSegment } from '../components/RubberSegment'
-import { Badge, Button, Select, SpotlightCard, cn } from '../components/ui'
+import { Badge, Button, Select, SpotlightCard } from '../components/ui'
 import {
   ArrowRightIcon,
   CheckMarkIcon,
@@ -15,7 +15,6 @@ import {
 import type { Command as CommandType } from '../types'
 
 const sample = 'hey team just wanted to check if we can move the meeting to tomorrow afternoon because the current time does not work well for everyone'
-const quickPresets = ['fix', 'improve', 'shorten', 'formal', 'bold'] as const
 
 export function Playground({
   commands,
@@ -130,26 +129,6 @@ export function Playground({
           </div>
         </div>
 
-        <div className="playground-preset-strip">
-          <span className="preset-strip-label">Quick pick</span>
-          <div className="preset-pills">
-            {quickPresets
-              .filter((trigger) => available.some((item) => item.trigger === trigger))
-              .map((trigger) => (
-                <button
-                  key={trigger}
-                  type="button"
-                  className={cn('preset-pill', selected === trigger && 'preset-pill-active')}
-                  aria-pressed={selected === trigger}
-                  onClick={() => setSelected(trigger)}
-                >
-                  {prefix}{trigger}
-                </button>
-              ))}
-          </div>
-          <span className="shortcut-hint">Press <kbd>Ctrl</kbd> + <kbd>Enter</kbd> to run</span>
-        </div>
-
         <div className="playground-grid">
           <section className="editor-pane">
             <div className="pane-heading">
@@ -172,7 +151,7 @@ export function Playground({
               spellCheck
             />
             <div className="editor-footer">
-              <span>{wordCount} {wordCount === 1 ? 'word' : 'words'} · {input.length} chars</span>
+              <span>{wordCount} {wordCount === 1 ? 'word' : 'words'} · {input.length} chars · <kbd>Ctrl</kbd>+<kbd>Enter</kbd></span>
               <Button
                 variant="ghost"
                 size="sm"

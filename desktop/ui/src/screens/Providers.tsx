@@ -53,10 +53,6 @@ export function ProvidersScreen({
   const [busy, setBusy] = useState<'save' | 'models' | 'test' | null>(null)
   const [testFeedback, setTestFeedback] = useState<{ text: string; tone: 'success' | 'danger' } | null>(null)
 
-  const activeRecord = useMemo(
-    () => providers.find((provider) => provider.id === activeProvider) || providers[0],
-    [activeProvider, providers],
-  )
   const connected = useMemo(() => providers.filter((provider) => provider.connected || provider.keyConfigured || provider.local).length, [providers])
   const freeCount = useMemo(
     () => providers.filter((provider) => provider.freeTier || provider.local).length,
@@ -193,36 +189,6 @@ export function ProvidersScreen({
           <div><ShieldCheckIcon size={17} strokeWidth={1.85} aria-hidden="true" /><span>DPAPI bound</span></div>
         </div>
       </section>
-
-      {activeRecord ? (
-        <SpotlightCard className="active-routing-banner">
-          <div className="active-routing-main">
-            <span className={`provider-mark ${getProviderTileClass(activeRecord.id)}`}>
-              <ProviderLogo id={activeRecord.id} size={21} />
-            </span>
-            <div className="active-routing-copy">
-              <div className="active-routing-title">
-                <strong>{activeRecord.name}</strong>
-                <Badge tone="accent">Active routing</Badge>
-              </div>
-              <span>
-                Model <code>{activeRecord.model || 'default'}</code> ·{' '}
-                {activeRecord.local
-                  ? 'Local loopback'
-                  : activeRecord.endpoint.replace(/^https?:\/\//, '').split('/')[0] || 'Custom HTTPS'}
-              </span>
-            </div>
-          </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            icon={<TuneSlidersIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
-            onClick={() => open(activeRecord)}
-          >
-            Edit active routing
-          </Button>
-        </SpotlightCard>
-      ) : null}
 
       <div className="provider-toolbar">
         <div className="filter-search">

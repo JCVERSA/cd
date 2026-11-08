@@ -2,18 +2,15 @@ import { useState } from 'react'
 import { ProviderLogo, getProviderTileClass } from '../components/ProviderLogo'
 import { SlideCommit } from '../components/SlideCommit'
 import { SwipeRow } from '../components/SwipeRow'
-import { Badge, Button, SpotlightCard } from '../components/ui'
+import { Badge, SpotlightCard } from '../components/ui'
 import {
-  ArrowRightIcon,
   CheckCircleIcon,
   CloseXIcon,
-  CommandsIcon,
-  CursorSparkIcon,
   PlayActionIcon,
   ShieldCheckIcon,
-  StylesIcon,
+  SparkleIcon,
 } from '../icons'
-import type { AppSnapshot, PageId } from '../types'
+import type { AppSnapshot } from '../types'
 
 const quickTriggers = ['fix', 'improve', 'shorten', 'formal', 'bold'] as const
 
@@ -25,12 +22,10 @@ function formatDuration(seconds: number) {
 
 export function Overview({
   snapshot,
-  onNavigate,
   onTryCommand,
   onPause,
 }: {
   snapshot: AppSnapshot
-  onNavigate: (page: PageId) => void
   onTryCommand: (trigger: string) => void
   onPause: () => void | Promise<void>
 }) {
@@ -69,20 +64,13 @@ export function Overview({
                   width={228}
                   height={40}
                   radius={20}
-                  holdMs={900}
+                  holdMs={520}
                   trackColor="var(--surface-2)"
                   handleColor={runtime.paused ? '#68d6aa' : 'var(--accent)'}
                   successColor="#22c55e"
                   dangerColor="#e5484d"
                   onConfirm={() => onPause()}
                 />
-                <Button
-                  variant="secondary"
-                  icon={<CursorSparkIcon size={16} strokeWidth={1.85} aria-hidden="true" />}
-                  onClick={() => onNavigate('playground')}
-                >
-                  Open playground
-                </Button>
               </div>
             </div>
 
@@ -150,7 +138,7 @@ export function Overview({
             <p>{activeProviderRecord?.description || 'Active model endpoint for AI inline commands.'}</p>
           </div>
 
-          <dl className="routing-specs">
+          <dl className="routing-specs routing-specs-flush">
             <div>
               <dt>Active model</dt>
               <dd className="mono-copy" title={runtime.model}>{runtime.model || 'None selected'}</dd>
@@ -160,50 +148,16 @@ export function Overview({
               <dd className="mono-copy" title={endpointHost}>{endpointHost}</dd>
             </div>
           </dl>
-
-          <div className="routing-pod-footer">
-            <button type="button" className="text-link" onClick={() => onNavigate('providers')}>
-              <span>{isProviderReady ? 'Switch or configure model' : 'Configure API key'}</span>
-              <ArrowRightIcon size={15} strokeWidth={1.85} aria-hidden="true" />
-            </button>
-          </div>
         </SpotlightCard>
       </section>
 
-      <section className="overview-bento-bottom">
-        <div className="launchpad-column">
-          <SpotlightCard className="launchpad-card">
-            <div className="card-header-clean">
-              <h3>Workspace actions</h3>
-              <span>Jump straight to setup</span>
-            </div>
-            <div className="launchpad-list">
-              <button className="quick-action" type="button" onClick={() => onNavigate('commands')}>
-                <span className="quick-icon" aria-hidden="true"><CommandsIcon size={16} strokeWidth={1.85} /></span>
-                <span><strong>Create command</strong><small>Define a custom prompt or text snippet</small></span>
-                <ArrowRightIcon size={15} strokeWidth={1.85} aria-hidden="true" />
-              </button>
-              <button className="quick-action" type="button" onClick={() => onNavigate('styles')}>
-                <span className="quick-icon" aria-hidden="true"><StylesIcon size={16} strokeWidth={1.85} /></span>
-                <span><strong>Typography foundry</strong><small>Preview offline Unicode styles</small></span>
-                <ArrowRightIcon size={15} strokeWidth={1.85} aria-hidden="true" />
-              </button>
-            </div>
-          </SpotlightCard>
-
-          <div className="assurance-strip">
-            <ShieldCheckIcon size={17} strokeWidth={1.85} aria-hidden="true" />
-            <p><strong>Local-first privacy:</strong> Unicode styles never touch the network, and API keys stay encrypted inside Windows DPAPI.</p>
-          </div>
-        </div>
-
+      <section className="overview-bento-bottom overview-bento-single">
         <SpotlightCard className="activity-card">
           <div className="section-heading">
             <div className="card-header-clean">
               <h3>Recent executions</h3>
               <span>Latest inline replacements in this session</span>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => onNavigate('diagnostics')}>View logs</Button>
           </div>
           <div className="activity-list">
             {visibleActivity.length ? visibleActivity.map((item) => {
@@ -253,12 +207,18 @@ export function Overview({
               )
             }) : (
               <div className="activity-empty">
-                <p>No inline commands triggered yet.</p>
-                <span>Type <code>{runtime.prefix}fix</code> or <code>{runtime.prefix}bold</code> at the end of text in any app, or test one in Playground.</span>
+                <SparkleIcon size={24} strokeWidth={1.85} aria-hidden="true" />
+                <p>No executions in this session yet</p>
+                <span>Type any sentence followed by <code>{runtime.prefix}fix</code> or <code>{runtime.prefix}bold</code> in any Windows app to see telemetry here.</span>
               </div>
             )}
           </div>
         </SpotlightCard>
+
+        <div className="assurance-strip">
+          <ShieldCheckIcon size={17} strokeWidth={1.85} aria-hidden="true" />
+          <p><strong>Local-first privacy:</strong> Unicode styles never touch the network, and API keys stay encrypted inside Windows DPAPI.</p>
+        </div>
       </section>
     </div>
   )

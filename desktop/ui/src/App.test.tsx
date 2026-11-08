@@ -26,17 +26,24 @@ describe('SwiftSlate dashboard', () => {
     expect(result.violations).toEqual([])
   })
 
-  it('shows runtime status and navigates between screens', async () => {
+  it('shows runtime status and navigates between screens without duplicated shortcut buttons', async () => {
     const user = userEvent.setup()
     render(<App />)
     expect(await screen.findByText('SwiftSlate is listening')).toBeInTheDocument()
     const mainNav = screen.getByRole('navigation', { name: 'Main navigation' })
     expect(within(mainNav).queryByRole('button', { name: 'Providers' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Add provider/i })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Switch or configure model/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Switch or configure model/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Open playground/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Create command/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Typography foundry/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /View logs/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^(Pause|Resume)$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Change color theme' })).not.toBeInTheDocument()
     const providerPod = screen.getByRole('button', { name: /Switch engine/i })
     await user.click(providerPod)
     expect(await screen.findByText('Choose where SwiftSlate thinks')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Edit active routing/i })).not.toBeInTheDocument()
     expect(providerPod).toHaveAttribute('aria-current', 'page')
   })
 
@@ -67,17 +74,30 @@ describe('SwiftSlate dashboard', () => {
     expect(configure).toHaveFocus()
   })
 
-  it('pauses and resumes inline commands', async () => {
+  it('pauses and resumes inline commands solely via the Overview SlideCommit control', async () => {
     const user = userEvent.setup()
     render(<App />)
     await screen.findByText('SwiftSlate is listening')
     expect(screen.getByText('Engine active')).toBeInTheDocument()
     expect(screen.getByText('Listening globally')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Pause' }))
+    expect(screen.queryByRole('button', { name: /^(Pause|Resume)$/i })).not.toBeInTheDocument()
+
+    const pauseSlider = screen.getByRole('slider', { name: 'Slide to pause hook' })
+    pauseSlider.focus()
+    await user.keyboard('{End}')
     expect(await screen.findByText('SwiftSlate is paused')).toBeInTheDocument()
     expect(screen.getByText('Engine paused')).toBeInTheDocument()
     expect(screen.getByText('Triggers suspended')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument()
+
+    const resumeSlider = await screen.findByRole('slider', { name: 'Slide to resume hook' })
+    await waitFor(
+      () => expect(resumeSlider.closest('.slide-commit')).toHaveAttribute('data-phase', 'idle'),
+      { timeout: 2000 },
+    )
+    resumeSlider.focus()
+    await user.keyboard('{End}')
+    expect(await screen.findByText('SwiftSlate is listening')).toBeInTheDocument()
+    expect(screen.getByText('Engine active')).toBeInTheDocument()
   })
 
   it('uses Windows-native chrome and passes axe across Commands, Styles, Settings, and Diagnostics', async () => {
@@ -405,13 +425,7 @@ describe('SwiftSlate dashboard', () => {
     fireEvent.pointerLeave(playgroundNav)
     expect(playgroundSvg).toHaveAttribute('data-morphed', 'false')
 
-    // Clicking Pause morphs PlayPauseIcon (false -> true) and SidebarToggleIcon morphs on collapse
-    const pauseBtn = screen.getByRole('button', { name: 'Pause' })
-    expect(pauseBtn.querySelector('[data-slate-glyph="playPause"]')).toHaveAttribute('data-morphed', 'false')
-    await user.click(pauseBtn)
-    const resumeBtn = await screen.findByRole('button', { name: 'Resume' })
-    expect(resumeBtn.querySelector('[data-slate-glyph="playPause"]')).toHaveAttribute('data-morphed', 'true')
-
+    // Collapsing and expanding the rail morphs SidebarToggleIcon (false -> true)
     const collapseBtn = screen.getByRole('button', { name: 'Collapse sidebar' })
     expect(collapseBtn.querySelector('[data-slate-glyph="sidebarToggle"]')).toHaveAttribute('data-morphed', 'false')
     await user.click(collapseBtn)
@@ -976,16 +990,15 @@ describe('SwiftSlate dashboard', () => {
       expect(stage).toHaveAttribute('data-gpu-fallback', 'true')
     })
 
-    await user.click(screen.getByRole('button', { name: 'Change color theme' }))
-    const themeDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
-    expect(within(themeDialog).getByText('Aero Shards')).toBeInTheDocument()
-    expect(within(themeDialog).getByText('Radar')).toBeInTheDocument()
-    expect(within(themeDialog).getByText('Lightfall')).toBeInTheDocument()
-    expect(within(themeDialog).getByText('Light Pillar')).toBeInTheDocument()
-    expect(within(themeDialog).getByText('Ballpit')).toBeInTheDocument()
-    expect((await axe.run(themeDialog)).violations).toEqual([])
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    await screen.findByRole('heading', { name: 'Color theme' })
+    expect(screen.getByText('Aero Shards')).toBeInTheDocument()
+    expect(screen.getByText('Radar')).toBeInTheDocument()
+    expect(screen.getByText('Lightfall')).toBeInTheDocument()
+    expect(screen.getByText('Light Pillar')).toBeInTheDocument()
+    expect(screen.getByText('Ballpit')).toBeInTheDocument()
 
-    await user.click(within(themeDialog).getByRole('button', { name: /Sapphire/i }))
+    await user.click(screen.getByRole('button', { name: /Sapphire/i }))
     expect(stage).toHaveAttribute('data-theme-background', 'sapphire')
     expect(stage).toHaveAttribute('data-background-id', 'lightfall')
     expect(stage.querySelector('.aero-shards')).toBeNull()
@@ -994,9 +1007,7 @@ describe('SwiftSlate dashboard', () => {
     expect(stage.querySelector('.ballpit-container')).toBeNull()
     expect((await axe.run(container)).violations).toEqual([])
 
-    await user.click(screen.getByRole('button', { name: 'Change color theme' }))
-    const roseDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
-    await user.click(within(roseDialog).getByRole('button', { name: /Rose/i }))
+    await user.click(screen.getByRole('button', { name: /Rose/i }))
     expect(stage).toHaveAttribute('data-theme-background', 'rose')
     expect(stage).toHaveAttribute('data-background-id', 'light-pillar')
     expect(stage.querySelector('.aero-shards')).toBeNull()
@@ -1005,18 +1016,14 @@ describe('SwiftSlate dashboard', () => {
     expect(stage.querySelector('.ballpit-container')).toBeNull()
     expect((await axe.run(container)).violations).toEqual([])
 
-    await user.click(screen.getByRole('button', { name: 'Change color theme' }))
-    const emeraldDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
-    await user.click(within(emeraldDialog).getByRole('button', { name: /Emerald/i }))
+    await user.click(screen.getByRole('button', { name: /Emerald/i }))
     expect(stage).toHaveAttribute('data-theme-background', 'emerald')
     expect(stage).toHaveAttribute('data-background-id', 'ballpit')
     expect(stage.querySelector('.light-pillar-container')).toBeNull()
     expect(stage.querySelector('.ballpit-container canvas.ballpit-canvas')).not.toBeNull()
     expect((await axe.run(container)).violations).toEqual([])
 
-    await user.click(screen.getByRole('button', { name: 'Change color theme' }))
-    const amberDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
-    await user.click(within(amberDialog).getByRole('button', { name: /Cyber Amber/i }))
+    await user.click(screen.getByRole('button', { name: /Cyber Amber/i }))
     expect(stage).toHaveAttribute('data-theme-background', 'amber')
     expect(stage).toHaveAttribute('data-background-id', 'radar')
     expect(stage.querySelector('.aero-shards')).toBeNull()
@@ -1026,9 +1033,7 @@ describe('SwiftSlate dashboard', () => {
     expect(stage.querySelector('.radar-container canvas.radar-canvas')).not.toBeNull()
     expect((await axe.run(container)).violations).toEqual([])
 
-    await user.click(screen.getByRole('button', { name: 'Change color theme' }))
-    const reopenedDialog = await screen.findByRole('dialog', { name: 'Choose a theme' })
-    await user.click(within(reopenedDialog).getByRole('button', { name: /Sparkle Lavender/i }))
+    await user.click(screen.getByRole('button', { name: /Sparkle Lavender/i }))
     expect(stage).toHaveAttribute('data-theme-background', 'lavender')
     expect(stage).toHaveAttribute('data-background-id', 'aero-shards')
     expect(stage.querySelector('.radar-container')).toBeNull()

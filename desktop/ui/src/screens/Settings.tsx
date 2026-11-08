@@ -60,6 +60,21 @@ export function SettingsScreen({
     }
   }
 
+  async function selectTheme(nextTheme: ThemeId) {
+    if (draft.theme === nextTheme && runtime.theme === nextTheme) return
+    const previousRuntime = runtime
+    setDraft((prev) => ({ ...prev, theme: nextTheme }))
+    onChange({ ...runtime, theme: nextTheme })
+    try {
+      const saved = await api.saveRuntime({ theme: nextTheme })
+      onChange(saved)
+    } catch (error) {
+      setDraft((prev) => ({ ...prev, theme: previousRuntime.theme }))
+      onChange(previousRuntime)
+      notify(error instanceof Error ? error.message : 'Theme could not be saved.', 'danger')
+    }
+  }
+
   async function restoreFactoryDefaults() {
     setSaving(true)
     try {
@@ -127,7 +142,7 @@ export function SettingsScreen({
                     type="button"
                     className={`theme-option ${draft.theme === theme.id ? 'theme-option-active' : ''}`}
                     aria-pressed={draft.theme === theme.id}
-                    onClick={() => setDraft({ ...draft, theme: theme.id })}
+                    onClick={() => void selectTheme(theme.id)}
                   >
                     <span className="theme-dots" aria-hidden="true">{theme.colors.map((color) => <i key={color} style={{ background: color }} />)}</span>
                     <span className="theme-option-copy">
