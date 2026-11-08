@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react'
 import type { ThemeId } from '../types'
 import AeroShards from './AeroShards'
 import Lightfall from './Lightfall'
+import LightPillar from './LightPillar'
 import './ThemeBackground.css'
 
 export interface ThemeBackgroundMeta {
@@ -17,6 +18,10 @@ export const THEME_BACKGROUNDS: Partial<Record<ThemeId, ThemeBackgroundMeta>> = 
   sapphire: {
     id: 'lightfall',
     label: 'Lightfall',
+  },
+  rose: {
+    id: 'light-pillar',
+    label: 'Light Pillar',
   },
 }
 
@@ -90,6 +95,29 @@ export function ThemeBackground({ theme, reducedMotion = false }: ThemeBackgroun
             intro={!reducedMotion}
             paused={reducedMotion}
             dpr={1.75}
+          />
+        </div>
+      ) : null}
+      {theme === 'rose' ? (
+        <div className="theme-background-layer">
+          <LightPillar
+            topColor="#9c3d61"
+            bottomColor="#ffafc8"
+            intensity={1.08}
+            glowAmount={0.0022}
+            bloom={0.52}
+            pillarWidth={4.8}
+            pillarHeight={0.4}
+            pillarRotation={25}
+            rotationSpeed={0.28}
+            noiseIntensity={0.42}
+            fade={0.22}
+            quality="high"
+            mixBlendMode="screen"
+            interactive={!reducedMotion}
+            clickPulse={!reducedMotion}
+            intro={!reducedMotion}
+            paused={reducedMotion}
           />
         </div>
       ) : null}
