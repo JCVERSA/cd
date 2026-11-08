@@ -15,6 +15,13 @@
   opacity: 0;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .liquid-glass-canvas {
+    opacity: 0;
+    transition: none;
+  }
+}
+
 body.no-webgl .liquid-glass-canvas {
   display: none;
 }

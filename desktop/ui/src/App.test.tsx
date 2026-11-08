@@ -1124,4 +1124,119 @@ describe('SwiftSlate dashboard', () => {
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     await screen.findByText('Settings saved.')
   })
+
+  it('honors OS prefers-reduced-motion: reduce across ThemeBackground, LiquidGlass, and app root', async () => {
+    const originalMatchMedia = window.matchMedia
+    window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query.includes('prefers-reduced-motion: reduce'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }))
+    try {
+      const { container } = render(<App />)
+      await screen.findByText('SwiftSlate is listening')
+
+      expect(document.documentElement.dataset.reducedMotion).toBe('true')
+      expect(container.querySelector('.app')).toHaveAttribute('data-reduced-motion', 'true')
+      expect(container.querySelector('.liquid-glass-canvas')).toBeNull()
+    } finally {
+      window.matchMedia = originalMatchMedia
+    }
+  })
+
+  it('preserves unsaved Settings edits across screen navigation, displays the sidebar dirty dot, and guards beforeunload', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    await screen.findByText('Command behavior')
+    expect(screen.queryByTestId('settings-dirty-dot')).toBeNull()
+
+    const prefixInput = screen.getByLabelText(/Trigger prefix/i) as HTMLInputElement
+    await user.clear(prefixInput)
+    await user.type(prefixInput, '!')
+
+    expect(screen.getByTestId('settings-dirty-dot')).toBeInTheDocument()
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+    const unloadWhileDirty = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unloadWhileDirty)
+    expect(unloadWhileDirty.defaultPrevented).toBe(true)
+
+    // Navigate away to Commands and return to Settings — unsaved draft persists without loss
+    await user.click(screen.getByRole('button', { name: 'Commands' }))
+    await screen.findByRole('heading', { name: 'Your command library' })
+    expect(screen.getByTestId('settings-dirty-dot')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    const restoredPrefixInput = (await screen.findByLabelText(/Trigger prefix/i)) as HTMLInputElement
+    expect(restoredPrefixInput.value).toBe('!')
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Reset changes' }))
+    expect(screen.queryByTestId('settings-dirty-dot')).toBeNull()
+
+    const unloadWhenClean = new Event('beforeunload', { cancelable: true })
+    window.dispatchEvent(unloadWhenClean)
+    expect(unloadWhenClean.defaultPrevented).toBe(false)
+  })
+
+  it('keeps ChromaGrid within the LiquidGlass 12-slot budget, enforces form hygiene, and clarifies Onboarding Skip for now', async () => {
+    const user = userEvent.setup()
+    const { container, unmount } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    await user.click(screen.getByRole('button', { name: /Switch engine/i }))
+    await screen.findByText('Choose where SwiftSlate thinks')
+
+    // Zero ChromaGrid tiles carry data-glass, keeping total [data-glass] slots well below MAX_ITEMS (12)
+    expect(container.querySelectorAll('.chroma-card[data-glass]').length).toBe(0)
+    expect(container.querySelectorAll('[data-glass]').length).toBeLessThanOrEqual(6)
+
+    const searchInput = screen.getByRole('textbox', { name: 'Search providers' })
+    expect(searchInput).toHaveAttribute('name', 'provider-search')
+    expect(searchInput).toHaveAttribute('autocomplete', 'off')
+
+    const customCard = screen.getByRole('heading', { name: /Custom endpoint/i }).closest('.provider-card') as HTMLElement
+    await user.click(within(customCard).getByRole('button', { name: 'Configure' }))
+    const dialog = await screen.findByRole('dialog', { name: /Configure Custom/i })
+    const endpointInput = within(dialog).getByLabelText(/^Endpoint/i) as HTMLInputElement
+    expect(endpointInput.type).toBe('url')
+    expect(endpointInput).toHaveAttribute('name', 'provider-endpoint')
+    unmount()
+
+    // Onboarding: Liquid Glass panel + explicit "Skip for now" vs "Continue" on cloud Step 2
+    const baseSnapshot = await api.snapshot()
+    const firstRunSpy = vi.spyOn(api, 'snapshot').mockResolvedValueOnce({
+      ...baseSnapshot,
+      runtime: { ...baseSnapshot.runtime, firstRun: true },
+    })
+    try {
+      const onboardingRender = render(<App />)
+      const onboardingDialog = await screen.findByRole('dialog', { name: /Write faster in every Windows app/i })
+      expect(onboardingDialog).toHaveAttribute('data-glass', '')
+      expect((await axe.run(onboardingRender.container, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+
+      await user.click(within(onboardingDialog).getByRole('button', { name: /Continue/i }))
+      await within(onboardingDialog).findByRole('heading', { name: /Choose where SwiftSlate thinks/i })
+
+      // Select Groq and proceed to Step 3 (step index 2)
+      await user.click(within(onboardingDialog).getByRole('button', { name: /Groq/i }))
+      await user.click(within(onboardingDialog).getByRole('button', { name: /Continue/i }))
+      await within(onboardingDialog).findByRole('heading', { name: /Add an API key securely/i })
+      expect(within(onboardingDialog).getByRole('button', { name: /Skip for now/i })).toBeInTheDocument()
+
+      const keyField = within(onboardingDialog).getByLabelText('API key')
+      await user.type(keyField, 'gsk_live_key')
+      expect(within(onboardingDialog).getByRole('button', { name: /^Continue$/i })).toBeInTheDocument()
+    } finally {
+      firstRunSpy.mockRestore()
+    }
+  })
 })

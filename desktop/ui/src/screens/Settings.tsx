@@ -28,20 +28,33 @@ const themes: Array<{ id: ThemeId; name: string; colors: string[] }> = [
 
 export function SettingsScreen({
   runtime,
+  draft: controlledDraft,
+  onDraftChange,
   backdropIntensity = 90,
   onBackdropIntensityChange,
   onChange,
   notify,
 }: {
   runtime: RuntimeState
+  draft?: RuntimeState
+  onDraftChange?: (next: RuntimeState) => void
   backdropIntensity?: number
   onBackdropIntensityChange?: (next: number) => void
   onChange: (runtime: RuntimeState) => void
   notify: (message: string, tone?: 'success' | 'danger') => void
 }) {
-  const [draft, setDraft] = useState(runtime)
+  const [innerDraft, setInnerDraft] = useState(runtime)
   const [saving, setSaving] = useState(false)
-  useEffect(() => setDraft(runtime), [runtime])
+  useEffect(() => {
+    if (!controlledDraft) setInnerDraft(runtime)
+  }, [controlledDraft, runtime])
+
+  const draft = controlledDraft ?? innerDraft
+  const updateDraft = (updater: RuntimeState | ((prev: RuntimeState) => RuntimeState)) => {
+    const next = typeof updater === 'function' ? updater(draft) : updater
+    if (!controlledDraft) setInnerDraft(next)
+    onDraftChange?.(next)
+  }
 
   const isDirty = useMemo(
     () =>
@@ -58,6 +71,7 @@ export function SettingsScreen({
     setSaving(true)
     try {
       const saved = await api.saveRuntime(draft)
+      updateDraft(saved)
       onChange(saved)
       notify('Settings saved.', 'success')
     } catch (error) {
@@ -70,13 +84,14 @@ export function SettingsScreen({
   async function selectTheme(nextTheme: ThemeId) {
     if (draft.theme === nextTheme && runtime.theme === nextTheme) return
     const previousRuntime = runtime
-    setDraft((prev) => ({ ...prev, theme: nextTheme }))
+    updateDraft((prev) => ({ ...prev, theme: nextTheme }))
     onChange({ ...runtime, theme: nextTheme })
     try {
       const saved = await api.saveRuntime({ theme: nextTheme })
+      updateDraft((prev) => ({ ...prev, theme: saved.theme }))
       onChange(saved)
     } catch (error) {
-      setDraft((prev) => ({ ...prev, theme: previousRuntime.theme }))
+      updateDraft((prev) => ({ ...prev, theme: previousRuntime.theme }))
       onChange(previousRuntime)
       notify(error instanceof Error ? error.message : 'Theme could not be saved.', 'danger')
     }
@@ -93,7 +108,7 @@ export function SettingsScreen({
         reducedMotion: false,
       }
       const saved = await api.saveRuntime(defaults)
-      setDraft(saved)
+      updateDraft(saved)
       onChange(saved)
       onBackdropIntensityChange?.(90)
       notify('Factory defaults restored.', 'success')
@@ -118,7 +133,7 @@ export function SettingsScreen({
             variant="ghost"
             disabled={!isDirty}
             icon={<ResetArcIcon size={15} strokeWidth={1.85} aria-hidden="true" />}
-            onClick={() => setDraft(runtime)}
+            onClick={() => updateDraft(runtime)}
           >
             Reset changes
           </Button>
@@ -206,13 +221,13 @@ export function SettingsScreen({
             </div>
             <div className="settings-form-grid">
               <Field label="Trigger prefix" hint={`Commands look like ${draft.prefix || '.'}fix and ${draft.prefix || '.'}bold.`}>
-                <input value={draft.prefix} maxLength={4} spellCheck={false} autoComplete="off" onChange={(event) => setDraft({ ...draft, prefix: event.target.value })} />
+                <input name="trigger-prefix" value={draft.prefix} maxLength={4} spellCheck={false} autoComplete="off" onChange={(event) => updateDraft({ ...draft, prefix: event.target.value })} />
               </Field>
               <div className="field">
                 <span className="field-label">Replacement delay</span>
                 <WakeSlider
                   value={draft.keyDelay}
-                  onChange={(keyDelay) => setDraft({ ...draft, keyDelay })}
+                  onChange={(keyDelay) => updateDraft({ ...draft, keyDelay })}
                   min={30}
                   max={500}
                   step={10}
@@ -238,7 +253,7 @@ export function SettingsScreen({
                     { value: 'static', label: 'Static message', detail: 'Show a calm status indicator without motion' },
                     { value: 'off', label: 'Hidden', detail: 'Replace text silently with no indicator' },
                   ]}
-                  onChange={(spinner) => setDraft({ ...draft, spinner })}
+                  onChange={(spinner) => updateDraft({ ...draft, spinner })}
                 />
               </Field>
             </div>
@@ -252,7 +267,7 @@ export function SettingsScreen({
             <div className="setting-list">
               <div className="setting-row">
                 <div><strong>Start at login</strong><span>Launch the background engine automatically for this Windows user.</span></div>
-                <Switch checked={draft.launchAtStartup} onChange={(value) => setDraft({ ...draft, launchAtStartup: value })} label="Start at login" />
+                <Switch checked={draft.launchAtStartup} onChange={(value) => updateDraft({ ...draft, launchAtStartup: value })} label="Start at login" />
               </div>
               <div className="setting-row">
                 <div><strong>Close dashboard to tray</strong><span>Release WebView memory while keeping triggers active in the tray.</span></div>
@@ -269,7 +284,7 @@ export function SettingsScreen({
             <div className="setting-list">
               <div className="setting-row">
                 <div><strong>Reduce motion</strong><span>Disable spatial transitions in favor of instant calm state swaps.</span></div>
-                <Switch checked={draft.reducedMotion} onChange={(value) => setDraft({ ...draft, reducedMotion: value })} label="Reduce motion" />
+                <Switch checked={draft.reducedMotion} onChange={(value) => updateDraft({ ...draft, reducedMotion: value })} label="Reduce motion" />
               </div>
               <div className="setting-row">
                 <div><strong>Restore factory defaults</strong><span>Press and hold to reset prefix, delay, indicator, theme, and motion preferences.</span></div>

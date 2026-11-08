@@ -104,3 +104,7 @@
     transform: scaleY(var(--ws-rest)) !important;
   }
 }
+
+[data-reduced-motion='true'] .wake-slider__bar {
+  transform: scaleY(var(--ws-rest)) !important;
+}

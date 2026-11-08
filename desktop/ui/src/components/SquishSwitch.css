@@ -60,15 +60,15 @@
   display: block;
   width: var(--ss-w);
   height: var(--ss-h);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--ss-r);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   background: var(--ss-track);
-  transition: background-color var(--ss-fade) ease, box-shadow var(--ss-fade) ease;
+  transition: background-color var(--ss-fade) ease, border-color var(--ss-fade) ease;
 }
 
 .squish-switch[data-on] .squish-switch__track {
+  border-color: rgba(255, 255, 255, 0.24);
   background: var(--ss-track-on);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 
 .squish-switch__thumb {
@@ -98,4 +98,9 @@
   .squish-switch__thumb {
     transition-duration: 1ms;
   }
+}
+
+[data-reduced-motion='true'] .squish-switch__track,
+[data-reduced-motion='true'] .squish-switch__thumb {
+  transition-duration: 1ms;
 }

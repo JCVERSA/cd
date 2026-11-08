@@ -27,6 +27,7 @@ export function Sidebar({
   collapsed,
   paused = false,
   hidden = false,
+  settingsDirty = false,
   active,
   activeProvider = 'gemini',
   activeProviderName = 'Google Gemini',
@@ -37,6 +38,7 @@ export function Sidebar({
   collapsed: boolean
   paused?: boolean
   hidden?: boolean
+  settingsDirty?: boolean
   active: PageId
   activeProvider?: ProviderId | string
   activeProviderName?: string
@@ -85,6 +87,9 @@ export function Sidebar({
                 ) : null}
                 <Icon size={18} strokeWidth={1.85} morphed={isCurrent} aria-hidden="true" />
                 <span className={cn('nav-label', collapsed && 'nav-label-hidden')}>{item.label}</span>
+                {item.id === 'settings' && settingsDirty ? (
+                  <span className="nav-dirty-dot" data-testid="settings-dirty-dot" aria-hidden="true" />
+                ) : null}
               </button>
             </div>
           )

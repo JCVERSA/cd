@@ -44,9 +44,9 @@ const THEMES: Record<'dark' | 'light', Record<string, string>> = {
     '--chroma-frame-edge': 'rgba(255, 255, 255, 0.08)',
     '--chroma-frame-highlight': 'rgba(255, 255, 255, 0.06)',
     '--chroma-frame-shadow': '0 22px 44px -20px rgba(0, 0, 0, 0.8), 0 6px 16px -8px rgba(0, 0, 0, 0.5)',
-    '--chroma-tile': 'linear-gradient(180deg, rgba(18, 18, 28, 0.5) 0%, rgba(12, 12, 19, 0.54) 100%)',
-    '--chroma-tile-edge': 'rgba(255, 255, 255, 0.11)',
-    '--chroma-tile-highlight': 'rgba(255, 255, 255, 0.13)',
+    '--chroma-tile': 'linear-gradient(180deg, rgba(16, 16, 25, 0.62) 0%, rgba(12, 12, 19, 0.68) 100%)',
+    '--chroma-tile-edge': 'rgba(255, 255, 255, 0.12)',
+    '--chroma-tile-highlight': 'rgba(255, 255, 255, 0.15)',
     '--chroma-tile-shadow': '0 14px 36px rgba(0, 0, 0, 0.42)',
     '--chroma-media-edge': 'rgba(255, 255, 255, 0.06)',
     '--chroma-well': 'rgba(255, 255, 255, 0.06)',
@@ -324,9 +324,6 @@ export function ChromaGrid({
               key={key}
               className={cardClasses}
               data-chroma-area=""
-              data-glass=""
-              data-glass-hot=""
-              data-glass-strength="0.36"
               data-custom-card={hasCustomSlot ? 'true' : undefined}
               style={cardStyle}
               href={item.url}
@@ -340,9 +337,6 @@ export function ChromaGrid({
               key={key}
               className={cardClasses}
               data-chroma-area=""
-              data-glass=""
-              data-glass-hot=""
-              data-glass-strength="0.36"
               data-custom-card={hasCustomSlot ? 'true' : undefined}
               style={cardStyle}
             >

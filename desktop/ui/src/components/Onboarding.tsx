@@ -113,6 +113,8 @@ export function Onboarding({
             role="dialog"
             aria-modal="true"
             aria-labelledby="onboarding-title"
+            data-glass=""
+            data-glass-strength="0.46"
             className="onboarding-panel"
             initial={{ opacity: 0, y: 12, scale: 0.985 }}
             animate={{ opacity: 1, y: 0, scale: 1, transition: { duration: 0.22, ease: [0.23, 1, 0.32, 1] } }}
@@ -148,7 +150,14 @@ export function Onboarding({
             </div>
 
             <div className="onboarding-content">
-              <div className="onboarding-progress" aria-label={`Step ${step + 1} of ${steps.length}`}>
+              <div
+                className="onboarding-progress"
+                role="progressbar"
+                aria-valuemin={1}
+                aria-valuemax={steps.length}
+                aria-valuenow={step + 1}
+                aria-label={`Step ${step + 1} of ${steps.length}`}
+              >
                 {steps.map((_, index) => <span key={index} className={index <= step ? 'progress-active' : ''} />)}
               </div>
               <div key={step} className="onboarding-step">
@@ -196,7 +205,7 @@ export function Onboarding({
                         onChange={setKey}
                         placeholder="Paste your key…"
                       />
-                      <small>You may skip this and use offline styles first.</small>
+                      <small>Optional right now — you can skip and use offline styles or add a key later in Providers.</small>
                     </div>
                   )
                 ) : null}
@@ -214,7 +223,10 @@ export function Onboarding({
               <div className="onboarding-actions">
                 {step > 0 ? <Button variant="ghost" icon={<ArrowLeftIcon size={16} strokeWidth={1.85} aria-hidden="true" />} onClick={() => setStep(step - 1)}>Back</Button> : <span />}
                 {step < steps.length - 1 ? (
-                  <Button variant="primary" onClick={() => setStep(step + 1)}>Continue <ArrowRightIcon size={16} strokeWidth={1.85} aria-hidden="true" /></Button>
+                  <Button variant="primary" onClick={() => setStep(step + 1)}>
+                    {step === 2 && provider !== 'ollama' && !key.trim() ? 'Skip for now' : 'Continue'}{' '}
+                    <ArrowRightIcon size={16} strokeWidth={1.85} aria-hidden="true" />
+                  </Button>
                 ) : (
                   <SlideCommit
                     label="Slide to launch SwiftSlate"

@@ -172,9 +172,9 @@ export function Overview({
                   height={48}
                   radius={10}
                   actionWidth={72}
-                  rowColor="var(--surface-2)"
-                  drawerColor="#242336"
-                  actionColor="#d9485f"
+                  rowColor="rgba(24, 24, 34, 0.58)"
+                  drawerColor="var(--swipe-drawer, #242336)"
+                  actionColor="var(--swipe-action-danger, #d9485f)"
                   textColor="var(--text)"
                   actions={[
                     {
@@ -185,7 +185,7 @@ export function Overview({
                     {
                       id: 'rerun',
                       label: 'Try live',
-                      color: '#2d3b4e',
+                      color: 'var(--swipe-action-try, #2d3b4e)',
                       icon: <PlayActionIcon size={15} strokeWidth={1.9} aria-hidden="true" />,
                       onSelect: () => onTryCommand(rawTrigger),
                     },

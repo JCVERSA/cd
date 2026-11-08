@@ -59,7 +59,9 @@
 
 .comet-dial__head {
   fill: var(--cd-accent);
-  filter: drop-shadow(0 0 6px var(--cd-accent));
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-width: 2.5px;
+  paint-order: stroke fill;
 }
 
 .comet-dial__readout {

@@ -53,17 +53,11 @@
   border-radius: var(--chroma-radius);
   background: var(--chroma-tile);
   box-shadow: var(--chroma-tile-shadow);
-  -webkit-backdrop-filter: blur(20px) saturate(172%);
-  backdrop-filter: blur(20px) saturate(172%);
   color: var(--chroma-ink);
   text-decoration: none;
   overflow: hidden;
   isolation: isolate;
-  transition: filter 0.25s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.chroma-card:not([data-custom-card='true']):hover {
-  filter: var(--chroma-hover);
+  transition: filter 0.22s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .chroma-card[data-custom-card='true'] {
@@ -71,6 +65,10 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .chroma-card:not([data-custom-card='true']):hover {
+    filter: var(--chroma-hover);
+  }
+
   .chroma-card[data-custom-card='true']:hover {
     transform: translateY(-2px);
   }
@@ -214,26 +212,28 @@ a.chroma-card:focus-visible {
   transition: opacity var(--chroma-fade) ease;
 }
 
-.chroma-grid[data-reveal='card'] .chroma-card:hover .chroma-wash {
-  opacity: calc(var(--chroma-glow) * 0.42);
-  transition-duration: 0.3s;
-}
+@media (hover: hover) and (pointer: fine) {
+  .chroma-grid[data-reveal='card'] .chroma-card:hover .chroma-wash {
+    opacity: calc(var(--chroma-glow) * 0.42);
+    transition-duration: 0.3s;
+  }
 
-.chroma-grid[data-reveal='card'] .chroma-card:hover .chroma-color {
-  opacity: 1;
-  transition-duration: 0.3s;
-}
+  .chroma-grid[data-reveal='card'] .chroma-card:hover .chroma-color {
+    opacity: 1;
+    transition-duration: 0.3s;
+  }
 
-.chroma-grid[data-reveal='card'] .chroma-card:hover .chroma-card-glow {
-  opacity: var(--chroma-border);
-  transition-duration: 0.3s;
+  .chroma-grid[data-reveal='card'] .chroma-card:hover .chroma-card-glow {
+    opacity: var(--chroma-border);
+    transition-duration: 0.3s;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .chroma-card {
     transition: none !important;
   }
-  .chroma-card[data-custom-card='true']:hover {
+  .chroma-card[data-custom-card='true'] {
     transform: none !important;
   }
 }
@@ -242,6 +242,6 @@ a.chroma-card:focus-visible {
   transition: none !important;
 }
 
-[data-reduced-motion='true'] .chroma-card[data-custom-card='true']:hover {
+[data-reduced-motion='true'] .chroma-card[data-custom-card='true'] {
   transform: none !important;
 }

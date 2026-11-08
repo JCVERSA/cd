@@ -178,3 +178,23 @@
     opacity: 1;
   }
 }
+
+[data-reduced-motion='true'] .status-mark[data-indeterminate] .status-mark__ring {
+  animation: sm-breathe 1400ms var(--sm-ease-in-out) infinite;
+}
+
+[data-reduced-motion='true'] .status-mark__check,
+[data-reduced-motion='true'] .status-mark__cross {
+  stroke-dashoffset: 0;
+  transition: opacity 200ms ease;
+}
+
+[data-reduced-motion='true'] .status-mark__strike {
+  opacity: 0;
+  transform: scaleX(1) !important;
+  transition: opacity 200ms ease;
+}
+
+[data-reduced-motion='true'] .status-mark[data-status='done'][data-strike] .status-mark__strike {
+  opacity: 1;
+}

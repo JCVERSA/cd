@@ -194,7 +194,10 @@ export function ProvidersScreen({
         <div className="filter-search">
           <SearchIcon size={16} strokeWidth={1.85} morphed={Boolean(query)} aria-hidden="true" />
           <input
+            name="provider-search"
             aria-label="Search providers"
+            autoComplete="off"
+            spellCheck={false}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search providers or models…"
@@ -403,9 +406,14 @@ export function ProvidersScreen({
                 hint={draft.local ? 'The server must be running on this computer.' : 'HTTPS is required for remote credentials.'}
               >
                 <input
+                  name="provider-endpoint"
+                  type="url"
+                  autoComplete="off"
+                  spellCheck={false}
                   value={draft.endpoint}
                   onChange={(event) => setDraft({ ...draft, endpoint: event.target.value })}
                   disabled={!draft.local && draft.id !== 'custom'}
+                  placeholder="https://api.example.com/v1…"
                 />
               </Field>
               <Field label="Model">
@@ -418,9 +426,12 @@ export function ProvidersScreen({
                   />
                 ) : (
                   <input
+                    name="provider-model"
+                    autoComplete="off"
+                    spellCheck={false}
                     value={draft.model}
                     onChange={(event) => setDraft({ ...draft, model: event.target.value })}
-                    placeholder="Model identifier"
+                    placeholder="e.g. gpt-4.1-mini…"
                   />
                 )}
               </Field>

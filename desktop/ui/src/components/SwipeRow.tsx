@@ -74,7 +74,19 @@ const velocityOf = (hist: Array<[number, number]>) => {
   return ((b[1] - a[1]) / Math.max(1, b[0] - a[0])) * 1000
 }
 
-const onColor = (hex: string) => {
+const resolveCssVar = (input: string) => {
+  const trimmed = input.trim()
+  const match = /^var\(\s*(--[a-zA-Z0-9_-]+)(?:\s*,\s*([^)]+))?\s*\)$/.exec(trimmed)
+  if (!match) return trimmed
+  if (typeof document !== 'undefined') {
+    const resolved = getComputedStyle(document.documentElement).getPropertyValue(match[1]).trim()
+    if (resolved) return resolved
+  }
+  return (match[2] ?? '').trim()
+}
+
+const onColor = (rawColor: string) => {
+  const hex = resolveCssVar(rawColor)
   const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim())
   if (!m) return '#ffffff'
   const h = m[1].length === 3 ? [...m[1]].map((ch) => ch + ch).join('') : m[1]

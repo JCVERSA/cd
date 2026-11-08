@@ -139,6 +139,7 @@ export function Playground({
             </div>
             <textarea
               id="playground-input"
+              name="playground-input"
               value={input}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={(event) => {

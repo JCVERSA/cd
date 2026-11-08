@@ -138,9 +138,10 @@ type ModalProps = PropsWithChildren<{
   description?: string
   footer?: ReactNode
   size?: 'sm' | 'md' | 'lg'
+  motionPreset?: 'standard' | 'snappy'
 }>
 
-export function Modal({ open, onClose, title, description, footer, children, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, description, footer, children, size = 'md', motionPreset = 'standard' }: ModalProps) {
   const titleId = useId()
   const descriptionId = useId()
   const panelRef = useRef<HTMLElement>(null)
@@ -191,14 +192,17 @@ export function Modal({ open, onClose, title, description, footer, children, siz
     }
   }, [open])
 
+  const enterDuration = motionPreset === 'snappy' ? 0.08 : 0.16
+  const exitDuration = motionPreset === 'snappy' ? 0.06 : 0.1
+
   return (
     <AnimatePresence>
       {open ? (
         <motion.div
           className="modal-backdrop"
           initial={{ opacity: 0 }}
-          animate={{ opacity: 1, transition: { duration: 0.16, ease: EASE_OUT } }}
-          exit={{ opacity: 0, transition: { duration: 0.11, ease: EASE_OUT } }}
+          animate={{ opacity: 1, transition: { duration: enterDuration, ease: EASE_OUT } }}
+          exit={{ opacity: 0, transition: { duration: exitDuration, ease: EASE_OUT } }}
           onMouseDown={(event) => event.target === event.currentTarget && onClose()}
         >
           <motion.section
@@ -211,9 +215,9 @@ export function Modal({ open, onClose, title, description, footer, children, siz
             data-glass=""
             data-glass-strength="0.48"
             className={cn('modal-panel', `modal-${size}`)}
-            initial={{ opacity: 0, scale: 0.965, y: 10 }}
-            animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.18, ease: EASE_OUT } }}
-            exit={{ opacity: 0, scale: 0.985, y: 4, transition: { duration: 0.11, ease: EASE_OUT } }}
+            initial={motionPreset === 'snappy' ? { opacity: 0, scale: 0.985 } : { opacity: 0, scale: 0.965, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: enterDuration, ease: EASE_OUT } }}
+            exit={motionPreset === 'snappy' ? { opacity: 0, scale: 0.99, transition: { duration: exitDuration, ease: EASE_OUT } } : { opacity: 0, scale: 0.985, y: 4, transition: { duration: exitDuration, ease: EASE_OUT } }}
           >
             <div className="modal-header">
               <div>
@@ -286,6 +290,7 @@ export function SecretInput({
       <KeyVaultIcon size={16} strokeWidth={1.85} aria-hidden="true" />
       <input
         id={id}
+        name={id}
         type={revealed ? 'text' : 'password'}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -649,10 +654,13 @@ export function Select<T extends string = string>({
                       <SearchIcon size={14} strokeWidth={1.85} aria-hidden="true" />
                       <input
                         ref={searchRef}
+                        name={`${listboxId}-filter`}
                         type="text"
                         role="combobox"
                         aria-expanded={true}
                         aria-autocomplete="list"
+                        autoComplete="off"
+                        spellCheck={false}
                         value={query}
                         aria-label={`Filter ${label}`}
                         aria-controls={listboxId}

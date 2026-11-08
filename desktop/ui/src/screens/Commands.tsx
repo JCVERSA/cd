@@ -127,7 +127,15 @@ export function CommandsScreen({
         <div className="table-toolbar">
           <div className="filter-search">
             <SearchIcon size={16} strokeWidth={1.85} morphed={Boolean(query)} aria-hidden="true" />
-            <input aria-label="Search commands" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search commands…" />
+            <input
+              name="command-search"
+              aria-label="Search commands"
+              autoComplete="off"
+              spellCheck={false}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search commands…"
+            />
           </div>
           <JellyRadio
             ariaLabel="Command type filter"
@@ -196,7 +204,7 @@ export function CommandsScreen({
                     {
                       id: 'edit',
                       label: 'Edit',
-                      color: '#2e2c44',
+                      color: 'var(--swipe-action-edit, #2e2c44)',
                       icon: <EditPenIcon size={16} strokeWidth={1.9} aria-hidden="true" />,
                       onSelect: () => setEditing({ ...command }),
                     },
@@ -205,7 +213,7 @@ export function CommandsScreen({
                           {
                             id: 'try',
                             label: 'Try',
-                            color: '#26384a',
+                            color: 'var(--swipe-action-try, #26384a)',
                             icon: <PlayActionIcon size={16} strokeWidth={1.9} aria-hidden="true" />,
                             onSelect: () => onTryCommand?.(command.trigger),
                           },
@@ -222,9 +230,9 @@ export function CommandsScreen({
                   height={58}
                   radius={0}
                   actionWidth={74}
-                  rowColor="var(--surface-1)"
-                  drawerColor="#242334"
-                  actionColor="#e5484d"
+                  rowColor="rgba(18, 18, 26, 0.56)"
+                  drawerColor="var(--swipe-drawer, #242334)"
+                  actionColor="var(--swipe-action-danger, #e5484d)"
                   textColor="var(--text)"
                   onCommit={() => {
                     void removeImmediate(command)
@@ -289,6 +297,7 @@ export function CommandsScreen({
               <div className="prefix-input">
                 <span>{prefix}</span>
                 <input
+                  name="command-trigger"
                   data-autofocus=""
                   value={editing.trigger}
                   maxLength={50}
@@ -325,11 +334,11 @@ export function CommandsScreen({
             </div>
             {editing.type === 'ai' ? (
               <Field label="Transformation instruction" hint="The selected text is fenced separately to reduce prompt injection risk.">
-                <textarea rows={5} value={editing.prompt} onChange={(event) => setEditing({ ...editing, prompt: event.target.value })} placeholder="Describe how the text should be transformed…" />
+                <textarea name="command-prompt" rows={5} value={editing.prompt} onChange={(event) => setEditing({ ...editing, prompt: event.target.value })} placeholder="Describe how the text should be transformed…" />
               </Field>
             ) : (
               <Field label={editing.type === 'style' ? 'Style identifier' : 'Replacement text'}>
-                <textarea rows={4} value={editing.value} onChange={(event) => setEditing({ ...editing, value: event.target.value })} placeholder="Enter value…" />
+                <textarea name="command-value" rows={4} spellCheck={editing.type !== 'style'} value={editing.value} onChange={(event) => setEditing({ ...editing, value: event.target.value })} placeholder={editing.type === 'style' ? 'e.g. bold…' : 'Enter replacement text…'} />
               </Field>
             )}
           </div>

@@ -58,6 +58,7 @@ export function StylesScreen({
           <label className="foundry-label" htmlFor="style-sample">Sample phrase</label>
           <textarea
             id="style-sample"
+            name="style-sample"
             rows={2}
             value={sample}
             onChange={(event) => setSample(event.target.value)}

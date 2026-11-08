@@ -1,4 +1,4 @@
-import { MotionConfig } from 'motion/react'
+import { MotionConfig, useReducedMotion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api } from './api'
@@ -29,7 +29,7 @@ import { Playground } from './screens/Playground'
 import { ProvidersScreen } from './screens/Providers'
 import { SettingsScreen } from './screens/Settings'
 import { StylesScreen } from './screens/Styles'
-import type { AppSnapshot, PageId, Provider, ProviderId } from './types'
+import type { AppSnapshot, PageId, Provider, ProviderId, RuntimeState } from './types'
 
 const pages: Array<{ id: PageId; label: string; description: string; icon: typeof OverviewIcon }> = [
   { id: 'overview', label: 'Overview', description: 'Runtime telemetry and routing', icon: OverviewIcon },
@@ -62,6 +62,28 @@ function LoadingShell() {
 
 const BACKDROP_STORAGE_KEY = 'swiftslate.backdropIntensity'
 
+function useSystemReducedMotion(): boolean {
+  const [matches, setMatches] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+    return Boolean(window.matchMedia('(prefers-reduced-motion: reduce)')?.matches)
+  })
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return
+    const mql = window.matchMedia('(prefers-reduced-motion: reduce)')
+    if (!mql) return
+    setMatches(Boolean(mql.matches))
+    const onChange = (event: MediaQueryListEvent) => setMatches(Boolean(event.matches))
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', onChange)
+      return () => mql.removeEventListener('change', onChange)
+    }
+    return undefined
+  }, [])
+
+  return matches
+}
+
 function readStoredBackdropIntensity(): number {
   try {
     const raw = Number(window.localStorage.getItem(BACKDROP_STORAGE_KEY))
@@ -73,7 +95,11 @@ function readStoredBackdropIntensity(): number {
 }
 
 export default function App() {
+  const motionReducedMotion = useReducedMotion()
+  const systemReducedMotion = useSystemReducedMotion()
+  const osReducedMotion = Boolean(systemReducedMotion || motionReducedMotion)
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
+  const [settingsDraft, setSettingsDraft] = useState<RuntimeState | null>(null)
   const [page, setPage] = useState<PageId>('overview')
   const [playgroundPreset, setPlaygroundPreset] = useState<string | undefined>(undefined)
   const [collapsed, setCollapsed] = useState(false)
@@ -121,8 +147,36 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    api.snapshot().then(setSnapshot).catch((reason) => setError(reason instanceof Error ? reason.message : 'SwiftSlate could not load.'))
+    api.snapshot()
+      .then((loaded) => {
+        setSnapshot(loaded)
+        setSettingsDraft(loaded.runtime)
+      })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : 'SwiftSlate could not load.'))
   }, [])
+
+  const settingsDirty = useMemo(() => {
+    if (!snapshot || !settingsDraft) return false
+    const runtime = snapshot.runtime
+    return (
+      settingsDraft.prefix !== runtime.prefix
+      || settingsDraft.keyDelay !== runtime.keyDelay
+      || settingsDraft.spinner !== runtime.spinner
+      || settingsDraft.launchAtStartup !== runtime.launchAtStartup
+      || settingsDraft.reducedMotion !== runtime.reducedMotion
+      || settingsDraft.theme !== runtime.theme
+    )
+  }, [settingsDraft, snapshot])
+
+  useEffect(() => {
+    if (!settingsDirty) return undefined
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload)
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [settingsDirty])
 
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
@@ -223,12 +277,15 @@ export default function App() {
     const previous = snapshot
     const paused = !snapshot.runtime.paused
     setSnapshot({ ...snapshot, runtime: { ...snapshot.runtime, paused } })
+    setSettingsDraft((prev) => (prev ? { ...prev, paused } : prev))
     try {
       const runtime = await api.setPaused(paused)
       setSnapshot((current) => current ? { ...current, runtime } : current)
+      setSettingsDraft((prev) => (prev ? { ...prev, paused: runtime.paused } : runtime))
       notify(paused ? 'Inline commands paused.' : 'Inline commands resumed.', 'success')
     } catch (reason) {
       setSnapshot(previous)
+      setSettingsDraft((prev) => (prev ? { ...prev, paused: previous.runtime.paused } : previous.runtime))
       notify(reason instanceof Error ? reason.message : 'Runtime state could not be changed.', 'danger')
     }
   }
@@ -242,6 +299,9 @@ export default function App() {
         ? { ...provider, connected: activated || provider.connected }
         : activated ? { ...item, connected: false } : item),
     })
+    if (activated) {
+      setSettingsDraft((prev) => (prev ? { ...prev, provider: provider.id, model: provider.model } : prev))
+    }
   }
 
   async function completeOnboarding(providerId: ProviderId, apiKey: string) {
@@ -257,14 +317,24 @@ export default function App() {
         ? { ...saved, connected: saved.local || saved.keyConfigured }
         : { ...provider, connected: false }),
     })
+    setSettingsDraft(runtime)
   }
+
+  const reducedMotion = Boolean(snapshot?.runtime.reducedMotion || osReducedMotion)
+
+  useEffect(() => {
+    if (reducedMotion) {
+      document.documentElement.dataset.reducedMotion = 'true'
+    } else {
+      delete document.documentElement.dataset.reducedMotion
+    }
+  }, [reducedMotion])
 
   if (error) {
     return <div className="fatal-state"><BrandFallback /><h1>SwiftSlate could not open</h1><p>{error}</p><Button variant="primary" onClick={() => window.location.reload()}>Try again</Button></div>
   }
 
   const theme = snapshot?.runtime.theme || 'lavender'
-  const reducedMotion = snapshot?.runtime.reducedMotion || false
   const activeProviderRecord = snapshot?.providers.find((item) => item.id === snapshot.runtime.provider)
   const clampedPaletteIndex = paletteActions.length ? Math.min(paletteIndex, paletteActions.length - 1) : -1
 
@@ -284,16 +354,19 @@ export default function App() {
       >
         <a href="#main-content" className="skip-link">Skip to main content</a>
         <ThemeBackground theme={theme} reducedMotion={reducedMotion} />
-        <LiquidGlass
-          theme={theme}
-          intensity={backdropIntensity / 100}
-          hidden={panelsHidden}
-          reducedMotion={reducedMotion}
-        />
+        {!reducedMotion ? (
+          <LiquidGlass
+            theme={theme}
+            intensity={backdropIntensity / 100}
+            hidden={panelsHidden}
+            reducedMotion={reducedMotion}
+          />
+        ) : null}
         <Sidebar
           collapsed={collapsed}
           paused={snapshot?.runtime.paused || false}
           hidden={panelsHidden}
+          settingsDirty={settingsDirty}
           active={page}
           activeProvider={snapshot?.runtime.provider}
           activeProviderName={activeProviderRecord?.name || snapshot?.runtime.provider}
@@ -320,9 +393,14 @@ export default function App() {
                 {page === 'settings' ? (
                   <SettingsScreen
                     runtime={snapshot.runtime}
+                    draft={settingsDraft ?? snapshot.runtime}
+                    onDraftChange={setSettingsDraft}
                     backdropIntensity={backdropIntensity}
                     onBackdropIntensityChange={setBackdropIntensity}
-                    onChange={(runtime) => setSnapshot({ ...snapshot, runtime })}
+                    onChange={(runtime) => {
+                      setSnapshot({ ...snapshot, runtime })
+                      setSettingsDraft((prev) => (prev ? { ...prev, ...runtime } : runtime))
+                    }}
                     notify={notify}
                   />
                 ) : null}
@@ -349,11 +427,15 @@ export default function App() {
           </button>
         ) : null}
 
-        <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search SwiftSlate" description="Jump to a screen, switch providers, or launch a command." size="md">
+        <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search SwiftSlate" description="Jump to a screen, switch providers, or launch a command." size="md" motionPreset="snappy">
           <div className="command-palette">
             <div className="palette-search">
               <SearchIcon size={16} strokeWidth={1.85} morphed={Boolean(search)} aria-hidden="true" />
               <input
+                name="palette-query"
+                aria-label="Search screens and commands"
+                autoComplete="off"
+                spellCheck={false}
                 data-autofocus=""
                 value={search}
                 onChange={(event) => { setSearch(event.target.value); setPaletteIndex(0) }}
