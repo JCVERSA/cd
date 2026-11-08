@@ -53,6 +53,8 @@
   border-radius: var(--chroma-radius);
   background: var(--chroma-tile);
   box-shadow: var(--chroma-tile-shadow);
+  -webkit-backdrop-filter: blur(20px) saturate(172%);
+  backdrop-filter: blur(20px) saturate(172%);
   color: var(--chroma-ink);
   text-decoration: none;
   overflow: hidden;

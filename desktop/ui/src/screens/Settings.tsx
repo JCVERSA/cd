@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api'
+import { CometDial } from '../components/CometDial'
 import { HoldButton } from '../components/HoldButton'
 import { THEME_BACKGROUNDS } from '../components/ThemeBackground'
+import { WakeSlider } from '../components/WakeSlider'
 import { Badge, Button, Field, Select, SpotlightCard, Switch, cn } from '../components/ui'
 import {
   CheckMarkIcon,
@@ -10,6 +12,7 @@ import {
   ResetArcIcon,
   SaveVaultIcon,
   ShieldCheckIcon,
+  SparkleIcon,
   ThemeSwatchIcon,
   WindowLaunchIcon,
 } from '../icons'
@@ -25,10 +28,14 @@ const themes: Array<{ id: ThemeId; name: string; colors: string[] }> = [
 
 export function SettingsScreen({
   runtime,
+  backdropIntensity = 90,
+  onBackdropIntensityChange,
   onChange,
   notify,
 }: {
   runtime: RuntimeState
+  backdropIntensity?: number
+  onBackdropIntensityChange?: (next: number) => void
   onChange: (runtime: RuntimeState) => void
   notify: (message: string, tone?: 'success' | 'danger') => void
 }) {
@@ -88,6 +95,7 @@ export function SettingsScreen({
       const saved = await api.saveRuntime(defaults)
       setDraft(saved)
       onChange(saved)
+      onBackdropIntensityChange?.(90)
       notify('Factory defaults restored.', 'success')
     } catch (error) {
       notify(error instanceof Error ? error.message : 'Defaults could not be restored.', 'danger')
@@ -156,6 +164,34 @@ export function SettingsScreen({
             </div>
           </SpotlightCard>
 
+          <SpotlightCard className="glass-tuning-card">
+            <div className="settings-card-heading">
+              <span className="settings-heading-icon" aria-hidden="true"><SparkleIcon size={17} strokeWidth={1.85} /></span>
+              <div><h2>Liquid glass &amp; backdrop</h2><p>Dial live GPU shader luminosity and refractive glass bevel glow.</p></div>
+            </div>
+            <div className="glass-dial-row">
+              <CometDial
+                value={backdropIntensity}
+                min={20}
+                max={100}
+                step={5}
+                unit="%"
+                label="Backdrop and glass intensity"
+                size={126}
+                thickness={5}
+                cometReach={165}
+                cometWidth={10}
+                accent="var(--accent)"
+                ink="var(--text)"
+                onChange={(next) => onBackdropIntensityChange?.(next)}
+              />
+              <div className="glass-dial-copy">
+                <strong>Atmospheric refraction</strong>
+                <p>Spin or use arrow keys to balance background vibrancy behind frosted panels.</p>
+              </div>
+            </div>
+          </SpotlightCard>
+
           <div className="assurance-strip">
             <ShieldCheckIcon size={17} strokeWidth={1.85} aria-hidden="true" />
             <p><strong>Zero telemetry:</strong> Preferences and diagnostics remain stored under your Windows profile.</p>
@@ -172,12 +208,27 @@ export function SettingsScreen({
               <Field label="Trigger prefix" hint={`Commands look like ${draft.prefix || '.'}fix and ${draft.prefix || '.'}bold.`}>
                 <input value={draft.prefix} maxLength={4} spellCheck={false} autoComplete="off" onChange={(event) => setDraft({ ...draft, prefix: event.target.value })} />
               </Field>
-              <Field label="Replacement delay" hint="Increase if clipboard paste lags in heavier legacy apps.">
-                <div className="range-field">
-                  <input type="range" min="30" max="500" step="10" value={draft.keyDelay} onChange={(event) => setDraft({ ...draft, keyDelay: Number(event.target.value) })} />
-                  <output>{draft.keyDelay} ms</output>
-                </div>
-              </Field>
+              <div className="field">
+                <span className="field-label">Replacement delay</span>
+                <WakeSlider
+                  value={draft.keyDelay}
+                  onChange={(keyDelay) => setDraft({ ...draft, keyDelay })}
+                  min={30}
+                  max={500}
+                  step={10}
+                  bars={28}
+                  height={40}
+                  restHeight={12}
+                  gap={3}
+                  fillColor="var(--accent)"
+                  crestColor="#ffffff"
+                  trackColor="rgba(255, 255, 255, 0.14)"
+                  showValue
+                  formatValue={(val) => `${val} ms`}
+                  ariaLabel="Replacement delay"
+                />
+                <span className="field-hint">Increase if clipboard paste lags in heavier legacy apps.</span>
+              </div>
               <Field label="Processing indicator">
                 <Select<RuntimeState['spinner']>
                   label="Processing indicator"

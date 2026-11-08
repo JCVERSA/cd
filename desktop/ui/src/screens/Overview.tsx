@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { ProviderLogo, getProviderTileClass } from '../components/ProviderLogo'
 import { SlideCommit } from '../components/SlideCommit'
+import { StatusMark } from '../components/StatusMark'
 import { SwipeRow } from '../components/SwipeRow'
 import { Badge, SpotlightCard } from '../components/ui'
 import {
-  CheckCircleIcon,
   CloseXIcon,
   PlayActionIcon,
   ShieldCheckIcon,
@@ -195,7 +195,9 @@ export function Overview({
                   }}
                 >
                   <div className="activity-row">
-                    <span className="activity-status" aria-hidden="true"><CheckCircleIcon size={15} strokeWidth={1.85} /></span>
+                    <span className="activity-status" aria-hidden="true">
+                      <StatusMark status="done" size={16} strokeWidth={2} strike={false} doneColor="var(--success)" />
+                    </span>
                     <div className="activity-main">
                       <strong>{item.command}</strong>
                       <span>{item.provider}</span>

@@ -1,4 +1,5 @@
-import { SearchIcon } from '../icons'
+import type { RefObject } from 'react'
+import { EyeToggleIcon, SearchIcon } from '../icons'
 import type { PageId } from '../types'
 
 const titles: Record<PageId, { title: string; subtitle: string }> = {
@@ -15,14 +16,18 @@ export function Topbar({
   page,
   prefix = '.',
   onSearch,
+  onHidePanels,
+  hideButtonRef,
 }: {
   page: PageId
   prefix?: string
   onSearch: () => void
+  onHidePanels: () => void
+  hideButtonRef?: RefObject<HTMLButtonElement | null>
 }) {
   const current = titles[page]
   return (
-    <header className="topbar">
+    <header className="topbar" data-glass="" data-glass-strength="0.34">
       <div className="topbar-heading">
         <h1>{current.title}</h1>
         <span className="topbar-sep" aria-hidden="true" />
@@ -37,6 +42,17 @@ export function Topbar({
           <SearchIcon size={15} strokeWidth={1.85} aria-hidden="true" />
           <span>Jump or run…</span>
           <kbd aria-hidden="true">Ctrl K</kbd>
+        </button>
+        <button
+          ref={hideButtonRef}
+          className="backdrop-toggle-btn"
+          type="button"
+          onClick={onHidePanels}
+          aria-label="Hide panels to view background"
+          title="Hide panels to view and interact with the background"
+        >
+          <EyeToggleIcon size={15} strokeWidth={1.85} morphed={false} aria-hidden="true" />
+          <span>Hide panels</span>
         </button>
       </div>
     </header>

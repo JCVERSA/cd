@@ -14,6 +14,7 @@ import {
   SearchIcon,
   SpinnerRingIcon,
 } from '../icons'
+import { SquishSwitch } from './SquishSwitch'
 
 const EASE_OUT: [number, number, number, number] = [0.23, 1, 0.32, 1]
 
@@ -57,21 +58,19 @@ export function Button({
 
 export function Switch({ checked, onChange, label, disabled = false }: { checked: boolean; onChange: (value: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      className={cn('switch', checked && 'switch-on')}
+    <SquishSwitch
+      checked={checked}
+      onChange={onChange}
+      ariaLabel={label}
       disabled={disabled}
-      onClick={() => onChange(!checked)}
-    >
-      <span className="switch-knob" aria-hidden="true" />
-    </button>
+      width={46}
+      height={25}
+      radius={13}
+    />
   )
 }
 
-export function Badge({ children, tone = 'neutral' }: PropsWithChildren<{ tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'accent' }>) {
+export function Badge({ children, tone = 'neutral' }: PropsWithChildren<{ tone?: 'neutral' | 'warning' | 'danger' | 'accent' | 'success' }>) {
   return <span className={cn('badge', `badge-${tone}`)}>{children}</span>
 }
 
@@ -84,11 +83,15 @@ export function SpotlightCard({
   const x = useMotionValue(-200)
   const y = useMotionValue(-200)
   const rectRef = useRef<DOMRect | null>(null)
-  const background = useMotionTemplate`radial-gradient(340px circle at ${x}px ${y}px, color-mix(in srgb, var(--accent) 12%, transparent), transparent 76%)`
+  const background = useMotionTemplate`radial-gradient(340px circle at ${x}px ${y}px, color-mix(in srgb, var(--accent) 14%, transparent), transparent 76%)`
   const reduce = useReducedMotion()
 
   if (!interactive) {
-    return <div className={cn('glass-card', className)}>{children}</div>
+    return (
+      <div className={cn('glass-card', className)} data-glass="" data-glass-hot="" data-glass-strength="0.34">
+        {children}
+      </div>
+    )
   }
 
   function handleEnter(event: ReactPointerEvent<HTMLDivElement>) {
@@ -108,6 +111,9 @@ export function SpotlightCard({
   return (
     <motion.div
       className={cn('glass-card spotlight-card', className)}
+      data-glass=""
+      data-glass-hot=""
+      data-glass-strength="0.44"
       style={reduce ? undefined : { backgroundImage: background }}
       onPointerEnter={handleEnter}
       onPointerMove={handleMove}
@@ -202,6 +208,8 @@ export function Modal({ open, onClose, title, description, footer, children, siz
             aria-labelledby={titleId}
             aria-describedby={description ? descriptionId : undefined}
             tabIndex={-1}
+            data-glass=""
+            data-glass-strength="0.48"
             className={cn('modal-panel', `modal-${size}`)}
             initial={{ opacity: 0, scale: 0.965, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0, transition: { duration: 0.18, ease: EASE_OUT } }}

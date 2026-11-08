@@ -1,8 +1,9 @@
 import { MotionConfig } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api } from './api'
 import { BrandLogo } from './components/BrandLogo'
+import { LiquidGlass } from './components/LiquidGlass'
 import { Onboarding } from './components/Onboarding'
 import { ProviderLogo, getProviderTileClass } from './components/ProviderLogo'
 import { Sidebar } from './components/Sidebar'
@@ -13,6 +14,7 @@ import {
   ArrowUpRightIcon,
   CommandsIcon,
   DiagnosticsIcon,
+  EyeToggleIcon,
   OverviewIcon,
   PlaygroundIcon,
   ProvidersIcon,
@@ -58,18 +60,59 @@ function LoadingShell() {
   )
 }
 
+const BACKDROP_STORAGE_KEY = 'swiftslate.backdropIntensity'
+
+function readStoredBackdropIntensity(): number {
+  try {
+    const raw = Number(window.localStorage.getItem(BACKDROP_STORAGE_KEY))
+    if (Number.isFinite(raw) && raw >= 20 && raw <= 100) return Math.round(raw)
+  } catch {
+    // ignore storage errors
+  }
+  return 90
+}
+
 export default function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [page, setPage] = useState<PageId>('overview')
   const [playgroundPreset, setPlaygroundPreset] = useState<string | undefined>(undefined)
   const [collapsed, setCollapsed] = useState(false)
+  const [panelsHidden, setPanelsHidden] = useState(false)
+  const [backdropIntensity, setBackdropIntensityState] = useState<number>(readStoredBackdropIntensity)
   const [searchOpen, setSearchOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [paletteIndex, setPaletteIndex] = useState(0)
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const [error, setError] = useState('')
   const mainRef = useRef<HTMLElement>(null)
+  const hidePanelsBtnRef = useRef<HTMLButtonElement>(null)
+  const showPanelsBtnRef = useRef<HTMLButtonElement>(null)
   const toastId = useRef(0)
+
+  const setBackdropIntensity = useCallback((next: number) => {
+    const clamped = Math.min(100, Math.max(20, Math.round(next)))
+    setBackdropIntensityState(clamped)
+    try {
+      window.localStorage.setItem(BACKDROP_STORAGE_KEY, String(clamped))
+    } catch {
+      // ignore storage errors
+    }
+  }, [])
+
+  const hidePanels = useCallback(() => {
+    setSearchOpen(false)
+    setPanelsHidden(true)
+    window.requestAnimationFrame(() => {
+      showPanelsBtnRef.current?.focus()
+    })
+  }, [])
+
+  const restorePanels = useCallback(() => {
+    setPanelsHidden(false)
+    window.requestAnimationFrame(() => {
+      hidePanelsBtnRef.current?.focus()
+    })
+  }, [])
 
   const notify = useCallback((message: string, tone: 'success' | 'danger' | 'neutral' = 'neutral') => {
     const id = ++toastId.current
@@ -85,16 +128,22 @@ export default function App() {
     function keyboard(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault()
+        setPanelsHidden(false)
         setSearchOpen(true)
         setPaletteIndex(0)
       }
       if (event.key === 'Escape') {
-        setSearchOpen(false)
+        if (searchOpen) {
+          setSearchOpen(false)
+        } else if (panelsHidden) {
+          event.preventDefault()
+          restorePanels()
+        }
       }
     }
     window.addEventListener('keydown', keyboard)
     return () => window.removeEventListener('keydown', keyboard)
-  }, [])
+  }, [panelsHidden, restorePanels, searchOpen])
 
   const navigate = useCallback((next: PageId) => {
     setPage(next)
@@ -221,12 +270,30 @@ export default function App() {
 
   return (
     <MotionConfig reducedMotion={reducedMotion ? 'always' : 'user'}>
-      <div className="app" data-theme={theme} data-reduced-motion={reducedMotion || undefined}>
+      <div
+        className="app"
+        data-theme={theme}
+        data-reduced-motion={reducedMotion || undefined}
+        data-panels-hidden={panelsHidden || undefined}
+        style={
+          {
+            '--backdrop-opacity': (backdropIntensity / 100).toFixed(2),
+            '--glass-lens-opacity': Math.min(1, 0.35 + (backdropIntensity / 100) * 0.65).toFixed(2),
+          } as CSSProperties
+        }
+      >
         <a href="#main-content" className="skip-link">Skip to main content</a>
         <ThemeBackground theme={theme} reducedMotion={reducedMotion} />
+        <LiquidGlass
+          theme={theme}
+          intensity={backdropIntensity / 100}
+          hidden={panelsHidden}
+          reducedMotion={reducedMotion}
+        />
         <Sidebar
           collapsed={collapsed}
           paused={snapshot?.runtime.paused || false}
+          hidden={panelsHidden}
           active={page}
           activeProvider={snapshot?.runtime.provider}
           activeProviderName={activeProviderRecord?.name || snapshot?.runtime.provider}
@@ -234,11 +301,13 @@ export default function App() {
           onNavigate={navigate}
           onCollapse={() => setCollapsed(!collapsed)}
         />
-        <div className="app-main">
+        <div className="app-main" inert={panelsHidden || undefined}>
           <Topbar
             page={page}
             prefix={snapshot?.runtime.prefix || '.'}
             onSearch={() => { setSearchOpen(true); setPaletteIndex(0) }}
+            onHidePanels={hidePanels}
+            hideButtonRef={hidePanelsBtnRef}
           />
           <main ref={mainRef} className="content" id="main-content" tabIndex={-1}>
             {!snapshot ? <LoadingShell /> : (
@@ -248,12 +317,37 @@ export default function App() {
                 {page === 'providers' ? <ProvidersScreen providers={snapshot.providers} activeProvider={snapshot.runtime.provider} onChange={changeProvider} notify={notify} /> : null}
                 {page === 'commands' ? <CommandsScreen commands={snapshot.commands} prefix={snapshot.runtime.prefix} onChange={(commands) => setSnapshot({ ...snapshot, commands })} onTryCommand={openPlaygroundWith} notify={notify} /> : null}
                 {page === 'styles' ? <StylesScreen prefix={snapshot.runtime.prefix} notify={notify} /> : null}
-                {page === 'settings' ? <SettingsScreen runtime={snapshot.runtime} onChange={(runtime) => setSnapshot({ ...snapshot, runtime })} notify={notify} /> : null}
+                {page === 'settings' ? (
+                  <SettingsScreen
+                    runtime={snapshot.runtime}
+                    backdropIntensity={backdropIntensity}
+                    onBackdropIntensityChange={setBackdropIntensity}
+                    onChange={(runtime) => setSnapshot({ ...snapshot, runtime })}
+                    notify={notify}
+                  />
+                ) : null}
                 {page === 'diagnostics' ? <DiagnosticsScreen initial={snapshot.diagnostics} initialLogs={snapshot.logs} notify={notify} /> : null}
               </div>
             )}
           </main>
         </div>
+
+        {panelsHidden ? (
+          <button
+            ref={showPanelsBtnRef}
+            type="button"
+            className="backdrop-peek-pill"
+            data-glass=""
+            data-glass-hot=""
+            data-glass-strength="0.48"
+            onClick={restorePanels}
+            aria-label="Show panels"
+          >
+            <EyeToggleIcon size={15} strokeWidth={1.85} morphed aria-hidden="true" />
+            <span>Show panels</span>
+            <kbd aria-hidden="true">Esc</kbd>
+          </button>
+        ) : null}
 
         <Modal open={searchOpen} onClose={() => setSearchOpen(false)} title="Search SwiftSlate" description="Jump to a screen, switch providers, or launch a command." size="md">
           <div className="command-palette">

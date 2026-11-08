@@ -1,0 +1,20 @@
+.liquid-glass-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: var(--glass-lens-opacity, 0.92);
+  transition: opacity 240ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+
+.app[data-panels-hidden='true'] .liquid-glass-canvas,
+.app[data-reduced-motion='true'] .liquid-glass-canvas {
+  opacity: 0;
+}
+
+body.no-webgl .liquid-glass-canvas {
+  display: none;
+}

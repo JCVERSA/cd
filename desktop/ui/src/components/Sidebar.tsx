@@ -26,6 +26,7 @@ const nav: Array<{ id: PageId; label: string; icon: typeof OverviewIcon; divider
 export function Sidebar({
   collapsed,
   paused = false,
+  hidden = false,
   active,
   activeProvider = 'gemini',
   activeProviderName = 'Google Gemini',
@@ -35,6 +36,7 @@ export function Sidebar({
 }: {
   collapsed: boolean
   paused?: boolean
+  hidden?: boolean
   active: PageId
   activeProvider?: ProviderId | string
   activeProviderName?: string
@@ -43,7 +45,13 @@ export function Sidebar({
   onCollapse: () => void
 }) {
   return (
-    <aside className={cn('sidebar', collapsed && 'sidebar-collapsed')} aria-label="Workspace sidebar">
+    <aside
+      className={cn('sidebar', collapsed && 'sidebar-collapsed')}
+      aria-label="Workspace sidebar"
+      data-glass=""
+      data-glass-strength="0.38"
+      inert={hidden || undefined}
+    >
       <div className="brand">
         <span className="brand-mark">
           <BrandLogo size={34} />

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { RubberSegment } from '../components/RubberSegment'
+import { StatusMark } from '../components/StatusMark'
 import { Badge, Button, Select, SpotlightCard } from '../components/ui'
 import {
   ArrowRightIcon,
-  CheckMarkIcon,
   ClockPulseIcon,
   CopyCheckIcon,
   EraserSweepIcon,
@@ -190,7 +190,18 @@ export function Playground({
                   stretch={100}
                   squash={3}
                 />
-                {output ? <Badge tone="success"><CheckMarkIcon size={12} strokeWidth={1.85} aria-hidden="true" /> Ready</Badge> : <Badge>Idle</Badge>}
+                <Badge tone={output ? 'success' : 'neutral'}>
+                  <StatusMark
+                    status={running ? 'running' : output ? 'done' : 'pending'}
+                    size={14}
+                    strokeWidth={2.1}
+                    fontSize={11.5}
+                    strike={false}
+                    doneColor="var(--success)"
+                    color="var(--muted)"
+                    label={running ? 'Running' : output ? 'Ready' : 'Idle'}
+                  />
+                </Badge>
               </div>
             </div>
             <div className="result-output" aria-live="polite">

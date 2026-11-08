@@ -1,15 +1,14 @@
 import { useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { JellyRadio } from '../components/JellyRadio'
+import { StatusMark, type StatusMarkStatus } from '../components/StatusMark'
 import { Badge, Button, SpotlightCard } from '../components/ui'
 import {
   AlertTriangleIcon,
-  CheckCircleIcon,
   CopyCheckIcon,
   InfoCircleIcon,
   PlayActionIcon,
   ShieldCheckIcon,
-  SpinnerRingIcon,
   SyncArrowsIcon,
   TerminalPromptIcon,
   XCircleIcon,
@@ -18,11 +17,11 @@ import type { DiagnosticCheck, LogEntry } from '../types'
 
 type LogFilter = 'all' | 'info' | 'warn' | 'error'
 
-function CheckIcon({ status }: { status: DiagnosticCheck['status'] }) {
-  if (status === 'pass') return <CheckCircleIcon size={17} strokeWidth={1.85} aria-hidden="true" />
-  if (status === 'warn') return <AlertTriangleIcon size={17} strokeWidth={1.85} aria-hidden="true" />
-  if (status === 'fail') return <XCircleIcon size={17} strokeWidth={1.85} aria-hidden="true" />
-  return <SpinnerRingIcon size={17} strokeWidth={1.85} className="spin" aria-hidden="true" />
+function toStatusMark(status: DiagnosticCheck['status'], running: boolean): StatusMarkStatus {
+  if (status === 'pass') return 'done'
+  if (status === 'fail') return 'failed'
+  if (status === 'idle' && running) return 'running'
+  return 'pending'
 }
 
 export function DiagnosticsScreen({
@@ -110,7 +109,17 @@ export function DiagnosticsScreen({
           <div className="diagnostic-list">
             {checks.map((check) => (
               <div className={`diagnostic-row check-${check.status}`} key={check.id}>
-                <span className="check-icon"><CheckIcon status={check.status} /></span>
+                <span className="check-icon">
+                  <StatusMark
+                    status={toStatusMark(check.status, running)}
+                    size={20}
+                    strokeWidth={2}
+                    strike={false}
+                    doneColor="var(--success)"
+                    errorColor="var(--danger)"
+                    color={check.status === 'warn' ? 'var(--warning)' : 'var(--muted)'}
+                  />
+                </span>
                 <div className="diagnostic-row-copy">
                   <strong>{check.label}</strong>
                   <p>{check.status === 'idle' && running ? 'Checking…' : check.detail}</p>

@@ -1039,4 +1039,89 @@ describe('SwiftSlate dashboard', () => {
     expect(stage.querySelector('.radar-container')).toBeNull()
     expect(stage.querySelector('.aero-shards canvas.aero-shards-canvas')).not.toBeNull()
   })
+
+  it('renders liquid-glass surfaces and hides/restores panels via button and Escape to view the background', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    const appRoot = container.querySelector('.app') as HTMLElement
+    expect(container.querySelector('canvas.liquid-glass-canvas')).not.toBeNull()
+    expect(container.querySelector('.sidebar[data-glass]')).not.toBeNull()
+    expect(container.querySelector('.topbar[data-glass]')).not.toBeNull()
+    expect(container.querySelectorAll('.glass-card[data-glass][data-glass-hot]').length).toBeGreaterThanOrEqual(3)
+
+    const hideBtn = screen.getByRole('button', { name: 'Hide panels to view background' })
+    await user.click(hideBtn)
+
+    expect(appRoot).toHaveAttribute('data-panels-hidden', 'true')
+    const showBtn = await screen.findByRole('button', { name: 'Show panels' })
+    expect(showBtn).toHaveAttribute('data-glass')
+    expect((await axe.run(container)).violations).toEqual([])
+
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(appRoot).not.toHaveAttribute('data-panels-hidden'))
+    expect(screen.queryByRole('button', { name: 'Show panels' })).toBeNull()
+
+    // Also verify clicking the floating Show panels pill directly restores panels
+    await user.click(screen.getByRole('button', { name: 'Hide panels to view background' }))
+    expect(appRoot).toHaveAttribute('data-panels-hidden', 'true')
+    await user.click(await screen.findByRole('button', { name: 'Show panels' }))
+    await waitFor(() => expect(appRoot).not.toHaveAttribute('data-panels-hidden'))
+  })
+
+  it('integrates WakeSlider, CometDial, SquishSwitch, and StatusMark with keyboard, pointer, and axe compliance', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    // Overview Recent executions renders StatusMark in done state
+    expect(container.querySelector('.activity-row .status-mark[data-status="done"]')).not.toBeNull()
+
+    // Playground StatusMark transitions from pending ("Idle") to done ("Ready")
+    await user.click(screen.getByRole('button', { name: 'Playground' }))
+    expect(await screen.findByText('Idle')).toBeInTheDocument()
+    expect(container.querySelector('.result-pane .status-mark[data-status="pending"]')).not.toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Run command' }))
+    expect(await screen.findByText('Ready')).toBeInTheDocument()
+    expect(container.querySelector('.result-pane .status-mark[data-status="done"]')).not.toBeNull()
+
+    // Diagnostics StatusMark checklist + axe compliance
+    await user.click(screen.getByRole('button', { name: 'Diagnostics' }))
+    await screen.findByText('Health checklist')
+    expect(container.querySelectorAll('.diagnostic-row .status-mark[data-status="done"]').length).toBeGreaterThanOrEqual(4)
+    await user.click(screen.getByRole('button', { name: 'Run all checks' }))
+    await screen.findByText('Diagnostics completed.')
+    expect((await axe.run(container)).violations).toEqual([])
+
+    // Settings: WakeSlider (Replacement delay), CometDial (Backdrop & glass intensity), and SquishSwitch
+    await user.click(screen.getByRole('button', { name: 'Settings' }))
+    await screen.findByText('Liquid glass & backdrop')
+
+    const wakeSlider = screen.getByRole('slider', { name: 'Replacement delay' })
+    expect(wakeSlider.closest('.wake-slider')).not.toBeNull()
+    expect(wakeSlider).toHaveAttribute('aria-valuenow', '200')
+    wakeSlider.focus()
+    await user.keyboard('{ArrowRight}{ArrowRight}')
+    expect(wakeSlider).toHaveAttribute('aria-valuenow', '220')
+
+    const cometDial = screen.getByRole('slider', { name: 'Backdrop and glass intensity' })
+    expect(cometDial.closest('.comet-dial')).not.toBeNull()
+    cometDial.focus()
+    await user.keyboard('{ArrowDown}{ArrowDown}')
+    expect(cometDial).toHaveAttribute('aria-valuenow', '80')
+    const appRoot = container.querySelector('.app') as HTMLElement
+    expect(appRoot.style.getPropertyValue('--backdrop-opacity')).toBe('0.80')
+
+    const motionSwitch = screen.getByRole('switch', { name: 'Reduce motion' })
+    expect(motionSwitch).toHaveClass('squish-switch')
+    expect(motionSwitch).toHaveAttribute('aria-checked', 'false')
+    await user.click(motionSwitch)
+    expect(motionSwitch).toHaveAttribute('aria-checked', 'true')
+    expect(motionSwitch).toHaveAttribute('data-on', '')
+
+    expect((await axe.run(container)).violations).toEqual([])
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    await screen.findByText('Settings saved.')
+  })
 })
