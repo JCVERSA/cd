@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { ChromaGrid } from '../components/ChromaGrid'
+import { RubberSegment } from '../components/RubberSegment'
 import { Badge, Button, SpotlightCard, cn } from '../components/ui'
 import { CopyCheckIcon, InfoCircleIcon, OfflineCloudIcon } from '../icons'
 import { styles } from '../styleTransforms'
@@ -83,6 +84,27 @@ export function StylesScreen({
               {copiedId === active.id ? 'Copied' : 'Copy specimen'}
             </Button>
           </div>
+          <RubberSegment
+            aria-label="Active Unicode style"
+            className="foundry-rubber-segment"
+            value={selected}
+            onChange={(val) => setSelected(val)}
+            items={styles.map((style) => ({
+              value: style.id,
+              label: style.id === 'mono' ? 'Mono' : style.name,
+            }))}
+            trackColor="rgba(6, 6, 10, 0.52)"
+            thumbColor="var(--accent)"
+            textColor="var(--text-soft)"
+            activeTextColor="#110d18"
+            size="sm"
+            radius={9}
+            inset={2}
+            equalSlots={false}
+            stretch={100}
+            squash={3}
+            draggable
+          />
           <p className="foundry-stage-output">{activeOutput || 'Your styled preview appears here.'}</p>
         </div>
       </SpotlightCard>

@@ -9,6 +9,7 @@ import App from './App'
 import { ChromaGrid } from './components/ChromaGrid'
 import { GlideSelect } from './components/GlideSelect'
 import { JellyRadio } from './components/JellyRadio'
+import { RubberSegment } from './components/RubberSegment'
 import { SwipeRow } from './components/SwipeRow'
 import { Select } from './components/ui'
 import { GLYPH_CATALOG, pathSignature } from './icons'
@@ -706,5 +707,91 @@ describe('SwiftSlate dashboard', () => {
       rules: { 'color-contrast': { enabled: false } },
     })
     expect(standaloneAxe.violations).toEqual([])
+  })
+
+  it('integrates RubberSegment across Playground, Styles, and Commands modal with rubber drag, clipPath thumb, and axe compliance', async () => {
+    const user = userEvent.setup()
+    const { unmount } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    // 1. Playground Output view mode (Result vs Compare)
+    await user.click(screen.getByRole('button', { name: 'Playground' }))
+    await screen.findByText('Command playground')
+    await user.click(screen.getByRole('button', { name: 'Run command' }))
+    await screen.findByText('Ready')
+
+    const outputModeGroup = screen.getByRole('radiogroup', { name: 'Output view mode' })
+    expect(outputModeGroup).toHaveClass('rubber-segment')
+    const compareRadio = within(outputModeGroup).getByRole('radio', { name: 'Compare' })
+    await user.click(compareRadio)
+    expect(compareRadio).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText(/Source ·/i)).toBeInTheDocument()
+    expect(screen.getByText(/Replaced ·/i)).toBeInTheDocument()
+
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+
+    // 2. Styles foundry stage selector (equalSlots={false})
+    await user.click(screen.getByRole('button', { name: 'Styles' }))
+    await screen.findByText('Style text without a network request')
+    const styleRubber = screen.getByRole('radiogroup', { name: 'Active Unicode style' })
+    expect(styleRubber).not.toHaveAttribute('data-equal')
+    const bubbleRadio = within(styleRubber).getByRole('radio', { name: 'Bubble' })
+    await user.click(bubbleRadio)
+    expect(bubbleRadio).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText('.bubble', { selector: '.badge' })).toBeInTheDocument()
+
+    // 3. Commands New command modal Command type RubberSegment + axe
+    await user.click(screen.getByRole('button', { name: 'Commands' }))
+    await screen.findByText('Your command library')
+    await user.click(screen.getByRole('button', { name: 'New command' }))
+    const createDialog = await screen.findByRole('dialog', { name: 'Create command' })
+    const cmdTypeGroup = within(createDialog).getByRole('radiogroup', { name: 'Command type' })
+    expect(cmdTypeGroup).toHaveAttribute('data-equal')
+    await user.click(within(cmdTypeGroup).getByRole('radio', { name: 'Text snippet' }))
+    expect(within(createDialog).getByText('Replacement text')).toBeInTheDocument()
+
+    expect((await axe.run(document.body, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
+    await user.click(within(createDialog).getByRole('button', { name: 'Cancel' }))
+
+    unmount()
+
+    // 4. Standalone React Bits RubberSegment: thumb drag across slots, keyboard navigation, and disabled prop
+    const onPick = vi.fn()
+    const { container } = render(
+      <main className="app">
+        <RubberSegment
+          aria-label="Timeframe"
+          items={['Day', 'Week', 'Month', 'Year']}
+          defaultValue="Day"
+          onChange={onPick}
+          inset={3}
+        />
+        <RubberSegment aria-label="Disabled segment" items={['One', 'Two']} disabled />
+      </main>,
+    )
+
+    const timeframe = screen.getByRole('radiogroup', { name: 'Timeframe' })
+    const thumb = container.querySelector('.rubber-segment__thumb') as HTMLElement
+    expect(thumb.style.clipPath).toContain('inset(0')
+
+    const dayBtn = within(timeframe).getByRole('radio', { name: 'Day' })
+    // Grab thumb on slot 0 (fallback slot width 44px -> 0..44, inset 3 => clientX=20 -> localX=17) and drag to slot 2 ('Month', midpoint 110)
+    fireEvent.pointerDown(dayBtn, { pointerId: 1, button: 0, clientX: 20, timeStamp: 10 })
+    fireEvent.pointerMove(timeframe, { pointerId: 1, clientX: 35, timeStamp: 30 })
+    expect(timeframe).toHaveAttribute('data-held')
+    fireEvent.pointerMove(timeframe, { pointerId: 1, clientX: 115, timeStamp: 150 })
+    fireEvent.pointerUp(timeframe, { pointerId: 1, clientX: 115, timeStamp: 170 })
+
+    expect(timeframe).not.toHaveAttribute('data-held')
+    expect(onPick).toHaveBeenCalledWith('Month', 2)
+    expect(within(timeframe).getByRole('radio', { name: 'Month' })).toHaveAttribute('aria-checked', 'true')
+
+    // Keyboard End -> Year
+    const monthBtn = within(timeframe).getByRole('radio', { name: 'Month' })
+    monthBtn.focus()
+    await user.keyboard('{End}')
+    expect(onPick).toHaveBeenLastCalledWith('Year', 3)
+
+    expect(screen.getByRole('radiogroup', { name: 'Disabled segment' })).toHaveAttribute('aria-disabled', 'true')
   })
 })

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api'
+import { RubberSegment } from '../components/RubberSegment'
 import { Badge, Button, Select, SpotlightCard, cn } from '../components/ui'
 import {
   ArrowRightIcon,
@@ -44,6 +45,7 @@ export function Playground({
   )
   const [input, setInput] = useState(sample)
   const [output, setOutput] = useState('')
+  const [viewMode, setViewMode] = useState<'result' | 'compare'>('result')
   const [runCount, setRunCount] = useState(0)
   const [duration, setDuration] = useState(0)
   const [running, setRunning] = useState(false)
@@ -189,11 +191,45 @@ export function Playground({
           <section className="editor-pane result-pane">
             <div className="pane-heading">
               <span>Transformed output</span>
-              {output ? <Badge tone="success"><CheckMarkIcon size={12} strokeWidth={1.85} aria-hidden="true" /> Ready</Badge> : <Badge>Idle</Badge>}
+              <div className="pane-heading-controls">
+                <RubberSegment
+                  aria-label="Output view mode"
+                  value={viewMode}
+                  onChange={(val) => setViewMode(val as 'result' | 'compare')}
+                  items={[
+                    { value: 'result', label: 'Result' },
+                    { value: 'compare', label: 'Compare' },
+                  ]}
+                  trackColor="rgba(5, 5, 10, 0.48)"
+                  thumbColor="var(--accent)"
+                  textColor="var(--text-soft)"
+                  activeTextColor="#110d18"
+                  size="sm"
+                  radius={8}
+                  inset={2}
+                  equalSlots
+                  stretch={100}
+                  squash={3}
+                />
+                {output ? <Badge tone="success"><CheckMarkIcon size={12} strokeWidth={1.85} aria-hidden="true" /> Ready</Badge> : <Badge>Idle</Badge>}
+              </div>
             </div>
             <div className="result-output" aria-live="polite">
               {output ? (
-                <div key={runCount} className="result-text-reveal">{output}</div>
+                viewMode === 'compare' ? (
+                  <div key={`${runCount}-compare`} className="result-text-reveal result-compare-stack">
+                    <div className="result-compare-block result-compare-before">
+                      <span className="result-compare-tag">Source · {input.length} chars</span>
+                      <p>{input}</p>
+                    </div>
+                    <div className="result-compare-block result-compare-after">
+                      <span className="result-compare-tag">Replaced · {output.length} chars</span>
+                      <p>{output}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div key={runCount} className="result-text-reveal">{output}</div>
+                )
               ) : (
                 <div className="result-placeholder">
                   <SparkleIcon size={24} strokeWidth={1.85} aria-hidden="true" />

@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react'
 import { api } from '../api'
 import { GlideSelect } from '../components/GlideSelect'
 import { JellyRadio } from '../components/JellyRadio'
+import { RubberSegment } from '../components/RubberSegment'
 import { SwipeRow, type SwipeAction } from '../components/SwipeRow'
-import { Badge, Button, Field, Modal, Select, SpotlightCard, Switch } from '../components/ui'
+import { Badge, Button, Field, Modal, SpotlightCard, Switch } from '../components/ui'
 import {
   EditPenIcon,
   PlayActionIcon,
@@ -296,18 +297,30 @@ export function CommandsScreen({
                 />
               </div>
             </Field>
-            <Field label="Command type">
-              <Select<CommandType>
-                label="Command type"
+            <div className="field">
+              <span className="field-label">Command type</span>
+              <RubberSegment
+                aria-label="Command type"
+                className="command-type-rubber"
                 value={editing.type}
-                options={[
-                  { value: 'ai', label: 'AI transformation', detail: 'Send text to your active provider prompt' },
-                  { value: 'replacer-text', label: 'Text replacement', detail: 'Insert fixed text offline without AI' },
-                  { value: 'style', label: 'Local style', detail: 'Transform letters with an offline Unicode style' },
+                onChange={(nextType) => setEditing({ ...editing, type: nextType as CommandType })}
+                trackColor="rgba(5, 5, 8, 0.55)"
+                thumbColor="var(--accent)"
+                textColor="var(--text-soft)"
+                activeTextColor="#110d18"
+                size="md"
+                radius={10}
+                inset={3}
+                equalSlots
+                stretch={100}
+                squash={3}
+                items={[
+                  { value: 'ai', label: 'AI prompt', icon: <ProvidersIcon size={14} strokeWidth={1.9} aria-hidden="true" /> },
+                  { value: 'replacer-text', label: 'Text snippet', icon: <TypeGlyphIcon size={14} strokeWidth={1.9} aria-hidden="true" /> },
+                  { value: 'style', label: 'Local style', icon: <SparkleIcon size={14} strokeWidth={1.9} aria-hidden="true" /> },
                 ]}
-                onChange={(nextType) => setEditing({ ...editing, type: nextType })}
               />
-            </Field>
+            </div>
             {editing.type === 'ai' ? (
               <Field label="Transformation instruction" hint="The selected text is fenced separately to reduce prompt injection risk.">
                 <textarea rows={5} value={editing.prompt} onChange={(event) => setEditing({ ...editing, prompt: event.target.value })} placeholder="Describe how the text should be transformed…" />
