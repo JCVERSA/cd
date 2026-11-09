@@ -7,24 +7,24 @@ https://github.com/JCVERSA/swiftslate/tree/main/desktop
 import collections
 import ctypes
 import ctypes.wintypes as wt
+import http.client
 import json
 import math
 import os
 import re
-# Required for the isolated UI child and explicit current-user local commands.
-import subprocess  # nosec B404
+import secrets
+import shutil
+import subprocess  # nosec B404 - Required for the isolated UI child and explicit current-user local commands.
 import sys
 import tempfile
-import shutil
 import threading
 import time
-import http.client
-import urllib.request
 import urllib.error
 import urllib.parse
+import urllib.request
 
+from provider_catalog import PROVIDERS, ProviderError, join_endpoint, validate_endpoint
 from secure_config import SecureConfigError, read_config, write_config
-from provider_catalog import PROVIDERS, ProviderError, validate_endpoint
 from text_styles import DEFINITIONS, style_for_command, transform
 
 # --- Win32 constants ---
@@ -793,28 +793,31 @@ def load_config():
 
     log(f"Config loaded: model={model}, prefix={prefix}, keys={len(api_keys)}, key_delay={key_delay_ms}ms")
     log(f"Commands loaded: {len(commands)}")
+    _sync_watched_mtimes()
     return True
 
 # --- Hot reload: watch config files for changes ---
 _config_mtime = 0
 _commands_mtime = 0
 
+def _sync_watched_mtimes():
+    """Record current config/commands mtimes so in-process saves do not re-trigger hot reload."""
+    global _config_mtime, _commands_mtime
+    try:
+        _config_mtime = os.path.getmtime(os.path.join(data_dir, "config.json"))
+    except OSError:
+        pass
+    try:
+        _commands_mtime = os.path.getmtime(os.path.join(data_dir, "commands.json"))
+    except OSError:
+        pass
+
 def _start_file_watcher():
     """Background thread that reloads config/commands when files change."""
-    global _config_mtime, _commands_mtime
-
     config_path = os.path.join(data_dir, "config.json")
     commands_path = os.path.join(data_dir, "commands.json")
 
-    # Store initial mtimes
-    try:
-        _config_mtime = os.path.getmtime(config_path)
-    except OSError:
-        pass
-    try:
-        _commands_mtime = os.path.getmtime(commands_path)
-    except OSError:
-        pass
+    _sync_watched_mtimes()
 
     def watcher():
         global _config_mtime, _commands_mtime
@@ -915,10 +918,15 @@ def _is_key_invalid(key):
     return True
 
 def _redact_secrets(text):
-    """Strip anything shaped like an API key from provider text before showing it.
+    """Strip anything shaped like an API key or Bearer token from provider text before showing it.
     Some OpenAI-compatible endpoints echo the key back ("Incorrect API key provided: sk-...")
     and provider text is surfaced in tray balloons."""
-    return re.sub(r"(?:sk-|gsk_|AIza|xai-|sk-ant-)[A-Za-z0-9_\-]{6,}", "***", text or "")
+    redacted = re.sub(
+        r"(?:sk-|gsk_|AIza|xai-|sk-ant-|hf_|nvapi-|csk-)[A-Za-z0-9_.\-]{6,}",
+        "***",
+        text or "",
+    )
+    return re.sub(r"(?i)\b(Bearer\s+)[A-Za-z0-9_.\-]{8,}", r"\1***", redacted)
 
 MAX_RESPONSE_BYTES = 1_048_576
 
@@ -988,20 +996,6 @@ def classify_error(e, http_code=None):
     return ERR_OTHER
 
 # --- API call with retry ---
-def _check_network():
-    """Quick network connectivity check — raw TCP connect to known HTTPS servers.
-    No DNS resolution, no TLS handshake, no HTTP — just checks if we can reach the internet.
-    Returns in <3s worst case."""
-    import socket
-    for host in ("1.1.1.1", "8.8.8.8"):
-        try:
-            sock = socket.create_connection((host, 443), timeout=1.5)
-            sock.close()
-            return True
-        except (TimeoutError, OSError):
-            continue
-    return False
-
 def is_model_refusal(text: str) -> bool:
     """Detects whether an LLM output string is an in-band safety refusal
     (e.g. "I'm sorry, but I can't help with that") rather than a valid
@@ -1170,22 +1164,14 @@ def call_api(text, prompt):
                 if provider in PROVIDERS and PROVIDERS[provider].local:
                     failure_reason = f"{PROVIDERS[provider].name} is not reachable on this computer."
                     break
-                # Network failed — check if internet is even reachable. Distinguishing "no
-                # internet at all" from "provider unreachable but internet is fine" avoids
-                # burning through every configured key on a dead connection and gives a
-                # much clearer error than "provider unreachable" repeated per key.
-                log("Network error — checking connectivity...")
-                if not _check_network():
-                    log("No internet — aborting retries")
-                    failure_reason = "No internet connection."
-                    break
-                # Network is fine — problem is provider-side, try next key
-                log("Network OK — retrying with next key")
-                # README-documented behavior: wait 1s before retrying — transient blips
-                # (DNS hiccups, Wi-Fi roam) usually clear within a second, and the pause
-                # avoids hammering the provider with an immediate re-request.
-                time.sleep(1)
                 failure_reason = f"Provider unreachable ({type(e).__name__})."
+                if attempt + 1 >= max_attempts:
+                    break
+                # Wait 1s before retrying with the next configured key — transient blips
+                # (DNS hiccups, Wi-Fi roam) usually clear within a second, without probing
+                # third-party DNS servers that corporate firewalls or proxies may block.
+                log("Network error — waiting 1s before retrying with next key")
+                time.sleep(1)
                 continue
             else:
                 failure_reason = f"Network error: {type(e).__name__}."
@@ -1209,13 +1195,14 @@ def call_api(text, prompt):
 
 class _SecureRedirectHandler(urllib.request.HTTPRedirectHandler):
     """Refuse redirects that would send the API key over plaintext HTTP or to a
-    different host. Providers don't redirect API POSTs, so this is a hard safety
-    net: a compromised/redirecting endpoint can't leak the key in cleartext."""
+    different host. Loopback HTTP servers may redirect to the exact same origin."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         old = urllib.parse.urlparse(req.full_url)
         new = urllib.parse.urlparse(newurl)
-        if new.scheme != "https" or new.netloc != old.netloc:
+        is_local = (old.hostname or "").strip("[]").lower() in ("127.0.0.1", "localhost", "::1")
+        scheme_ok = new.scheme == "https" or (is_local and new.scheme == old.scheme)
+        if not scheme_ok or new.netloc != old.netloc:
             return None
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -1226,7 +1213,8 @@ def _call_gemini(text, system_content, key):
     """Call Google Gemini API (generateContent endpoint). Raises on HTTP errors.
     Mirrors Android's GeminiClient: <input> fencing, thinkingConfig, safetySettings."""
     safe_model = urllib.parse.quote(model, safe="")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{safe_model}:generateContent"
+    base_endpoint = custom_endpoint or PROVIDERS["gemini"].chat_endpoint
+    url = join_endpoint(base_endpoint, f"/v1beta/models/{safe_model}:generateContent")
 
     # Build generation config with spec-driven thinking level (mirrors Android)
     gen_config = {"temperature": temperature}
@@ -1304,7 +1292,7 @@ def _call_gemini(text, system_content, key):
 def _call_openai_compatible(text, system_content, key, endpoint):
     """Call OpenAI-compatible API (Groq, custom endpoints). Raises on HTTP errors.
     Mirrors Android's OpenAICompatibleClient: <input> fencing, per-model reasoning params."""
-    url = f"{endpoint.rstrip('/')}/chat/completions"
+    url = join_endpoint(endpoint, "/chat/completions")
 
     request_body = {
         "model": model,
@@ -1763,9 +1751,11 @@ def do_transform(trigger_name, prompt):
         # Async API call
         result_holder = [None]
         error_holder = [None]
+        duration_holder = [0]
         done_event = threading.Event()
 
         def api_thread():
+            call_started = time.perf_counter()
             try:
                 result_holder[0], error_holder[0] = call_api(input_text, prompt)
             except Exception as e:
@@ -1774,6 +1764,7 @@ def do_transform(trigger_name, prompt):
                 log(f"API thread crashed: {e}")
                 error_holder[0] = f"Transform failed: {type(e).__name__}."
             finally:
+                duration_holder[0] = round((time.perf_counter() - call_started) * 1000)
                 done_event.set()
 
         threading.Thread(target=api_thread, daemon=True).start()
@@ -1895,6 +1886,8 @@ def do_transform(trigger_name, prompt):
             # hasn't resumed typing while we waited.
             result = result_holder[0]
             error_reason = error_holder[0]
+            if result:
+                _record_command_telemetry(trigger_name, duration_holder[0], local=False)
             if abort_event.is_set():
                 # User resumed typing during the wait — never overwrite their input.
                 log("Timed-out transform: user resumed typing, result to clipboard")
@@ -1935,6 +1928,7 @@ def do_transform(trigger_name, prompt):
             done_event.wait()
             result = result_holder[0]
             if result:
+                _record_command_telemetry(trigger_name, duration_holder[0], local=False)
                 # Don't claim the clipboard holds the result unless the write succeeded.
                 if set_clipboard_silent(result):
                     log("Result placed on clipboard (user was typing)")
@@ -1951,6 +1945,7 @@ def do_transform(trigger_name, prompt):
             # Small delay to ensure last spinner paste settled
             time.sleep(0.05)
             if result:
+                _record_command_telemetry(trigger_name, duration_holder[0], local=False)
                 if not _retry_paste(result):
                     # Paste failed — put result on clipboard so user can paste manually
                     if set_clipboard_silent(result):
@@ -1966,6 +1961,8 @@ def do_transform(trigger_name, prompt):
                 _retry_paste(input_text)
                 _notify_debounced(error_reason or "Transform failed.", NIIF_ERROR)
         else:
+            if result:
+                _record_command_telemetry(trigger_name, duration_holder[0], local=False)
             # Window not focused - put result on clipboard for manual paste
             clip_ok = set_clipboard_silent(result if result else input_text)
             log(f"Result on clipboard (window not focused), ok={clip_ok}")
@@ -2047,15 +2044,19 @@ def apply_style_to_selection(style_name, target_hwnd):
             _notify_debounced("No text selection was captured.", NIIF_WARNING)
             return
 
+        style_started = time.perf_counter()
         styled = transform(style, selected)
+        style_ms = round((time.perf_counter() - style_started) * 1000)
         if not set_clipboard_silent(styled):
             _notify_debounced("Could not prepare the styled text.", NIIF_ERROR)
             return
         time.sleep(key_delay)
         if user32.GetForegroundWindow() != target_hwnd:
+            _record_command_telemetry(style_name, style_ms, local=True)
             _notify_debounced("The selected app lost focus. The result is on the clipboard.", NIIF_WARNING)
             return
         send_keys("^v")
+        _record_command_telemetry(style_name, style_ms, local=True)
         _notify_debounced(f"Applied {style_name} style.", NIIF_INFO)
         time.sleep(0.2)
     except Exception as exc:
@@ -2280,6 +2281,7 @@ def do_replacer(trigger_name, cmd_type, value):
 
         replacement = ""
         shell_error = None
+        replacer_started = time.perf_counter()
         if cmd_type == "replacer-text":
             replacement = value
         elif cmd_type == "style":
@@ -2354,6 +2356,8 @@ def do_replacer(trigger_name, cmd_type, value):
                 shell_error = _redact_secrets(str(e))[:120]
 
         if replacement:
+            replacer_ms = round((time.perf_counter() - replacer_started) * 1000)
+            _record_command_telemetry(trigger_name, replacer_ms, local=True)
             if abort_event.is_set():
                 log("Replacer: user typed during execution; preserving field and copying result")
                 if set_clipboard_silent(replacement):
@@ -2568,13 +2572,58 @@ _dashboard_server = None
 _dashboard_thread = None
 _dashboard_backend = None
 _ui_process = None
+_telemetry_lock = threading.Lock()
+_telemetry_day = ""
+_requests_today = 0
+_last_command_name = None
+_last_command_at = None
+_live_activity = collections.deque(maxlen=50)
+_live_command_uses = collections.Counter()
+
+
+def _record_command_telemetry(trigger_name, duration_ms=0, *, local=False):
+    global _telemetry_day, _requests_today, _last_command_name, _last_command_at
+    today = time.strftime("%Y-%m-%d")
+    timestamp = time.strftime("%H:%M:%S")
+    base_trigger = trigger_name.split(":", 1)[0] if trigger_name.startswith("translate:") else trigger_name
+    provider_label = "Local" if local else (PROVIDERS[provider].name if provider in PROVIDERS else provider)
+    entry = {
+        "id": secrets.token_hex(8),
+        "command": f"{prefix}{trigger_name}",
+        "provider": provider_label,
+        "durationMs": max(1, int(duration_ms)),
+        "time": timestamp,
+        "status": "success",
+        "seq": time.monotonic_ns(),
+    }
+    with _telemetry_lock:
+        if _telemetry_day != today:
+            _telemetry_day = today
+            _requests_today = 0
+        _requests_today += 1
+        _last_command_name = f"{prefix}{trigger_name}"
+        _last_command_at = timestamp
+        _live_activity.append(entry)
+        _live_command_uses[base_trigger] += 1
 
 
 def _dashboard_runtime_state():
+    today = time.strftime("%Y-%m-%d")
+    with _telemetry_lock:
+        count = _requests_today if _telemetry_day == today else 0
+        last_cmd = _last_command_name
+        last_at = _last_command_at
+        activity = list(_live_activity)
+        uses = dict(_live_command_uses)
     return {
         "paused": paused,
         "model": model,
         "prefix": prefix,
+        "requests_today": count,
+        "last_command": last_cmd,
+        "last_command_at": last_at,
+        "activity": activity,
+        "command_uses": uses,
     }
 
 

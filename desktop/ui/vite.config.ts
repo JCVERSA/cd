@@ -14,6 +14,10 @@ export default defineConfig({
         entryFileNames: 'assets/app-[hash].js',
         chunkFileNames: 'assets/chunk-[hash].js',
         assetFileNames: 'assets/[name]-[hash][extname]',
+        manualChunks(id) {
+          if (id.includes('node_modules/vgpu')) return 'vgpu'
+          if (id.includes('node_modules/motion') || id.includes('node_modules/framer-motion')) return 'motion'
+        },
       },
     },
   },

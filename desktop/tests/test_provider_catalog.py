@@ -131,6 +131,33 @@ class ProviderCatalogTests(unittest.TestCase):
                 self.assertTrue(probe["ok"])
                 self.assertTrue(test_opener.request.full_url.endswith("/v1/chat/completions"))
 
+    def test_validate_endpoint_blocks_disallowed_ip_literals_and_normalizes_chat_path(self):
+        from provider_catalog import join_endpoint
+
+        for bad in (
+            "https://0.0.0.0:8443/v1",
+            "https://[::]:8443/v1",
+            "https://169.254.169.254/latest/meta-data",
+            "https://[fe80::1]:8443/v1",
+            "https://224.0.0.1/v1",
+            "https://240.0.0.1/v1",
+        ):
+            with self.subTest(endpoint=bad), self.assertRaises(ProviderError):
+                validate_endpoint(bad)
+
+        self.assertEqual(
+            validate_endpoint("https://192.168.1.25:8443/v1/chat/completions"),
+            "https://192.168.1.25:8443/v1",
+        )
+        self.assertEqual(
+            join_endpoint("https://proxy.example.com/v1/chat/completions", "/chat/completions"),
+            "https://proxy.example.com/v1/chat/completions",
+        )
+        self.assertEqual(
+            validate_endpoint("http://[::1]:11434/v1", local_only=True),
+            "http://[::1]:11434/v1",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

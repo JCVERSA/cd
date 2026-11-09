@@ -25,6 +25,7 @@ try {
     }
     & npm run build
     if ($LASTEXITCODE -ne 0) { throw 'Frontend build failed.' }
+}
 finally {
     Pop-Location
 }

@@ -27,12 +27,19 @@ export function Playground({
   initialTrigger?: string
   notify: (message: string, tone?: 'success' | 'danger') => void
 }) {
-  const available = useMemo(() => commands.filter((command) => command.type === 'ai' || command.type === 'style'), [commands])
+  const available = useMemo(
+    () =>
+      commands.filter(
+        (command) =>
+          command.type === 'ai' || command.type === 'style' || command.type === 'replacer-text',
+      ),
+    [commands],
+  )
   const commandOptions = useMemo(
     () => available.map((command) => ({
       value: command.trigger,
       label: `${prefix}${command.trigger}`,
-      detail: command.prompt,
+      detail: command.prompt || (command.type === 'style' ? `Local Unicode style (${command.value || command.trigger})` : 'Offline text replacement'),
       mono: true,
     })),
     [available, prefix],
@@ -54,8 +61,10 @@ export function Playground({
   useEffect(() => {
     if (initialTrigger && available.some((item) => item.trigger === initialTrigger)) {
       setSelected(initialTrigger)
+    } else if (!available.some((item) => item.trigger === selected) && available[0]) {
+      setSelected(available[0].trigger)
     }
-  }, [available, initialTrigger])
+  }, [available, initialTrigger, selected])
 
   const wordCount = useMemo(() => {
     const trimmed = input.trim()

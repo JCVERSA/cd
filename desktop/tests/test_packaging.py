@@ -200,6 +200,37 @@ class DesktopPackagingTest(unittest.TestCase):
         }
         self.assertEqual(defaults.get("prefix"), ".")
 
+    def test_powershell_scripts_have_balanced_blocks_and_valid_try_finally(self):
+        for name in ("build_windows.ps1", "configure.ps1", "install.ps1"):
+            text = (ROOT / name).read_text(encoding="utf-8")
+            stripped_lines = [
+                line.split("#", 1)[0]
+                for line in text.splitlines()
+                if not line.lstrip().startswith("#")
+            ]
+            joined = "\n".join(stripped_lines)
+            depth = 0
+            for ch in joined:
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    self.assertGreaterEqual(depth, 0, f"Unmatched '}}' in {name}")
+            self.assertEqual(depth, 0, f"Unbalanced '{{' in {name}")
+            if "finally" in joined:
+                self.assertRegex(joined, r"\}\s*finally\s*\{", f"Missing closing '}}' before finally in {name}")
+
+    def test_privacy_and_repo_hygiene_invariants(self):
+        source = (ROOT / "SwiftSlate.pyw").read_text(encoding="utf-8")
+        self.assertNotIn("1.1.1.1", source)
+        self.assertNotIn("8.8.8.8", source)
+        self.assertNotIn("_check_network", source)
+        host = (ROOT / "ui_host.py").read_text(encoding="utf-8")
+        self.assertIn('background_color="#08080c"', host)
+        repo_root = ROOT.parent
+        for legacy_path in ("Cargo.toml", "Cargo.lock", "rustfmt.toml", "src", "docs"):
+            self.assertFalse((repo_root / legacy_path).exists(), f"Orphaned prototype path still present: {legacy_path}")
+
 
 if __name__ == "__main__":
     unittest.main()

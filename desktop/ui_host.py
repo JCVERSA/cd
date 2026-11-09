@@ -44,7 +44,7 @@ def main() -> int:
             min_size=(920, 640),
             resizable=True,
             text_select=True,
-            background_color="#0d0e12",
+            background_color="#08080c",
         )
         # Closing the child window already leaves the parent tray engine alive.
         # Treat Minimize the same way: remove the host from the taskbar and let a

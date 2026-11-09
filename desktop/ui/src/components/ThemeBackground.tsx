@@ -1,11 +1,12 @@
-import { useCallback, useRef } from 'react'
+import { Suspense, lazy, useCallback, useRef } from 'react'
 import type { ThemeId } from '../types'
-import AeroShards from './AeroShards'
-import Ballpit from './Ballpit'
-import LightPillar from './LightPillar'
-import Lightfall from './Lightfall'
-import Radar from './Radar'
 import './ThemeBackground.css'
+
+const AeroShards = lazy(() => import('./AeroShards'))
+const Ballpit = lazy(() => import('./Ballpit'))
+const LightPillar = lazy(() => import('./LightPillar'))
+const Lightfall = lazy(() => import('./Lightfall'))
+const Radar = lazy(() => import('./Radar'))
 
 export interface ThemeBackgroundMeta {
   id: string
@@ -59,7 +60,8 @@ export function ThemeBackground({ theme, reducedMotion = false }: ThemeBackgroun
       aria-hidden="true"
     >
       <div className="ambient" />
-      {theme === 'lavender' ? (
+      <Suspense key={theme} fallback={null}>
+        {theme === 'lavender' ? (
         <div className="theme-background-layer">
           <AeroShards
             shardColor="#8b6cc8"
@@ -185,6 +187,7 @@ export function ThemeBackground({ theme, reducedMotion = false }: ThemeBackgroun
           />
         </div>
       ) : null}
+      </Suspense>
       <div className="theme-background-scrim" />
     </div>
   )

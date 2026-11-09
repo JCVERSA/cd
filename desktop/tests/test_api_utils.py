@@ -99,6 +99,10 @@ class ApiUtilsTest(unittest.TestCase):
     def test_redact_secrets_leaves_ordinary_messages_intact(self):
         redact = HELPERS["_redact_secrets"]
         self.assertEqual("Model not found.", redact("Model not found."))
+        self.assertEqual("bad key ***", redact("bad key hf_AbCdEfGh123456"))
+        self.assertEqual("bad key ***", redact("bad key nvapi-AbCdEfGh123456"))
+        self.assertEqual("bad key ***", redact("bad key csk-AbCdEfGh123456"))
+        self.assertEqual("Header Bearer ***", redact("Header Bearer secretTokenValue99"))
 
     def test_wrap_user_text_fences_input_for_both_providers(self):
         wrap = HELPERS["wrap_user_text"]

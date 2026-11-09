@@ -216,6 +216,74 @@ class DashboardServerTests(unittest.TestCase):
         self.assertEqual(content_type, "image/svg+xml")
         self.assertIn(b"<svg", body)
 
+    def test_style_validation_and_playground_command_guards(self):
+        bad_style = {
+            "id": "fancy", "trigger": "fancy", "type": "style",
+            "prompt": "", "value": "not-a-real-style", "enabled": True,
+        }
+        status_bad, payload_bad, _ = self.request("PUT", "/api/v1/commands/fancy", bad_style)
+        self.assertEqual(status_bad, 400)
+        self.assertIn("style", payload_bad["error"].lower())
+
+        good_style = {
+            "id": "fancy", "trigger": "fancy", "type": "style",
+            "prompt": "", "value": "gothic", "enabled": False,
+        }
+        status_good, _, _ = self.request("PUT", "/api/v1/commands/fancy", good_style)
+        self.assertEqual(status_good, 200)
+
+        status_preview, payload_preview, _ = self.request(
+            "POST", "/api/v1/playground", {"command": "fancy", "input": "Hi"}
+        )
+        self.assertEqual(status_preview, 200)
+        self.assertTrue(payload_preview["local"])
+        self.assertNotEqual(payload_preview["output"], "Hi")
+
+        status_system, payload_system, _ = self.request(
+            "POST", "/api/v1/playground", {"command": "date", "input": "Hello"}
+        )
+        self.assertEqual(status_system, 400)
+        self.assertIn("system", payload_system["error"].lower())
+
+    def test_live_runtime_telemetry_merges_without_double_counting_uses(self):
+        live_state = {
+            "paused": False,
+            "requests_today": 3,
+            "last_command": ".fix",
+            "last_command_at": "12:00:01",
+            "activity": [
+                {
+                    "id": "live1",
+                    "command": ".fix",
+                    "provider": "Google Gemini",
+                    "durationMs": 120,
+                    "time": "12:00:01",
+                    "status": "success",
+                    "seq": 10,
+                }
+            ],
+            "command_uses": {"fix": 3},
+        }
+        self.backend._runtime_state = lambda: live_state
+        status_snap, snap, _ = self.request("GET", "/api/v1/snapshot")
+        self.assertEqual(status_snap, 200)
+        self.assertEqual(snap["runtime"]["requestsToday"], 3)
+        self.assertEqual(snap["runtime"]["lastCommand"], ".fix")
+        self.assertEqual(snap["activity"][0]["id"], "live1")
+        self.assertNotIn("seq", snap["activity"][0])
+        fix_cmd = next(item for item in snap["commands"] if item["trigger"] == "fix")
+        self.assertEqual(fix_cmd["uses"], 3)
+
+        updated_fix = dict(fix_cmd, prompt="Refine clearly.")
+        status_save, saved_fix, _ = self.request("PUT", "/api/v1/commands/fix", updated_fix)
+        self.assertEqual(status_save, 200)
+        self.assertEqual(saved_fix["uses"], 3)
+
+        _, snap_after, _ = self.request("GET", "/api/v1/snapshot")
+        fix_after = next(item for item in snap_after["commands"] if item["trigger"] == "fix")
+        self.assertEqual(fix_after["uses"], 3)
+        self.assertEqual(self.backend.activity.maxlen, 100)
+
 
 if __name__ == "__main__":
     unittest.main()

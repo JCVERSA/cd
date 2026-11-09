@@ -1,11 +1,12 @@
 import { MotionConfig, useReducedMotion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { api } from './api'
 import { BrandLogo } from './components/BrandLogo'
 import { LiquidGlass } from './components/LiquidGlass'
-import { Onboarding } from './components/Onboarding'
 import { ProviderLogo, getProviderTileClass } from './components/ProviderLogo'
+
+const Onboarding = lazy(() => import('./components/Onboarding').then((mod) => ({ default: mod.Onboarding })))
 import { Sidebar } from './components/Sidebar'
 import { ThemeBackground } from './components/ThemeBackground'
 import { Topbar } from './components/Topbar'
@@ -487,7 +488,11 @@ export default function App() {
           </div>
         </Modal>
 
-        {snapshot ? <Onboarding open={snapshot.runtime.firstRun || new URLSearchParams(window.location.search).has('onboarding')} providers={snapshot.providers} onComplete={completeOnboarding} /> : null}
+        {snapshot && (snapshot.runtime.firstRun || new URLSearchParams(window.location.search).has('onboarding')) ? (
+          <Suspense fallback={null}>
+            <Onboarding open providers={snapshot.providers} onComplete={completeOnboarding} />
+          </Suspense>
+        ) : null}
         <Toasts items={toasts} />
       </div>
     </MotionConfig>

@@ -8,13 +8,13 @@ Type inline commands such as `.fix`, `.shorten`, or `.bold` at the end of text i
 
 The Windows build includes:
 
-- the existing low-overhead Win32 tray and inline-command engine;
-- a Nebula-inspired settings dashboard hosted on demand with Edge WebView2;
-- provider/model/key management for OpenAI, Gemini, Groq, OpenRouter, Mistral, DeepSeek, NVIDIA NIM, Ollama, LM Studio, and custom endpoints;
-- command CRUD, local style previews, playground, startup settings, and diagnostics;
+- a low-overhead Win32 tray and system-wide inline-command engine (`SwiftSlate.pyw`);
+- a Nebula-inspired settings dashboard hosted on demand in an isolated Edge WebView2 child process (`ui_host.py`);
+- provider/model/key management with model fetching and live connection testing across 16 providers: OpenAI, Google Gemini, Groq, Cerebras, SambaNova, OpenRouter, Cohere, Hugging Face, Mistral, DeepSeek, NVIDIA NIM, xAI (Grok), Alibaba Qwen, Ollama, LM Studio, and Custom OpenAI-compatible endpoints;
+- command CRUD, offline Unicode text styles, interactive Playground, startup settings, live activity telemetry, and runtime diagnostics;
 - first-run onboarding and safe defaults when no configuration exists;
-- current-user DPAPI protection for provider keys;
-- PyInstaller one-directory packaging and a normal per-user Inno Setup installer.
+- current-user Windows DPAPI (`CryptProtectData`) encryption for provider keys;
+- PyInstaller one-directory packaging and a per-user Inno Setup installer.
 
 The distributed files are **`SwiftSlate-Setup-x64.exe`** and the installed **`SwiftSlate.exe`**. Python and all static interface assets are bundled. Node.js and Electron are not installed or shipped.
 
@@ -41,7 +41,7 @@ On Windows x64 with Python 3.13, Node.js 22, and Inno Setup:
 powershell -ExecutionPolicy Bypass -File .\desktop\build_windows.ps1
 ```
 
-GitHub Actions runs the cross-platform test suite and builds, installs, smoke-tests, uninstalls, hashes, and uploads the Windows installer. Linux application work follows the Windows-first delivery.
+GitHub Actions runs the cross-platform test suite, PowerShell script validation, and builds, installs, smoke-tests, uninstalls, hashes, and uploads the Windows x64 installer. Linux application work follows the Windows-first delivery.
 
 ## License
 

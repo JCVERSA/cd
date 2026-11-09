@@ -7,6 +7,8 @@ and serves a fixed, bundled asset directory.  Provider keys never appear in resp
 
 from __future__ import annotations
 
+import collections
+from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -18,7 +20,6 @@ import secrets
 import tempfile
 import threading
 import time
-from typing import Callable
 import urllib.parse
 import webbrowser
 
@@ -32,7 +33,7 @@ from provider_catalog import (
     validate_endpoint,
 )
 from secure_config import SecureConfigError, read_config, write_config
-from text_styles import transform
+from text_styles import STYLE_BY_COMMAND, transform
 
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_COMMANDS = 100
@@ -113,16 +114,22 @@ class DashboardBackend:
         self.data_dir = os.path.abspath(data_dir)
         self.config_path = os.path.join(self.data_dir, "config.json")
         self.commands_path = os.path.join(self.data_dir, "commands.json")
-        self._runtime_state = runtime_state or (lambda: {})
+        self._runtime_state = runtime_state or dict
         self._set_paused = set_paused or (lambda _paused: None)
         self._reload_runtime = reload_runtime or (lambda: True)
         self._apply_startup = apply_startup or (lambda _enabled: None)
         self._run_ai = run_ai
         self._diagnostics = diagnostics
-        self._log_records = logs or (lambda: [])
+        self._log_records = logs or list
         self._open_url = open_url or (lambda url: webbrowser.open(url, new=2))
         self.started_at = time.monotonic()
-        self.activity: list[dict] = []
+        self.activity: collections.deque[dict] = collections.deque(maxlen=100)
+        self._playground_day = ""
+        self._playground_today = 0
+        self._playground_uses: collections.Counter[str] = collections.Counter()
+        self._last_playground_command: str | None = None
+        self._last_playground_at: str | None = None
+        self._last_playground_seq: int = 0
         self._lock = threading.RLock()
         self.paused = False
 
@@ -148,7 +155,7 @@ class DashboardBackend:
             except (OSError, ValueError):
                 records = []
         result = []
-        for index, item in enumerate(records[:MAX_COMMANDS]):
+        for item in records[:MAX_COMMANDS]:
             if not isinstance(item, dict) or not isinstance(item.get("trigger"), str):
                 continue
             trigger = item["trigger"]
@@ -187,8 +194,8 @@ class DashboardBackend:
             {"id": "startup", "label": "Start at login", "detail": "Startup preference is available.", "status": "pass"},
         ]
 
-    def _runtime(self, config: dict, commands: list[dict]) -> dict:
-        state = self._runtime_state()
+    def _runtime(self, config: dict, commands: list[dict], state: dict | None = None) -> dict:
+        state = state if state is not None else self._runtime_state()
         active_provider = config.get("provider", "gemini")
         provider_settings = config.get("providers") if isinstance(config.get("providers"), dict) else {}
         selected = provider_settings.get(active_provider) if isinstance(provider_settings.get(active_provider), dict) else {}
@@ -197,6 +204,17 @@ class DashboardBackend:
             key_count = 1
         else:
             key_count = len(keys)
+        today = time.strftime("%Y-%m-%d")
+        playground_today = self._playground_today if self._playground_day == today else 0
+        live_requests = int(state.get("requests_today", 0))
+        live_activity = state.get("activity") if isinstance(state.get("activity"), list) else []
+        latest_live_seq = int(live_activity[-1].get("seq", 0)) if live_activity and isinstance(live_activity[-1], dict) else 0
+        if self._last_playground_seq > latest_live_seq and self._last_playground_command:
+            last_command = self._last_playground_command
+            last_command_at = self._last_playground_at
+        else:
+            last_command = state.get("last_command") or self._last_playground_command
+            last_command_at = state.get("last_command_at") or self._last_playground_at
         return {
             "running": True,
             "paused": bool(state.get("paused", self.paused)),
@@ -207,9 +225,9 @@ class DashboardBackend:
             "localStyleCount": sum(1 for item in commands if item["type"] == "style"),
             "protectedKeyCount": key_count,
             "uptimeSeconds": int(time.monotonic() - self.started_at),
-            "requestsToday": int(state.get("requests_today", len(self.activity))),
-            "lastCommand": state.get("last_command"),
-            "lastCommandAt": state.get("last_command_at"),
+            "requestsToday": live_requests + playground_today,
+            "lastCommand": last_command,
+            "lastCommandAt": last_command_at,
             "firstRun": bool(config.get("first_run", False)),
             "launchAtStartup": bool(config.get("launch_at_startup", True)),
             "spinner": config.get("spinner", "animated"),
@@ -218,15 +236,33 @@ class DashboardBackend:
             "reducedMotion": bool(config.get("reduced_motion", False)),
         }
 
+    def _merged_activity(self, state: dict) -> list[dict]:
+        live_items = state.get("activity") if isinstance(state.get("activity"), list) else []
+        combined = [item for item in (*live_items, *self.activity) if isinstance(item, dict)]
+        combined.sort(key=lambda item: int(item.get("seq", 0)), reverse=True)
+        return [
+            {key: value for key, value in item.items() if key != "seq"}
+            for item in combined[:20]
+        ]
+
     def snapshot(self) -> dict:
         with self._lock:
+            state = self._runtime_state()
             config = self._config()
             commands = self._command_records()
+            live_uses = state.get("command_uses") if isinstance(state.get("command_uses"), dict) else {}
+            merged_commands = []
+            for item in commands:
+                trigger = item["trigger"]
+                extra_uses = int(live_uses.get(trigger, 0)) + int(self._playground_uses.get(trigger, 0))
+                merged = dict(item)
+                merged["uses"] = int(item.get("uses", 0)) + extra_uses
+                merged_commands.append(merged)
             return {
-                "runtime": self._runtime(config, commands),
+                "runtime": self._runtime(config, merged_commands, state),
                 "providers": public_provider_records(config),
-                "commands": commands,
-                "activity": list(self.activity[-20:][::-1]),
+                "commands": merged_commands,
+                "activity": self._merged_activity(state),
                 "diagnostics": self._diagnostic_records(),
                 "logs": self.logs(),
             }
@@ -235,10 +271,11 @@ class DashboardBackend:
         paused = payload.get("paused")
         if not isinstance(paused, bool):
             raise DashboardError("paused must be true or false.")
-        self._set_paused(paused)
-        self.paused = paused
-        snapshot = self.snapshot()
-        return snapshot["runtime"]
+        with self._lock:
+            self._set_paused(paused)
+            self.paused = paused
+            snapshot = self.snapshot()
+            return snapshot["runtime"]
 
     def save_settings(self, payload: dict) -> dict:
         with self._lock:
@@ -374,7 +411,17 @@ class DashboardBackend:
                 raise DashboardError("Command values must be text.")
             if len(prompt) > 8_000 or len(value) > 65_536:
                 raise DashboardError("The command content is too long.")
+            if command_type == "style":
+                style_key = value or trigger
+                if style_key not in STYLE_BY_COMMAND:
+                    raise DashboardError("Choose a supported local text style.")
+                value = style_key
             records = self._command_records()
+            state = self._runtime_state()
+            live_uses = state.get("command_uses") if isinstance(state.get("command_uses"), dict) else {}
+            session_uses = int(live_uses.get(trigger, 0)) + int(self._playground_uses.get(trigger, 0))
+            supplied_uses = int(payload.get("uses", 0)) if isinstance(payload.get("uses", 0), int) else 0
+            base_uses = max(0, supplied_uses - session_uses)
             record = {
                 "id": command_id,
                 "trigger": trigger,
@@ -382,7 +429,7 @@ class DashboardBackend:
                 "prompt": prompt,
                 "value": value,
                 "enabled": payload.get("enabled", True) is not False,
-                "uses": int(payload.get("uses", 0)) if isinstance(payload.get("uses", 0), int) else 0,
+                "uses": base_uses,
             }
             replaced = False
             for index, item in enumerate(records):
@@ -398,7 +445,9 @@ class DashboardBackend:
                 records.insert(0, record)
             self._persist_command_records(records)
             self._reload_runtime()
-            return record
+            response = dict(record)
+            response["uses"] = base_uses + session_uses
+            return response
 
     def delete_command(self, command_id: str) -> dict:
         with self._lock:
@@ -417,16 +466,23 @@ class DashboardBackend:
             raise DashboardError("Choose a command and enter text.")
         if len(text.encode("utf-8")) > 64 * 1024:
             raise DashboardError("The playground input is too long.")
-        command = next((item for item in self._command_records() if item["trigger"] == command_name), None)
+        with self._lock:
+            command = next((item for item in self._command_records() if item["trigger"] == command_name), None)
+            config = self._config()
         if not command:
             raise DashboardError("Command not found.", 404)
+        cmd_type = command["type"]
+        if cmd_type not in ("ai", "style", "replacer-text"):
+            raise DashboardError("System shell commands run only in place, not in Playground.")
         started = time.perf_counter()
-        local = command["type"] == "style"
-        if local:
-            output = transform(command["value"] or command["trigger"], text)
-        elif command["type"] == "replacer-text":
+        local = cmd_type in ("style", "replacer-text")
+        if cmd_type == "style":
+            style_key = STYLE_BY_COMMAND.get(command["value"] or command["trigger"])
+            if style_key is None:
+                raise DashboardError("This command uses an unsupported local style.")
+            output = transform(style_key, text)
+        elif cmd_type == "replacer-text":
             output = command["value"]
-            local = True
         elif self._run_ai:
             output, error = self._run_ai(text, command["prompt"])
             if error or output is None:
@@ -434,11 +490,30 @@ class DashboardBackend:
         else:
             raise DashboardError("The AI runtime is not connected to the dashboard.", 503)
         duration = max(1, round((time.perf_counter() - started) * 1000))
-        self.activity.append({
-            "id": secrets.token_hex(8), "command": f".{command_name}",
-            "provider": "Local" if local else self._config().get("provider", "Provider"),
-            "durationMs": duration, "time": "just now", "status": "success",
-        })
+        active_provider = config.get("provider", "gemini")
+        provider_label = "Local" if local else (PROVIDERS[active_provider].name if active_provider in PROVIDERS else active_provider)
+        cmd_prefix = config.get("prefix", ".")
+        timestamp = time.strftime("%H:%M:%S")
+        seq = time.monotonic_ns()
+        today = time.strftime("%Y-%m-%d")
+        with self._lock:
+            if self._playground_day != today:
+                self._playground_day = today
+                self._playground_today = 0
+            self._playground_today += 1
+            self._playground_uses[command_name] += 1
+            self._last_playground_command = f"{cmd_prefix}{command_name}"
+            self._last_playground_at = timestamp
+            self._last_playground_seq = seq
+            self.activity.append({
+                "id": secrets.token_hex(8),
+                "command": f"{cmd_prefix}{command_name}",
+                "provider": provider_label,
+                "durationMs": duration,
+                "time": timestamp,
+                "status": "success",
+                "seq": seq,
+            })
         return {"output": output, "durationMs": duration, "local": local}
 
     def logs(self) -> list[dict]:

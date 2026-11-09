@@ -5,7 +5,7 @@ import { HoldButton } from '../components/HoldButton'
 import { JellyRadio } from '../components/JellyRadio'
 import { RubberSegment } from '../components/RubberSegment'
 import { SwipeRow, type SwipeAction } from '../components/SwipeRow'
-import { Badge, Button, Field, Modal, SpotlightCard, Switch } from '../components/ui'
+import { Badge, Button, Field, Modal, Select, SpotlightCard, Switch } from '../components/ui'
 import {
   CheckMarkIcon,
   EditPenIcon,
@@ -26,6 +26,18 @@ const typeMeta: Record<CommandType, { label: string; icon: typeof ProvidersIcon;
   'replacer-text': { label: 'Text', icon: TypeGlyphIcon, tone: 'warning' },
   system: { label: 'System', icon: WandIcon, tone: 'neutral' },
 }
+
+const STYLE_OPTIONS = [
+  { value: 'bold', label: 'Bold — 𝗕𝗼𝗹𝗱', detail: 'Mathematical Sans-Serif Bold' },
+  { value: 'italic', label: 'Italic — 𝘐𝘵𝘢𝘭𝘪𝘤', detail: 'Mathematical Sans-Serif Italic' },
+  { value: 'mono', label: 'Monospace — 𝙼𝚘𝚗𝚘', detail: 'Mathematical Monospace' },
+  { value: 'bubble', label: 'Bubble — Ⓑⓤⓑⓑⓛⓔ', detail: 'Enclosed Alphanumerics' },
+  { value: 'gothic', label: 'Gothic — 𝔊𝔬𝔱𝔥𝔦𝔠', detail: 'Mathematical Fraktur' },
+  { value: 'smallcaps', label: 'Small Caps — ꜱᴍᴀʟʟ', detail: 'Phonetic Small Capitals' },
+  { value: 'normal', label: 'Normal — Plain', detail: 'Clear Unicode styling back to ASCII' },
+]
+
+const VALID_STYLE_IDS = new Set(STYLE_OPTIONS.map((option) => option.value))
 
 function blankCommand(): Command {
   return { id: crypto.randomUUID(), trigger: '', type: 'ai', prompt: '', value: '', enabled: true, uses: 0 }
@@ -192,7 +204,7 @@ export function CommandsScreen({
             {filtered.map((command) => {
               const meta = typeMeta[command.type]
               const Icon = meta.icon
-              const canTry = Boolean(onTryCommand) && (command.type === 'ai' || command.type === 'style')
+              const canTry = Boolean(onTryCommand) && (command.type === 'ai' || command.type === 'style' || command.type === 'replacer-text')
               const swipeActions: SwipeAction[] = command.type === 'system'
                 ? []
                 : [
@@ -314,7 +326,11 @@ export function CommandsScreen({
                 aria-label="Command type"
                 className="command-type-rubber"
                 value={editing.type}
-                onChange={(nextType) => setEditing({ ...editing, type: nextType as CommandType })}
+                onChange={(nextType) => {
+                  const typed = nextType as CommandType
+                  const nextValue = typed === 'style' && !VALID_STYLE_IDS.has(editing.value) ? 'bold' : editing.value
+                  setEditing({ ...editing, type: typed, value: nextValue })
+                }}
                 trackColor="rgba(5, 5, 8, 0.55)"
                 thumbColor="var(--accent)"
                 textColor="var(--text-soft)"
@@ -336,9 +352,20 @@ export function CommandsScreen({
               <Field label="Transformation instruction" hint="The selected text is fenced separately to reduce prompt injection risk.">
                 <textarea name="command-prompt" rows={5} value={editing.prompt} onChange={(event) => setEditing({ ...editing, prompt: event.target.value })} placeholder="Describe how the text should be transformed…" />
               </Field>
+            ) : editing.type === 'style' ? (
+              <div className="field">
+                <label className="field-label" htmlFor="command-style-select">Local style</label>
+                <Select
+                  id="command-style-select"
+                  label="Local style"
+                  value={VALID_STYLE_IDS.has(editing.value) ? editing.value : 'bold'}
+                  options={STYLE_OPTIONS}
+                  onChange={(value) => setEditing({ ...editing, value })}
+                />
+              </div>
             ) : (
-              <Field label={editing.type === 'style' ? 'Style identifier' : 'Replacement text'}>
-                <textarea name="command-value" rows={4} spellCheck={editing.type !== 'style'} value={editing.value} onChange={(event) => setEditing({ ...editing, value: event.target.value })} placeholder={editing.type === 'style' ? 'e.g. bold…' : 'Enter replacement text…'} />
+              <Field label="Replacement text">
+                <textarea name="command-value" rows={4} value={editing.value} onChange={(event) => setEditing({ ...editing, value: event.target.value })} placeholder="Enter replacement text…" />
               </Field>
             )}
           </div>

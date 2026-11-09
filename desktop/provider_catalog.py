@@ -6,14 +6,13 @@ public provider records (configured/not configured), never decrypted keys.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import ipaddress
 import json
-import socket
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 
 MAX_MODEL_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_MODELS = 2_000
@@ -165,6 +164,23 @@ def _is_loopback(host: str | None) -> bool:
         return False
 
 
+def _is_disallowed_ip_literal(host: str | None) -> bool:
+    if not host:
+        return False
+    try:
+        address = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        return False
+    if address.is_loopback:
+        return False
+    return (
+        address.is_unspecified
+        or address.is_link_local
+        or address.is_multicast
+        or address.is_reserved
+    )
+
+
 def validate_endpoint(endpoint: str, *, local_only: bool = False) -> str:
     if not isinstance(endpoint, str) or not endpoint.strip():
         raise ProviderError("Enter a provider endpoint.")
@@ -178,18 +194,26 @@ def validate_endpoint(endpoint: str, *, local_only: bool = False) -> str:
         raise ProviderError("The provider endpoint must be an HTTP or HTTPS URL without embedded credentials.")
     if parsed.query or parsed.fragment:
         raise ProviderError("The provider endpoint cannot contain a query string or fragment.")
+    if _is_disallowed_ip_literal(parsed.hostname):
+        raise ProviderError("The provider endpoint cannot use a link-local, unspecified, or reserved IP address.")
     if local_only and not _is_loopback(parsed.hostname):
         raise ProviderError("This local provider must use localhost or a loopback address.")
     if parsed.scheme == "http" and not _is_loopback(parsed.hostname):
         raise ProviderError("Remote provider endpoints must use HTTPS.")
     if port is not None and not 1 <= port <= 65535:
         raise ProviderError("The provider endpoint contains an invalid port.")
+    clean_path = parsed.path.rstrip("/")
+    if clean_path.lower().endswith("/chat/completions"):
+        clean_path = clean_path[: -len("/chat/completions")]
+        endpoint = urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, clean_path, "", "")).rstrip("/")
     return endpoint
 
 
 def join_endpoint(endpoint: str, path: str) -> str:
     endpoint = endpoint.rstrip("/")
     path = "/" + path.lstrip("/")
+    if endpoint.lower().endswith("/chat/completions") and path.lower() == "/chat/completions":
+        return endpoint
     # Specs with a versioned endpoint use paths relative to that version.
     if endpoint.endswith("/v1") and path.startswith("/v1/"):
         path = path[3:]
@@ -260,7 +284,7 @@ def fetch_models(
         if exc.code == 429:
             raise ProviderError("The provider is rate limiting requests. Try again shortly.") from exc
         raise ProviderError(f"The provider returned HTTP {exc.code}.") from exc
-    except (urllib.error.URLError, TimeoutError, OSError, socket.timeout) as exc:
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
         if spec.local:
             raise ProviderError(f"{spec.name} is not reachable on this computer.") from exc
         raise ProviderError("The provider could not be reached.") from exc
@@ -332,7 +356,7 @@ def test_provider(
         if exc.code == 429:
             raise ProviderError("The provider is rate limiting requests. Try again shortly.") from exc
         raise ProviderError(f"The provider test returned HTTP {exc.code}.") from exc
-    except (urllib.error.URLError, TimeoutError, OSError, socket.timeout) as exc:
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
         if spec.local:
             raise ProviderError(f"{spec.name} is not reachable on this computer.") from exc
         raise ProviderError("The provider could not be reached.") from exc

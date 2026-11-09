@@ -40,6 +40,19 @@ jobs:
       - name: Compile Python modules
         run: python -m py_compile SwiftSlate.pyw dashboard_server.py provider_catalog.py secure_config.py text_styles.py ui_host.py
 
+      - name: Validate PowerShell scripts
+        shell: pwsh
+        run: |
+          foreach ($script in @('build_windows.ps1', 'configure.ps1', 'install.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $script), [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error "$script`: $_" }
+              throw "PowerShell syntax error in $script"
+            }
+          }
+
       - name: Install interface dependencies
         working-directory: desktop/ui
         run: npm ci

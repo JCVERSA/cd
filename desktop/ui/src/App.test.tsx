@@ -1002,7 +1002,9 @@ describe('SwiftSlate dashboard', () => {
     expect(stage).toHaveAttribute('data-theme-background', 'sapphire')
     expect(stage).toHaveAttribute('data-background-id', 'lightfall')
     expect(stage.querySelector('.aero-shards')).toBeNull()
-    expect(stage.querySelector('.lightfall-container canvas.lightfall-canvas')).not.toBeNull()
+    await waitFor(() => {
+      expect(stage.querySelector('.lightfall-container canvas.lightfall-canvas')).not.toBeNull()
+    })
     expect(stage.querySelector('.light-pillar-container')).toBeNull()
     expect(stage.querySelector('.ballpit-container')).toBeNull()
     expect((await axe.run(container)).violations).toEqual([])
@@ -1012,7 +1014,9 @@ describe('SwiftSlate dashboard', () => {
     expect(stage).toHaveAttribute('data-background-id', 'light-pillar')
     expect(stage.querySelector('.aero-shards')).toBeNull()
     expect(stage.querySelector('.lightfall-container')).toBeNull()
-    expect(stage.querySelector('.light-pillar-container canvas.light-pillar-canvas')).not.toBeNull()
+    await waitFor(() => {
+      expect(stage.querySelector('.light-pillar-container canvas.light-pillar-canvas')).not.toBeNull()
+    })
     expect(stage.querySelector('.ballpit-container')).toBeNull()
     expect((await axe.run(container)).violations).toEqual([])
 
@@ -1020,7 +1024,9 @@ describe('SwiftSlate dashboard', () => {
     expect(stage).toHaveAttribute('data-theme-background', 'emerald')
     expect(stage).toHaveAttribute('data-background-id', 'ballpit')
     expect(stage.querySelector('.light-pillar-container')).toBeNull()
-    expect(stage.querySelector('.ballpit-container canvas.ballpit-canvas')).not.toBeNull()
+    await waitFor(() => {
+      expect(stage.querySelector('.ballpit-container canvas.ballpit-canvas')).not.toBeNull()
+    })
     expect((await axe.run(container)).violations).toEqual([])
 
     await user.click(screen.getByRole('button', { name: /Cyber Amber/i }))
@@ -1030,14 +1036,18 @@ describe('SwiftSlate dashboard', () => {
     expect(stage.querySelector('.lightfall-container')).toBeNull()
     expect(stage.querySelector('.light-pillar-container')).toBeNull()
     expect(stage.querySelector('.ballpit-container')).toBeNull()
-    expect(stage.querySelector('.radar-container canvas.radar-canvas')).not.toBeNull()
+    await waitFor(() => {
+      expect(stage.querySelector('.radar-container canvas.radar-canvas')).not.toBeNull()
+    })
     expect((await axe.run(container)).violations).toEqual([])
 
     await user.click(screen.getByRole('button', { name: /Sparkle Lavender/i }))
     expect(stage).toHaveAttribute('data-theme-background', 'lavender')
     expect(stage).toHaveAttribute('data-background-id', 'aero-shards')
     expect(stage.querySelector('.radar-container')).toBeNull()
-    expect(stage.querySelector('.aero-shards canvas.aero-shards-canvas')).not.toBeNull()
+    await waitFor(() => {
+      expect(stage.querySelector('.aero-shards canvas.aero-shards-canvas')).not.toBeNull()
+    })
   })
 
   it('renders liquid-glass surfaces and hides/restores panels via button and Escape to view the background', async () => {
@@ -1238,5 +1248,27 @@ describe('SwiftSlate dashboard', () => {
     } finally {
       firstRunSpy.mockRestore()
     }
+  })
+
+  it('uses a constrained Local style selector when creating style commands and passes axe-core', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<App />)
+    await screen.findByText('SwiftSlate is listening')
+
+    await user.click(screen.getByRole('button', { name: 'Commands' }))
+    await screen.findByText('Your command library')
+    await user.click(screen.getByRole('button', { name: /New command/i }))
+
+    const dialog = await screen.findByRole('dialog', { name: /Create command/i })
+    await user.click(within(dialog).getByRole('radio', { name: /Local style/i }))
+
+    const styleSelect = within(dialog).getByRole('button', { name: /Local style/i })
+    expect(styleSelect).toHaveTextContent(/Bold/i)
+    await user.click(styleSelect)
+    const listbox = await screen.findByRole('listbox', { name: /Local style/i })
+    await user.click(within(listbox).getByRole('option', { name: /Gothic/i }))
+    expect(styleSelect).toHaveTextContent(/Gothic/i)
+
+    expect((await axe.run(container, { rules: { 'color-contrast': { enabled: false } } })).violations).toEqual([])
   })
 })
