@@ -156,6 +156,8 @@ user32.RegisterClassExW.argtypes = [ctypes.c_void_p]
 user32.RegisterClassExW.restype = wt.ATOM
 user32.LoadImageW.argtypes = [wt.HINSTANCE, wt.LPCWSTR, wt.UINT, ctypes.c_int, ctypes.c_int, wt.UINT]
 user32.LoadImageW.restype = wt.HANDLE
+user32.LoadCursorW.argtypes = [wt.HINSTANCE, ctypes.c_void_p]
+user32.LoadCursorW.restype = wt.HANDLE
 user32.DestroyIcon.argtypes = [wt.HICON]
 user32.DestroyIcon.restype = wt.BOOL
 user32.GetMessageW.argtypes = [ctypes.POINTER(wt.MSG), wt.HWND, wt.UINT, wt.UINT]
@@ -173,8 +175,6 @@ user32.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.POINTER(wt.DWORD)]
 user32.GetWindowThreadProcessId.restype = wt.DWORD
 kernel32.GetCurrentThreadId.argtypes = []
 kernel32.GetCurrentThreadId.restype = wt.DWORD
-user32.AttachThreadInput.argtypes = [wt.DWORD, wt.DWORD, wt.BOOL]
-user32.AttachThreadInput.restype = wt.BOOL
 user32.SendInput.argtypes = [wt.UINT, ctypes.c_void_p, ctypes.c_int]
 user32.SendInput.restype = wt.UINT
 user32.GetRawInputData.argtypes = [wt.HANDLE, wt.UINT, ctypes.c_void_p,
@@ -1492,14 +1492,18 @@ class _INPUT_UNION(ctypes.Union):
 class INPUT(ctypes.Structure):
     _fields_ = [("type", wt.DWORD), ("union", _INPUT_UNION)]
 
+INPUT_MOUSE = 0
 INPUT_KEYBOARD = 1
+MOUSEEVENTF_MOVE = 0x0001
 KEYEVENTF_KEYUP = 0x0002
 KEYEVENTF_UNICODE = 0x0004
+IDC_ARROW = 32512
 VK_CONTROL = 0x11
 VK_SHIFT = 0x10
 VK_LEFT = 0x25
 VK_RIGHT = 0x27
 _KEY_MAP = {"a": 0x41, "c": 0x43, "v": 0x56}
+_MOUSE_BUTTON_VKS = (0x01, 0x02, 0x04, 0x05, 0x06)  # LButton, RButton, MButton, XButton1, XButton2
 
 # Magic value to tag self-generated keystrokes (so Raw Input hook ignores them)
 # dwExtraInfo is ULONG_PTR — we store an integer that gets passed through to RAWKEYBOARD.ExtraInformation
@@ -1514,6 +1518,39 @@ def _make_key(vk, flags=0):
     inp.union.ki.time = 0
     inp.union.ki.dwExtraInfo = _SELF_INPUT_TAG
     return inp
+
+def _make_mouse_move(dx, dy):
+    inp = INPUT()
+    inp.type = INPUT_MOUSE
+    inp.union.mi.dx = dx
+    inp.union.mi.dy = dy
+    inp.union.mi.mouseData = 0
+    inp.union.mi.dwFlags = MOUSEEVENTF_MOVE
+    inp.union.mi.time = 0
+    inp.union.mi.dwExtraInfo = _SELF_INPUT_TAG
+    return inp
+
+def _mouse_buttons_down():
+    """True if any physical mouse button is currently held down."""
+    for vk in _MOUSE_BUTTON_VKS:
+        if user32.GetAsyncKeyState(vk) & 0x8000:
+            return True
+    return False
+
+def _restore_cursor_visibility():
+    """Cancel Windows 'Hide pointer while typing' (SPI_GETMOUSEVANISH) and app-level
+    typing cursor hide after synthetic SendInput keyboard events, without changing net
+    pointer coordinates or disturbing active mouse drags."""
+    if _mouse_buttons_down():
+        return
+    pt = wt.POINT()
+    step = -1 if (user32.GetCursorPos(ctypes.byref(pt)) and pt.x > 0) else 1
+    first = _make_mouse_move(step, 0)
+    second = _make_mouse_move(-step, 0)
+    user32.SendInput(1, ctypes.byref(first), ctypes.sizeof(INPUT))
+    time.sleep(0.005)
+    if not _mouse_buttons_down():
+        user32.SendInput(1, ctypes.byref(second), ctypes.sizeof(INPUT))
 
 _MODIFIER_VKS = (0x10, 0x11, 0x12, 0x5B, 0x5C)  # Shift, Ctrl, Alt, LWin, RWin
 
@@ -1551,17 +1588,15 @@ def send_keys(keys):
             sent = user32.SendInput(4, ctypes.byref(inputs), ctypes.sizeof(INPUT))
             if sent != 4:
                 log(f"SendInput: only {sent}/4 events injected (UIPI or blocked)")
+            _restore_cursor_visibility()
             time.sleep(0.01)
 
 def _replace_last_char(ch, expected_hwnd):
     """Replace the last character in the focused field using Shift+Left + Unicode input.
     No clipboard needed, no selection flash. All events sent atomically."""
-    if user32.GetForegroundWindow() != expected_hwnd or _user_modifiers_down():
+    if user32.GetForegroundWindow() != expected_hwnd or _user_modifiers_down() or _mouse_buttons_down():
         return False
     code = ord(ch)
-    inp = INPUT()
-    inp.type = INPUT_KEYBOARD
-
     inputs = (INPUT * 6)(
         _make_key(VK_SHIFT),                            # Shift down
         _make_key(VK_LEFT),                             # Left down (selects 1 char back)
@@ -1586,7 +1621,9 @@ def _replace_last_char(ch, expected_hwnd):
     sent = user32.SendInput(6, ctypes.byref(inputs), ctypes.sizeof(INPUT))
     if sent != 6:
         log(f"SendInput (_replace_last_char): only {sent}/6 events injected")
-    return sent == 6
+        return False
+    _restore_cursor_visibility()
+    return True
 
 # --- Grab text from active field ---
 def grab_field_text():
@@ -1597,46 +1634,39 @@ def grab_field_text():
     prev = get_clipboard_text()
     prev_extra = _snapshot_nontext_clipboard()
 
-    # Attach our thread to the foreground window's input queue
     fg = user32.GetForegroundWindow()
     if not fg:
         return None, prev, prev_extra
-    fg_tid = user32.GetWindowThreadProcessId(fg, None)
-    our_tid = kernel32.GetCurrentThreadId()
-    attached = False
-    if fg_tid and fg_tid != our_tid:
-        attached = user32.AttachThreadInput(our_tid, fg_tid, True)
 
-    try:
-        # Clear clipboard then record sequence number (EmptyClipboard changes it)
-        owner = hwnd_main or None
-        if user32.OpenClipboard(owner):
-            user32.EmptyClipboard()
-            user32.CloseClipboard()
+    # Do NOT call AttachThreadInput here: attaching a non-message-pumping worker thread
+    # to the foreground UI thread merges Win32 cursor visibility (iCursorLevel / hCursor)
+    # and stalls mouse hit-testing while this worker sleeps. SendInput and clipboard APIs
+    # operate globally without thread input attachment.
+    owner = hwnd_main or None
+    if user32.OpenClipboard(owner):
+        user32.EmptyClipboard()
+        user32.CloseClipboard()
 
-        seq_after_clear = user32.GetClipboardSequenceNumber()
+    seq_after_clear = user32.GetClipboardSequenceNumber()
 
-        # Never inject Ctrl+A/Ctrl+C while the user still holds a modifier key
-        if not _wait_modifiers_released(1.0) or user32.GetForegroundWindow() != fg:
+    # Never inject Ctrl+A/Ctrl+C while the user still holds a modifier key
+    if not _wait_modifiers_released(1.0) or user32.GetForegroundWindow() != fg:
+        return None, prev, prev_extra
+    send_keys("^a")
+    time.sleep(key_delay)  # Ctrl+A needs time before Ctrl+C
+    if user32.GetForegroundWindow() != fg:
+        return None, prev, prev_extra
+    send_keys("^c")
+
+    # Wait for clipboard sequence number to change from post-clear value
+    for _ in range(50):  # max 1000ms
+        time.sleep(0.02)
+        if user32.GetClipboardSequenceNumber() != seq_after_clear:
+            text = get_clipboard_text()
+            if text:
+                return text, prev, prev_extra
+            # Clipboard changed but no text (image/file) — done
             return None, prev, prev_extra
-        send_keys("^a")
-        time.sleep(key_delay)  # Ctrl+A needs time before Ctrl+C
-        if user32.GetForegroundWindow() != fg:
-            return None, prev, prev_extra
-        send_keys("^c")
-
-        # Wait for clipboard sequence number to change from post-clear value
-        for _ in range(50):  # max 1000ms
-            time.sleep(0.02)
-            if user32.GetClipboardSequenceNumber() != seq_after_clear:
-                text = get_clipboard_text()
-                if text:
-                    return text, prev, prev_extra
-                # Clipboard changed but no text (image/file) — done
-                return None, prev, prev_extra
-    finally:
-        if attached:
-            user32.AttachThreadInput(our_tid, fg_tid, False)
 
     # Timed out waiting for clipboard — deselect to prevent data loss if user types next
     if user32.GetForegroundWindow() == fg:
@@ -1645,6 +1675,7 @@ def grab_field_text():
             _make_key(VK_RIGHT, KEYEVENTF_KEYUP),
         )
         user32.SendInput(2, ctypes.byref(inputs_deselect), ctypes.sizeof(INPUT))
+        _restore_cursor_visibility()
     return None, prev, prev_extra
 
 # --- Paste text into active field ---
@@ -1654,31 +1685,22 @@ def paste_text(text):
     fg = user32.GetForegroundWindow()
     if not fg:
         return False
-    fg_tid = user32.GetWindowThreadProcessId(fg, None)
-    our_tid = kernel32.GetCurrentThreadId()
-    attached = False
-    if fg_tid and fg_tid != our_tid:
-        attached = user32.AttachThreadInput(our_tid, fg_tid, True)
 
-    try:
-        if not set_clipboard_silent(text):
-            return False
-        # Pre-paste delay: let clipboard fully commit before sending keys
-        time.sleep(key_delay)  # Clipboard settle before Ctrl+A
-        # Focus can change during any delay. Never send the remaining keys to
-        # a newly focused window, where they could overwrite unrelated text.
-        if not _wait_modifiers_released(1.0) or user32.GetForegroundWindow() != fg:
-            return False
-        send_keys("^a")
-        time.sleep(key_delay)  # Ctrl+A needs time before Ctrl+V
-        if user32.GetForegroundWindow() != fg:
-            return False
-        send_keys("^v")
-        time.sleep(0.02)
-        return True
-    finally:
-        if attached:
-            user32.AttachThreadInput(our_tid, fg_tid, False)
+    if not set_clipboard_silent(text):
+        return False
+    # Pre-paste delay: let clipboard fully commit before sending keys
+    time.sleep(key_delay)  # Clipboard settle before Ctrl+A
+    # Focus can change during any delay. Never send the remaining keys to
+    # a newly focused window, where they could overwrite unrelated text.
+    if not _wait_modifiers_released(1.0) or user32.GetForegroundWindow() != fg:
+        return False
+    send_keys("^a")
+    time.sleep(key_delay)  # Ctrl+A needs time before Ctrl+V
+    if user32.GetForegroundWindow() != fg:
+        return False
+    send_keys("^v")
+    time.sleep(0.02)
+    return True
 # --- Retry paste (ensures text gets into the field even if clipboard is contested) ---
 def _retry_paste(text, max_retries=5):
     """Attempt to paste text, retrying if clipboard is locked."""
@@ -1775,11 +1797,9 @@ def do_transform(trigger_name, prompt):
         # If frame 0 fails: wait silently (zero field modification)
         # If _replace_last_char fails: freeze spinner (no corruption)
         MAX_SPINNER_SECONDS = 45
-        # Animation interval scales with key_delay: slow machines animate slower,
-        # widening the safety margin for the target app to process each
-        # Shift+Left+char replace before the next one arrives. This is the key
-        # to predictable behavior on slow machines or machines under load.
-        SPINNER_INTERVAL = key_delay
+        # Keep idle spinner ticks calm (>= 350ms) and pause frames whenever the user moves
+        # or clicks the mouse so pointer movement and clicks are never disturbed.
+        SPINNER_INTERVAL = max(key_delay, 0.35)
         frame = 0
         aborted = False
         timed_out = False
@@ -1804,7 +1824,7 @@ def do_transform(trigger_name, prompt):
                 # Verify clipboard is still ours (not stolen by another app)
                 time.sleep(0.01)
                 if user32.GetClipboardSequenceNumber() == seq_after and user32.GetForegroundWindow() == hwnd \
-                        and not _user_modifiers_down():
+                        and not _user_modifiers_down() and not _mouse_buttons_down():
                     # Paste only (Ctrl+V) — text is already selected
                     inputs_paste = (INPUT * 4)(
                         _make_key(VK_CONTROL),
@@ -1814,6 +1834,7 @@ def do_transform(trigger_name, prompt):
                     )
                     sent = user32.SendInput(4, ctypes.byref(inputs_paste), ctypes.sizeof(INPUT))
                     if sent == 4:
+                        _restore_cursor_visibility()
                         spinner_active = True
                         frame = 1
                         last_frame_time = time.time()
@@ -1828,6 +1849,10 @@ def do_transform(trigger_name, prompt):
 
         if not spinner_active:
             log("Spinner: silent mode (frame 0 failed or skipped)")
+
+        last_cursor_pt = wt.POINT()
+        user32.GetCursorPos(ctypes.byref(last_cursor_pt))
+        last_cursor_move_time = 0.0
 
         while not done_event.is_set():
             # Hard timeout
@@ -1848,6 +1873,18 @@ def do_transform(trigger_name, prompt):
                 done_event.wait(timeout=MAX_SPINNER_SECONDS)
                 break
 
+            cur_pt = wt.POINT()
+            if user32.GetCursorPos(ctypes.byref(cur_pt)):
+                if cur_pt.x != last_cursor_pt.x or cur_pt.y != last_cursor_pt.y:
+                    last_cursor_pt = cur_pt
+                    last_cursor_move_time = time.time()
+
+            # If the user clicks any mouse button while waiting, stop spinner keystrokes
+            # immediately so clicks, scrollbars, menus, and selections work normally.
+            if spinner_active and _mouse_buttons_down():
+                log("Spinner frozen: user pressed mouse button")
+                spinner_active = False
+
             # Animate only when active, in animated mode, and on schedule
             if spinner_active and spinner_mode == "animated":
                 if abort_event.is_set():
@@ -1855,20 +1892,20 @@ def do_transform(trigger_name, prompt):
                     break
                 now = time.time()
                 if (now - last_frame_time) >= SPINNER_INTERVAL:
-                    if _user_modifiers_down():
-                        # User is holding Ctrl/Shift/Alt/Win. Injecting Shift+Left
-                        # now would merge into an unintended combo. Skip this frame.
+                    if _user_modifiers_down() or (now - last_cursor_move_time) < 0.75:
+                        # Skip spinner injection while modifiers are held or the user is
+                        # actively moving the mouse pointer.
                         pass
                     elif _replace_last_char(spinner_frames[frame % 4], hwnd):
                         frame += 1
-                        last_frame_time = now
+                        last_frame_time = time.time()
+                        user32.GetCursorPos(ctypes.byref(last_cursor_pt))
                     else:
                         # Failed: freeze animation, wait silently (never fall back to paste_text)
                         log("Spinner frozen: _replace_last_char failed")
-                        done_event.wait(timeout=MAX_SPINNER_SECONDS - (time.time() - spinner_start))
-                        break
+                        spinner_active = False
 
-            done_event.wait(timeout=0.15)
+            done_event.wait(timeout=0.05)
 
         # Paste result
         result = result_holder[0]
@@ -2938,6 +2975,7 @@ def main():
     wc.lpfnWndProc = wnd_proc_cb
     wc.hInstance = hinstance
     wc.hIcon = _large_app_icon
+    wc.hCursor = user32.LoadCursorW(None, IDC_ARROW)
     wc.hIconSm = _small_app_icon
     wc.lpszClassName = class_name
 

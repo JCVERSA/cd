@@ -32,6 +32,15 @@ class WindowsIntegrationTest(unittest.TestCase):
         self.assertNotEqual(protected, "test-key-ä-2026")
         self.assertEqual("test-key-ä-2026", unprotect(protected))
 
+    def test_cursor_and_mouse_input_apis_are_valid_on_windows(self):
+        import ctypes.wintypes as wt
+
+        user32 = ctypes.windll.user32
+        user32.LoadCursorW.argtypes = [wt.HINSTANCE, ctypes.c_void_p]
+        user32.LoadCursorW.restype = wt.HANDLE
+        arrow_cursor = user32.LoadCursorW(None, 32512)
+        self.assertTrue(bool(arrow_cursor), "LoadCursorW(None, IDC_ARROW) must return a valid HCURSOR")
+
 
 if __name__ == "__main__":
     unittest.main()

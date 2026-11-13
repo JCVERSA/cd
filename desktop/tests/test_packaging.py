@@ -231,6 +231,37 @@ class DesktopPackagingTest(unittest.TestCase):
         for legacy_path in ("Cargo.toml", "Cargo.lock", "rustfmt.toml", "src", "docs"):
             self.assertFalse((repo_root / legacy_path).exists(), f"Orphaned prototype path still present: {legacy_path}")
 
+    def test_cursor_visibility_is_preserved_during_commands(self):
+        source = (ROOT / "SwiftSlate.pyw").read_text(encoding="utf-8")
+        module = ast.parse(source)
+        attach_refs = [
+            node.attr
+            for node in ast.walk(module)
+            if isinstance(node, ast.Attribute) and node.attr == "AttachThreadInput"
+        ]
+        self.assertEqual(attach_refs, [], "Worker threads must never call AttachThreadInput on foreground windows")
+
+        fn_bodies = {
+            node.name: node
+            for node in module.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        for required_fn in ("_restore_cursor_visibility", "_make_mouse_move", "_mouse_buttons_down"):
+            self.assertIn(required_fn, fn_bodies)
+
+        for caller_name in ("send_keys", "_replace_last_char", "grab_field_text", "do_transform"):
+            calls = [
+                node.func.id
+                for node in ast.walk(fn_bodies[caller_name])
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+            ]
+            self.assertIn(
+                "_restore_cursor_visibility",
+                calls,
+                f"{caller_name} must restore cursor visibility after synthetic keyboard SendInput",
+            )
+        self.assertIn("wc.hCursor = user32.LoadCursorW(None, IDC_ARROW)", source)
+
 
 if __name__ == "__main__":
     unittest.main()
