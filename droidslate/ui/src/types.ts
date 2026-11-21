@@ -41,6 +41,19 @@ export interface AppSnapshot {
   logs: LogRecord[]
 }
 
+export interface AppEntry {
+  name: string
+  system: boolean
+  installed: boolean
+  disabled: boolean
+}
+
+export interface ScreenshotRef {
+  name: string
+  url: string
+  path: string
+}
+
 export interface DeviceInfo {
   Model: string
   Manufacturer: string

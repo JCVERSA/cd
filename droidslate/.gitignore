@@ -12,3 +12,7 @@ packaging/MicrosoftEdgeWebview2Setup.exe
 adb-bin/
 debug.log
 ui-error.log
+# Runtime state written next to the source checkout in dev mode.
+settings.json
+screenshots/
+apk-stage/

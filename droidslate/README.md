@@ -9,18 +9,23 @@ on the SwiftSlate architecture: a Python backend, an authenticated
 `127.0.0.1` dashboard server, a pywebview (`edgechromium`) host, and a
 React 19 + TypeScript + Vite interface.
 
-## Features (Phase 1)
+## Features
 
 - **Devices** — automatic discovery (`adb devices -l`), connection status,
-  model/manufacturer enrichment, one-click selection, full device info.
+  model/manufacturer enrichment, one-click selection, full device info,
+  screenshot capture (saved PNG + preview + open folder), and reboot to
+  system/recovery/bootloader.
+- **Apps** — full package management: install single or split APKs
+  (streamed upload, never held in memory), uninstall with system-app
+  fallback (`--user 0`), reinstall (`pm install-existing`), enable/disable,
+  and instant search over the whole package list.
 - **Shell** — run any `adb shell` command with streaming output and
   command history (↑/↓). A leading `adb shell` is stripped automatically.
 - **Logcat** — live `logcat` streaming with text filtering and follow mode.
 - **Settings** — custom ADB location (bundled `adb.exe` by default) and
   dark/light theme.
 
-Later phases add apps management, screenshots/reboot, the two-pane file
-explorer, and DeGoogle.
+Later phases add the two-pane file explorer and DeGoogle.
 
 ## Architecture
 

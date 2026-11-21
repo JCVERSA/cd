@@ -23,6 +23,16 @@ const mockApi = vi.hoisted(() => ({
   startLogcat: vi.fn(),
   stopLogcat: vi.fn(),
   saveSettings: vi.fn(),
+  listApps: vi.fn(),
+  stageApk: vi.fn(),
+  installStaged: vi.fn(),
+  uninstallApp: vi.fn(),
+  reinstallApp: vi.fn(),
+  setAppEnabled: vi.fn(),
+  takeScreenshot: vi.fn(),
+  latestScreenshot: vi.fn(),
+  openScreenshotsFolder: vi.fn(),
+  reboot: vi.fn(),
 }))
 
 vi.mock('./api', () => ({ api: mockApi }))
@@ -31,6 +41,7 @@ describe('DroidSlate app shell', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockApi.snapshot.mockResolvedValue(structuredClone(baseSnapshot))
+    mockApi.latestScreenshot.mockResolvedValue({ none: true })
     mockApi.deviceInfo.mockResolvedValue({
       Model: 'Pixel 8',
       Manufacturer: 'Google',
@@ -66,5 +77,31 @@ describe('DroidSlate app shell', () => {
     mockApi.snapshot.mockRejectedValue(new Error('backend down'))
     render(<App />)
     await waitFor(() => expect(screen.getByText(/backend down/)).toBeInTheDocument())
+  })
+
+  it('lists packages on the Apps page and filters them by search', async () => {
+    mockApi.listApps.mockResolvedValue({
+      device: 'emulator-5554',
+      apps: [
+        { name: 'com.android.settings', system: true, installed: true, disabled: false },
+        { name: 'com.example.chat', system: false, installed: true, disabled: true },
+        { name: 'com.android.vending', system: true, installed: false, disabled: false },
+      ],
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Apps/ }))
+
+    expect(await screen.findByText('com.android.settings')).toBeInTheDocument()
+    expect(screen.getByText('com.example.chat')).toBeInTheDocument()
+    expect(screen.getByText('Disabled')).toBeInTheDocument()
+    expect(screen.getByText('Uninstalled')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reinstall' })).toBeInTheDocument()
+
+    await user.type(screen.getByPlaceholderText('Search packages…'), 'example')
+    expect(screen.queryByText('com.android.settings')).not.toBeInTheDocument()
+    expect(screen.getByText('com.example.chat')).toBeInTheDocument()
+    expect(screen.getByText('1 shown')).toBeInTheDocument()
   })
 })

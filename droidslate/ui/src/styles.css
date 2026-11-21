@@ -526,3 +526,58 @@ textarea {
   color: var(--accent);
   font-weight: 600;
 }
+
+/* --- Apps --- */
+.app-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-soft);
+  border-radius: 10px;
+}
+
+.app-row .mono {
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.app-row .badges {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.app-row .row {
+  flex: none;
+}
+
+/* --- Screenshot result --- */
+.shot-result {
+  display: flex;
+  gap: 14px;
+  margin-top: 14px;
+  align-items: flex-start;
+}
+
+.shot-result img {
+  width: 160px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.shot-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.shot-meta .hint {
+  word-break: break-all;
+}

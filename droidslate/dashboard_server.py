@@ -18,18 +18,24 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import tempfile
 import threading
 import time
 import urllib.parse
 
-from adb_manager import ADBManager, find_adb
+from adb_manager import ADBManager, find_adb, parse_packages
 
 MAX_REQUEST_BYTES = 64 * 1024
+MAX_APK_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB streamed to disk, never buffered
 MAX_LOG_RECORDS = 500
 DEVICE_REFRESH_INTERVAL = 5.0
 VALID_THEMES = {"dark", "light"}
 APP_VERSION = "1.0.0"
+PACKAGE_NAME_RE = re.compile(r"[A-Za-z0-9._]{1,255}\Z")
+APK_NAME_RE = re.compile(r"[^/\\:*?\"<>|\x00-\x1f]{1,200}\.apk\Z", re.IGNORECASE)
+SHOT_NAME_RE = re.compile(r"screenshot_\d{8}_\d{6}(_\d+)?\.png\Z")
+REBOOT_MODES = ("normal", "recovery", "bootloader")
 
 
 class DashboardError(RuntimeError):
@@ -79,6 +85,12 @@ class DroidSlateBackend:
         self._devices_checked_at = 0.0
         self._settings = self._load_settings()
         self._apply_adb_setting()
+        # APK staging is ephemeral: drop anything a previous session left behind.
+        self._stage_dir = os.path.join(self.data_dir, "apk-stage")
+        shutil.rmtree(self._stage_dir, ignore_errors=True)
+        os.makedirs(self._stage_dir, exist_ok=True)
+        self._screenshots_dir = os.path.join(self.data_dir, "screenshots")
+        self._install_lock = threading.Lock()
         self._stop_refresh = threading.Event()
         self._refresh_thread = threading.Thread(
             target=self._refresh_loop, name="DroidSlateDeviceRefresh", daemon=True
@@ -217,6 +229,217 @@ class DroidSlateBackend:
             raise DashboardError("The device id must be text.")
         return self.adb.get_device_info(serial)
 
+    # -- apps --------------------------------------------------------------
+
+    @staticmethod
+    def _validate_package(package: object) -> str:
+        if not isinstance(package, str) or not PACKAGE_NAME_RE.fullmatch(package):
+            raise DashboardError("That is not a valid package name.")
+        return package
+
+    def list_apps(self) -> dict:
+        """Classify every package on the device for the Apps page.
+
+        Four ``pm list packages`` queries: installed, installed+uninstalled-for-user,
+        third-party only, disabled only.  Their set differences give each package
+        its installed/system/disabled flags without per-package round-trips.
+        """
+        serial = self._require_device()
+
+        def query(*flags: str) -> set[str]:
+            result = self.adb.run(["shell", "pm", "list", "packages", *flags], serial=serial)
+            if not result["success"]:
+                detail = (result["stderr"] or result["stdout"] or "pm failed").strip()
+                raise DashboardError(f"Could not list packages: {detail[:300]}", 500)
+            return set(parse_packages(result["stdout"]))
+
+        installed = query()
+        known = query("-u")
+        third_party = query("-3")
+        disabled = query("-d")
+
+        apps = [
+            {
+                "name": name,
+                "system": name not in third_party,
+                "installed": name in installed,
+                "disabled": name in disabled,
+            }
+            for name in sorted(known, key=str.lower)
+        ]
+        return {"apps": apps, "device": serial}
+
+    def _apk_result_ok(self, result: dict) -> bool:
+        # adb sometimes reports failures on stdout while exiting 0.
+        combined = f"{result.get('stdout', '')}{result.get('stderr', '')}"
+        return bool(result.get("success")) and "Failure" not in combined
+
+    def uninstall_app(self, payload: dict) -> dict:
+        package = self._validate_package(payload.get("package"))
+        serial = self._require_device()
+        result = self.adb.uninstall(serial, package)
+        if not self._apk_result_ok(result):
+            detail = (result["stderr"] or result["stdout"] or "uninstall failed").strip()
+            raise DashboardError(f"Uninstall failed: {detail[:300]}", 500)
+        self.log("INFO", "APPS", f"Uninstalled {package}")
+        return {"ok": True, "package": package}
+
+    def reinstall_app(self, payload: dict) -> dict:
+        package = self._validate_package(payload.get("package"))
+        serial = self._require_device()
+        result = self.adb.reinstall(serial, package)
+        if not self._apk_result_ok(result):
+            detail = (result["stderr"] or result["stdout"] or "reinstall failed").strip()
+            raise DashboardError(f"Reinstall failed: {detail[:300]}", 500)
+        self.log("INFO", "APPS", f"Restored {package}")
+        return {"ok": True, "package": package}
+
+    def set_app_enabled(self, payload: dict) -> dict:
+        package = self._validate_package(payload.get("package"))
+        enabled = payload.get("enabled")
+        if not isinstance(enabled, bool):
+            raise DashboardError("The enabled flag must be true or false.")
+        serial = self._require_device()
+        result = self.adb.set_package_enabled(serial, package, enabled)
+        if not result["success"]:
+            detail = (result["stderr"] or result["stdout"] or "pm failed").strip()
+            raise DashboardError(f"Could not change package state: {detail[:300]}", 500)
+        verb = "Enabled" if enabled else "Disabled"
+        self.log("INFO", "APPS", f"{verb} {package}")
+        return {"ok": True, "package": package, "enabled": enabled}
+
+    def stage_apk(self, filename: object, stream, length: int) -> dict:
+        """Stream one uploaded APK into the staging directory (never in memory)."""
+        if not isinstance(filename, str) or not APK_NAME_RE.fullmatch(filename):
+            raise DashboardError("APK file names must end in .apk and contain no path separators.")
+        if length <= 0:
+            raise DashboardError("The upload is empty.", 411)
+        if length > MAX_APK_BYTES:
+            raise DashboardError("That APK is larger than 2 GiB.", 413)
+        path = os.path.join(self._stage_dir, filename)
+        remaining = length
+        try:
+            with open(path, "wb") as handle:
+                while remaining > 0:
+                    chunk = stream.read(min(1024 * 1024, remaining))
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    remaining -= len(chunk)
+        except OSError as exc:
+            raise DashboardError(f"Could not store the APK: {exc}", 400) from exc
+        if remaining > 0:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            raise DashboardError("The upload was truncated.", 400)
+        self.log("INFO", "APPS", f"Staged {filename} ({length} bytes)")
+        return {"name": filename, "size": length}
+
+    def install_staged(self, payload: dict) -> dict:
+        files = payload.get("files")
+        if not isinstance(files, list) or not 1 <= len(files) <= 32:
+            raise DashboardError("Select one or more staged APK files (max 32).")
+        names = []
+        for item in files:
+            if not isinstance(item, str) or not APK_NAME_RE.fullmatch(item):
+                raise DashboardError("Invalid staged file name.")
+            if item not in names:
+                names.append(item)
+        paths = []
+        for name in names:
+            path = os.path.join(self._stage_dir, name)
+            if not os.path.isfile(path):
+                raise DashboardError(f"Staged file missing: {name}", 404)
+            paths.append(path)
+        serial = self._require_device()
+        with self._install_lock:
+            try:
+                if len(paths) == 1:
+                    result = self.adb.install_apk(serial, paths[0])
+                else:
+                    result = self.adb.install_multiple(serial, paths)
+            finally:
+                for path in paths:
+                    try:
+                        os.unlink(path)
+                    except OSError:
+                        pass
+        if not self._apk_result_ok(result):
+            detail = (result["stderr"] or result["stdout"] or "install failed").strip()
+            raise DashboardError(f"Install failed: {detail[:400]}", 500)
+        label = names[0] if len(names) == 1 else f"{len(names)} split APKs"
+        self.log("INFO", "APPS", f"Installed {label}")
+        return {"ok": True, "files": names}
+
+    # -- device actions ----------------------------------------------------
+
+    def take_screenshot(self) -> dict:
+        serial = self._require_device()
+        os.makedirs(self._screenshots_dir, exist_ok=True)
+        stem = time.strftime("screenshot_%Y%m%d_%H%M%S")
+        name = f"{stem}.png"
+        counter = 2
+        while os.path.exists(os.path.join(self._screenshots_dir, name)):
+            name = f"{stem}_{counter}.png"
+            counter += 1
+        path = os.path.join(self._screenshots_dir, name)
+        result = self.adb.screenshot(serial, path)
+        if not result.get("success"):
+            raise DashboardError(result.get("stderr") or "Screenshot failed.", 500)
+        self.log("INFO", "DEVICE", f"Screenshot saved: {name}")
+        return {"name": name, "url": f"/shots/{name}", "path": path}
+
+    def latest_screenshot(self) -> dict:
+        if not os.path.isdir(self._screenshots_dir):
+            return {"none": True}
+        newest = None
+        for entry in os.listdir(self._screenshots_dir):
+            if SHOT_NAME_RE.fullmatch(entry):
+                candidate = os.path.join(self._screenshots_dir, entry)
+                if newest is None or os.path.getmtime(candidate) > os.path.getmtime(newest):
+                    newest = candidate
+        if not newest:
+            return {"none": True}
+        name = os.path.basename(newest)
+        return {"name": name, "url": f"/shots/{name}", "path": newest}
+
+    def shot_file(self, name: str) -> str | None:
+        """Resolve an authenticated /shots/ request to a real screenshot path."""
+        if not isinstance(name, str) or not SHOT_NAME_RE.fullmatch(name):
+            return None
+        path = os.path.join(self._screenshots_dir, name)
+        root = os.path.realpath(self._screenshots_dir)
+        real = os.path.realpath(path)
+        if os.path.commonpath((root, real)) != root or not os.path.isfile(real):
+            return None
+        return real
+
+    def open_screenshots_folder(self) -> dict:
+        os.makedirs(self._screenshots_dir, exist_ok=True)
+        if not hasattr(os, "startfile"):
+            raise DashboardError("Opening folders is only supported on Windows.", 500)
+        try:
+            os.startfile(self._screenshots_dir)  # noqa: S606 - fixed per-user folder, no user input
+        except OSError as exc:
+            raise DashboardError(f"Could not open the folder: {exc}", 500) from exc
+        self.log("INFO", "DEVICE", "Opened screenshots folder")
+        return {"ok": True, "path": self._screenshots_dir}
+
+    def reboot_device(self, payload: dict) -> dict:
+        mode = payload.get("mode", "normal")
+        if mode not in REBOOT_MODES:
+            raise DashboardError("Unknown reboot mode.")
+        serial = self._require_device()
+        result = self.adb.reboot(serial, mode)
+        if not result["success"]:
+            detail = (result["stderr"] or "reboot failed").strip()
+            raise DashboardError(f"Reboot failed: {detail[:300]}", 500)
+        suffix = "" if mode == "normal" else f" ({mode})"
+        self.log("WARN", "DEVICE", f"Rebooting {serial}{suffix}")
+        return {"ok": True, "mode": mode}
+
     # -- shell -------------------------------------------------------------
 
     def run_shell(self, payload: dict) -> dict:
@@ -344,6 +567,10 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
     def _json(self, status: int, payload: object, *, headers: dict[str, str] | None = None) -> None:
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
+        if self.close_connection:
+            # Rejected uploads never drain their request body; tell the client
+            # to stop reusing this connection instead of parsing body as headers.
+            self.send_header("Connection", "close")
         self._security_headers(content_type="application/json; charset=utf-8", length=len(body))
         for name, value in (headers or {}).items():
             self.send_header(name, value)
@@ -442,7 +669,7 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
         self._json(200, {"ok": True}, headers={
             "Set-Cookie": (
                 f"DroidSlateSession={self.app.session_token}; "
-                "HttpOnly; SameSite=Strict; Path=/api"
+                "HttpOnly; SameSite=Strict; Path=/"
             ),
         })
 
@@ -477,6 +704,28 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
                 result = self.app.backend.stop_logcat()
             elif self.command == "PATCH" and path == "/api/v1/settings":
                 result = self.app.backend.save_settings(self._parse_json())
+            elif self.command == "GET" and path == "/api/v1/apps":
+                result = self.app.backend.list_apps()
+            elif self.command == "POST" and path == "/api/v1/apps/stage":
+                result = self._stage_upload()
+            elif self.command == "POST" and path == "/api/v1/apps/install":
+                result = self.app.backend.install_staged(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/apps/uninstall":
+                result = self.app.backend.uninstall_app(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/apps/reinstall":
+                result = self.app.backend.reinstall_app(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/apps/enable":
+                result = self.app.backend.set_app_enabled(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/screenshot":
+                self._parse_json()
+                result = self.app.backend.take_screenshot()
+            elif self.command == "GET" and path == "/api/v1/screenshots/latest":
+                result = self.app.backend.latest_screenshot()
+            elif self.command == "POST" and path == "/api/v1/screenshots/open-folder":
+                self._parse_json()
+                result = self.app.backend.open_screenshots_folder()
+            elif self.command == "POST" and path == "/api/v1/reboot":
+                result = self.app.backend.reboot_device(self._parse_json())
             else:
                 raise DashboardError("Endpoint not found.", 404)
             self._json(200, result)
@@ -484,6 +733,21 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
             self._error(exc.status, str(exc))
         except Exception:
             self._error(500, "The dashboard request failed.")
+
+    def _stage_upload(self) -> dict:
+        """Receive one raw APK body and stream it into the staging directory."""
+        # The body may be up to 2 GiB; never let this connection be reused with
+        # unread bytes still queued (a rejected upload skips reading entirely).
+        self.close_connection = True
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/octet-stream":
+            raise DashboardError("Content-Type must be application/octet-stream.", 415)
+        length_text = self.headers.get("Content-Length")
+        if not length_text or not length_text.isdigit():
+            raise DashboardError("A valid Content-Length is required.", 411)
+        params = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        filename = (params.get("name") or [""])[0]
+        return self.app.backend.stage_apk(filename, self.rfile, int(length_text))
 
     def _serve_static(self) -> None:
         if not self._valid_host():
@@ -519,15 +783,50 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
+    def _serve_shot(self, name: str) -> None:
+        """Serve one screenshot to the authenticated same-origin document.
+
+        Images are fetched with ``Sec-Fetch-Dest: image`` (not ``empty``), so
+        this path checks Host + session cookie only — never the API's fetch
+        metadata rules.
+        """
+        if not self._valid_host():
+            self._error(421, "Invalid host.")
+            return
+        if not self._authorized():
+            self._error(401, "Unauthorized.")
+            return
+        path = self.app.backend.shot_file(name)
+        if not path:
+            self._error(404, "Not found.")
+            return
+        try:
+            with open(path, "rb") as handle:
+                body = handle.read()
+        except OSError:
+            self._error(404, "Not found.")
+            return
+        self.send_response(200)
+        self._security_headers(content_type="image/png", length=len(body), cache="private, max-age=60")
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
     def do_GET(self):
-        if urllib.parse.urlsplit(self.path).path.startswith("/api/"):
+        path = urllib.parse.urlsplit(self.path).path
+        if path.startswith("/api/"):
             self._dispatch_api()
+        elif path.startswith("/shots/"):
+            self._serve_shot(urllib.parse.unquote(path[len("/shots/"):]))
         else:
             self._serve_static()
 
     def do_HEAD(self):
-        if urllib.parse.urlsplit(self.path).path.startswith("/api/"):
+        path = urllib.parse.urlsplit(self.path).path
+        if path.startswith("/api/"):
             self._error(405, "Method not allowed.")
+        elif path.startswith("/shots/"):
+            self._serve_shot(urllib.parse.unquote(path[len("/shots/"):]))
         else:
             self._serve_static()
 

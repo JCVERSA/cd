@@ -310,10 +310,10 @@ class ADBManager:
 
     # -- apps --------------------------------------------------------------
 
-    def install_apk(self, serial: str, apk_path: str, *, timeout: int = 120) -> dict:
+    def install_apk(self, serial: str, apk_path: str, *, timeout: int = 600) -> dict:
         return self.run(["install", "-r", apk_path], serial=serial, timeout=timeout)
 
-    def install_multiple(self, serial: str, apk_paths: list[str], *, timeout: int = 180) -> dict:
+    def install_multiple(self, serial: str, apk_paths: list[str], *, timeout: int = 900) -> dict:
         if not apk_paths:
             return {"success": False, "stdout": "", "stderr": "No APK files selected.", "returncode": -1}
         return self.run(["install-multiple", "-r", *apk_paths], serial=serial, timeout=timeout)
@@ -338,10 +338,22 @@ class ADBManager:
         verb = "enable" if enabled else "disable-user"
         return self.run(["shell", "pm", verb, "--user", "0", package], serial=serial)
 
-    def list_packages(self, serial: str, *, include_disabled: bool = False) -> list[str]:
+    def list_packages(
+        self,
+        serial: str,
+        *,
+        include_uninstalled: bool = False,
+        third_party_only: bool = False,
+        disabled_only: bool = False,
+    ) -> list[str]:
+        """List packages via ``pm list packages`` with the given filters."""
         args = ["shell", "pm", "list", "packages"]
-        if include_disabled:
+        if include_uninstalled:
             args.append("-u")
+        if third_party_only:
+            args.append("-3")
+        if disabled_only:
+            args.append("-d")
         result = self.run(args, serial=serial)
         if not result["success"]:
             return []

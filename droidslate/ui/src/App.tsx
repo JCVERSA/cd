@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from './api'
-import type { AppSnapshot, Device, DeviceInfo, LogRecord } from './types'
+import type { AppEntry, AppSnapshot, Device, DeviceInfo, LogRecord, ScreenshotRef } from './types'
 
-type Page = 'devices' | 'shell' | 'logcat' | 'settings'
+type Page = 'devices' | 'apps' | 'shell' | 'logcat' | 'settings'
 
 const NAV: { id: Page; label: string; glyph: string }[] = [
   { id: 'devices', label: 'Devices', glyph: '▣' },
+  { id: 'apps', label: 'Apps', glyph: '▦' },
   { id: 'shell', label: 'Shell', glyph: '>_' },
   { id: 'logcat', label: 'Logcat', glyph: '≡' },
   { id: 'settings', label: 'Settings', glyph: '⚙' },
@@ -100,6 +101,8 @@ export default function App() {
         {snapshot ? (
           page === 'devices' ? (
             <DevicesPage snapshot={snapshot} onChanged={refresh} />
+          ) : page === 'apps' ? (
+            <AppsPage snapshot={snapshot} />
           ) : page === 'shell' ? (
             <ShellPage snapshot={snapshot} />
           ) : page === 'logcat' ? (
@@ -119,7 +122,23 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
   const [info, setInfo] = useState<DeviceInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [shot, setShot] = useState<ScreenshotRef | null>(null)
+  const [rebootMode, setRebootMode] = useState<'normal' | 'recovery' | 'bootloader'>('normal')
+  const [actionBusy, setActionBusy] = useState('')
   const selected = snapshot.selectedDevice
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .latestScreenshot()
+      .then((value) => {
+        if (!cancelled && !('none' in value)) setShot(value)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     setInfo(null)
@@ -156,7 +175,7 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
       <div className="page-header">
         <div>
           <h1>Devices</h1>
-          <div className="sub">Refreshed automatically every 4 seconds</div>
+          <div className="sub">Refreshed automatically every 2.5 seconds</div>
         </div>
         <button
           className="btn"
@@ -212,6 +231,307 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
             ))}
           </div>
         ) : null}
+        {selected ? (
+          <div className="settings-card" style={{ marginTop: 16 }}>
+            <h2>Device actions</h2>
+            <div className="row">
+              <button
+                className="btn"
+                disabled={Boolean(actionBusy)}
+                onClick={async () => {
+                  setActionBusy('shot')
+                  setMessage('')
+                  try {
+                    setShot(await api.takeScreenshot())
+                  } catch (err) {
+                    setMessage(err instanceof Error ? err.message : String(err))
+                  } finally {
+                    setActionBusy('')
+                  }
+                }}
+              >
+                {actionBusy === 'shot' ? 'Capturing…' : 'Take screenshot'}
+              </button>
+              <select
+                className="select"
+                style={{ maxWidth: 190 }}
+                value={rebootMode}
+                onChange={(event) => setRebootMode(event.target.value as typeof rebootMode)}
+              >
+                <option value="normal">Reboot: system</option>
+                <option value="recovery">Reboot: recovery</option>
+                <option value="bootloader">Reboot: bootloader</option>
+              </select>
+              <button
+                className="btn danger"
+                disabled={Boolean(actionBusy)}
+                onClick={async () => {
+                  const label =
+                    rebootMode === 'normal' ? 'reboot normally' : `boot into ${rebootMode}`
+                  if (!window.confirm(`Really ${label}?`)) return
+                  setActionBusy('reboot')
+                  setMessage('')
+                  try {
+                    await api.reboot(rebootMode)
+                    setMessage(`Reboot command sent (${rebootMode}).`)
+                    await onChanged()
+                  } catch (err) {
+                    setMessage(err instanceof Error ? err.message : String(err))
+                  } finally {
+                    setActionBusy('')
+                  }
+                }}
+              >
+                {actionBusy === 'reboot' ? 'Rebooting…' : 'Reboot'}
+              </button>
+            </div>
+            {shot ? (
+              <div className="shot-result">
+                <img src={shot.url} alt="Latest screenshot" />
+                <div className="shot-meta">
+                  <div className="hint">{shot.path}</div>
+                  <button
+                    className="btn small"
+                    onClick={async () => {
+                      try {
+                        await api.openScreenshotsFolder()
+                      } catch (err) {
+                        setMessage(err instanceof Error ? err.message : String(err))
+                      }
+                    }}
+                  >
+                    Open folder
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="hint" style={{ marginTop: 10 }}>
+                No screenshot yet — capture the current screen to save it as a PNG.
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </>
+  )
+}
+
+/* ---------------- Apps ---------------- */
+
+type AppFilter = 'all' | 'user' | 'system'
+
+function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
+  const [apps, setApps] = useState<AppEntry[] | null>(null)
+  const [filter, setFilter] = useState<AppFilter>('all')
+  const [search, setSearch] = useState('')
+  const [busy, setBusy] = useState('')
+  const [message, setMessage] = useState('')
+  const [installPhase, setInstallPhase] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+  const selected = snapshot.selectedDevice
+
+  const load = useCallback(async () => {
+    if (!selected) {
+      setApps(null)
+      return
+    }
+    setBusy('load')
+    try {
+      const result = await api.listApps()
+      setApps(result.apps)
+      setMessage('')
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy('')
+    }
+  }, [selected])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const runAction = async (phase: string, action: () => Promise<unknown>, done?: string) => {
+    setBusy(phase)
+    setMessage('')
+    try {
+      await action()
+      if (done) setMessage(done)
+      await load()
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const installFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return
+    const list = Array.from(files)
+    setBusy('install')
+    setMessage('')
+    try {
+      setInstallPhase(`Uploading 1/${list.length}…`)
+      const staged: string[] = []
+      for (let index = 0; index < list.length; index += 1) {
+        setInstallPhase(`Uploading ${index + 1}/${list.length}…`)
+        const stagedFile = await api.stageApk(list[index])
+        staged.push(stagedFile.name)
+      }
+      setInstallPhase(staged.length > 1 ? `Installing ${staged.length} split APKs…` : 'Installing…')
+      await api.installStaged(staged)
+      setMessage(`Installed ${staged.length === 1 ? staged[0] : `${staged.length} split APKs`}.`)
+      await load()
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setInstallPhase('')
+      setBusy('')
+      if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const visible = useMemo(() => {
+    if (!apps) return []
+    const needle = search.trim().toLowerCase()
+    return apps.filter((app) => {
+      if (filter === 'user' && app.system) return false
+      if (filter === 'system' && !app.system) return false
+      if (needle && !app.name.toLowerCase().includes(needle)) return false
+      return true
+    })
+  }, [apps, filter, search])
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1>Apps</h1>
+          <div className="sub">
+            {selected ? `${apps ? apps.length : '…'} packages on ${selected}` : 'Select a device first'}
+          </div>
+        </div>
+        <div className="row">
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".apk,application/vnd.android.package-archive"
+            multiple
+            hidden
+            onChange={(event) => void installFiles(event.target.files)}
+          />
+          <button
+            className="btn primary"
+            disabled={!selected || Boolean(busy)}
+            onClick={() => fileRef.current?.click()}
+          >
+            Install APK…
+          </button>
+          <button className="btn" disabled={!selected || Boolean(busy)} onClick={() => void load()}>
+            {busy === 'load' ? 'Loading…' : 'Refresh'}
+          </button>
+        </div>
+      </div>
+      <div className="page-body">
+        {message ? (
+          <div className={message.startsWith('Installed') ? 'saved' : 'error'} style={{ marginBottom: 10 }}>
+            {message}
+          </div>
+        ) : null}
+        {installPhase ? <div className="hint" style={{ marginBottom: 10 }}>{installPhase}</div> : null}
+        {!selected ? (
+          <div className="empty">Select a connected device to manage its apps.</div>
+        ) : !apps ? (
+          <div className="empty">{busy === 'load' ? 'Loading packages…' : 'No package list yet.'}</div>
+        ) : (
+          <>
+            <div className="logcat-toolbar">
+              <input
+                className="input"
+                style={{ maxWidth: 320 }}
+                placeholder="Search packages…"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+              <div className="seg">
+                {(['all', 'user', 'system'] as AppFilter[]).map((value) => (
+                  <button
+                    key={value}
+                    className={filter === value ? 'active' : ''}
+                    onClick={() => setFilter(value)}
+                  >
+                    {value === 'all' ? 'All' : value === 'user' ? 'User' : 'System'}
+                  </button>
+                ))}
+              </div>
+              <span className="hint">{visible.length} shown</span>
+            </div>
+            <div className="device-list">
+              {visible.length === 0 ? (
+                <div className="empty">No packages match this filter.</div>
+              ) : (
+                visible.map((app) => (
+                  <div className="app-row" key={app.name}>
+                    <div className="device-meta">
+                      <div className="name mono">{app.name}</div>
+                      <div className="badges">
+                        <span className="badge">{app.system ? 'System' : 'User'}</span>
+                        {app.disabled ? <span className="badge warn">Disabled</span> : null}
+                        {!app.installed ? <span className="badge warn">Uninstalled</span> : null}
+                      </div>
+                    </div>
+                    <div className="row">
+                      {app.installed ? (
+                        <>
+                          <button
+                            className="btn small"
+                            disabled={Boolean(busy)}
+                            onClick={() =>
+                              void runAction(
+                                `enable-${app.name}`,
+                                () => api.setAppEnabled(app.name, app.disabled),
+                                `${app.disabled ? 'Enabled' : 'Disabled'} ${app.name}.`,
+                              )
+                            }
+                          >
+                            {busy === `enable-${app.name}` ? '…' : app.disabled ? 'Enable' : 'Disable'}
+                          </button>
+                          <button
+                            className="btn small danger"
+                            disabled={Boolean(busy)}
+                            onClick={() =>
+                              void runAction(
+                                `uninstall-${app.name}`,
+                                () => api.uninstallApp(app.name),
+                                `Uninstalled ${app.name}.`,
+                              )
+                            }
+                          >
+                            {busy === `uninstall-${app.name}` ? '…' : 'Uninstall'}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          className="btn small"
+                          disabled={Boolean(busy)}
+                          onClick={() =>
+                            void runAction(
+                              `reinstall-${app.name}`,
+                              () => api.reinstallApp(app.name),
+                              `Restored ${app.name}.`,
+                            )
+                          }
+                        >
+                          {busy === `reinstall-${app.name}` ? '…' : 'Reinstall'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </>
+        )}
       </div>
     </>
   )
