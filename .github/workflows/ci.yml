@@ -1,4 +1,4 @@
-name: SwiftSlate desktop CI
+name: SwiftSlate and DroidSlate desktop CI
 
 on:
   push:
@@ -213,5 +213,222 @@ jobs:
           path: |
             desktop/release/SwiftSlate-Setup-x64.exe
             desktop/release/SwiftSlate-Setup-x64.exe.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  droidslate-tests:
+    name: DroidSlate Python and interface tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: droidslate
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: droidslate/ui/package-lock.json
+
+      - name: Run Python tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile Python modules
+        run: python -m py_compile DroidSlate.pyw adb_manager.py dashboard_server.py ui_host.py
+
+      - name: Install interface dependencies
+        working-directory: droidslate/ui
+        run: npm ci
+
+      - name: Type-check, test, audit, and build interface
+        working-directory: droidslate/ui
+        run: |
+          npm run typecheck
+          npm test
+          npm audit --audit-level=moderate
+          npm run build
+
+  droidslate-installer:
+    name: DroidSlate Windows x64 installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+          architecture: x64
+          cache: pip
+          cache-dependency-path: droidslate/requirements-build-lock.txt
+
+      - name: Set up Node
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: droidslate/ui/package-lock.json
+
+      - name: Install checksum-pinned Inno Setup
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup-7.1.1-x64.exe'
+          $installDir = Join-Path $env:RUNNER_TEMP 'InnoSetup'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe' -OutFile $installer
+          $expected = '8a5a6711c3766a6e5fb74f280ba0e3551e719ce94538d901fdbd1f8f9920b3f0'
+          $actual = (Get-FileHash -Algorithm SHA256 -Path $installer).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Inno Setup checksum mismatch: $actual" }
+          $install = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$installDir") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Inno Setup installer exited with $($install.ExitCode)." }
+          $iscc = Join-Path $installDir 'ISCC.exe'
+          if (-not (Test-Path $iscc)) { throw 'ISCC.exe was not installed.' }
+          "ISCC_PATH=$iscc" | Add-Content $env:GITHUB_ENV
+
+      - name: Download and verify Android platform-tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = Join-Path $env:RUNNER_TEMP 'platform-tools.zip'
+          $extract = Join-Path $env:RUNNER_TEMP 'platform-tools'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://dl.google.com/android/repository/platform-tools-latest-windows.zip' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $src = Join-Path $extract 'platform-tools'
+          $dest = './droidslate/adb-bin'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          foreach ($name in 'adb.exe', 'AdbWinApi.dll', 'AdbWinUsbApi.dll') {
+            Copy-Item (Join-Path $src $name) $dest
+          }
+          # adb.exe is Authenticode-signed by Google; verify before bundling it.
+          $signature = Get-AuthenticodeSignature -FilePath (Join-Path $dest 'adb.exe')
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Google') {
+            throw "adb.exe signature is not valid: $($signature.Status) / $($signature.SignerCertificate.Subject)"
+          }
+          $version = (& (Join-Path $dest 'adb.exe') version) -join ' | '
+          "### Bundled adb`n``$version``" | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Run Windows Python tests
+        working-directory: droidslate
+        run: python -m unittest discover -s tests -v
+
+      - name: Build and test interface on Windows
+        working-directory: droidslate/ui
+        run: |
+          npm ci
+          npm run typecheck
+          npm test
+          npm audit --audit-level=moderate
+          npm run build
+
+      - name: Install Python packaging dependencies
+        working-directory: droidslate
+        run: python -m pip install --disable-pip-version-check --require-hashes -r requirements-build-lock.txt
+
+      - name: Build one-directory application
+        working-directory: droidslate
+        run: python -m PyInstaller --clean --noconfirm --distpath build --workpath .pyinstaller DroidSlate.spec
+
+      - name: Smoke-test packaged application
+        shell: pwsh
+        run: |
+          $errorLog = Join-Path $env:TEMP 'DroidSlate-self-test.log'
+          Remove-Item -Force -ErrorAction SilentlyContinue $errorLog
+          $process = Start-Process './droidslate/build/DroidSlate/DroidSlate.exe' -ArgumentList '--self-test' -PassThru
+          if (-not $process.WaitForExit(60000)) {
+            $process.Kill()
+            throw 'Packaged self-test did not exit within 60 seconds.'
+          }
+          if ($process.ExitCode -ne 0) {
+            $detail = (Get-Content $errorLog -Raw -ErrorAction SilentlyContinue)
+            $escaped = ($detail ?? 'No self-test error log was produced.').Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+            Write-Output "::error title=Packaged self-test failed::$escaped"
+            throw "Packaged self-test exited with $($process.ExitCode)."
+          }
+
+      - name: Download and verify WebView2 bootstrapper
+        shell: pwsh
+        run: |
+          $path = './droidslate/packaging/MicrosoftEdgeWebview2Setup.exe'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $path
+          $signature = Get-AuthenticodeSignature -FilePath $path
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Microsoft') {
+            throw 'The WebView2 bootstrapper signature is not valid.'
+          }
+
+      - name: Compile Inno Setup installer
+        shell: pwsh
+        run: |
+          $iscc = @(
+            $env:ISCC_PATH,
+            "${env:ProgramFiles}\Inno Setup 7\ISCC.exe",
+            "${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe"
+          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $iscc) { throw 'ISCC.exe was not found.' }
+          & $iscc './droidslate/packaging/DroidSlate.iss'
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup exited with $LASTEXITCODE." }
+
+      - name: Write installer hash
+        shell: pwsh
+        run: |
+          $path = './droidslate/release/DroidSlate-Setup-x64.exe'
+          $hash = (Get-FileHash -Algorithm SHA256 -Path $path).Hash.ToLowerInvariant()
+          "$hash  DroidSlate-Setup-x64.exe" | Set-Content -Encoding ascii './droidslate/release/DroidSlate-Setup-x64.exe.sha256'
+
+      - name: Install, verify, and uninstall package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = Resolve-Path 'droidslate/release/DroidSlate-Setup-x64.exe'
+          $installDir = Join-Path $env:RUNNER_TEMP 'DroidSlateInstalled'
+          $install = Start-Process $installer -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', "/DIR=$installDir") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "Installer exited with $($install.ExitCode)." }
+          $smoke = Start-Process (Join-Path $installDir 'DroidSlate.exe') -ArgumentList '--self-test' -PassThru
+          if (-not $smoke.WaitForExit(60000)) {
+            $smoke.Kill()
+            throw 'Installed application self-test did not exit within 60 seconds.'
+          }
+          if ($smoke.ExitCode -ne 0) {
+            $detail = Get-Content (Join-Path $env:TEMP 'DroidSlate-self-test.log') -Raw -ErrorAction SilentlyContinue
+            throw "Installed application self-test exited with $($smoke.ExitCode): $detail"
+          }
+          if (-not (Test-Path (Join-Path $installDir 'adb-bin\adb.exe'))) {
+            throw 'bundled adb.exe is missing from the installed package.'
+          }
+          $uninstaller = Join-Path $installDir 'unins000.exe'
+          $uninstall = Start-Process $uninstaller -ArgumentList @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "Uninstaller exited with $($uninstall.ExitCode)." }
+
+      - name: Record installer measurements
+        shell: pwsh
+        run: |
+          $installer = Get-Item 'droidslate/release/DroidSlate-Setup-x64.exe'
+          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash
+          @"
+          ## DroidSlate Windows installer
+
+          | Metric | Value |
+          |---|---:|
+          | Installer | $($installer.Length) bytes |
+          | SHA-256 | ``$hash`` |
+          "@ | Add-Content $env:GITHUB_STEP_SUMMARY
+          Write-Output "::notice title=DroidSlate installer::Size $($installer.Length) bytes; SHA-256 $hash"
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: DroidSlate-Windows-x64
+          path: |
+            droidslate/release/DroidSlate-Setup-x64.exe
+            droidslate/release/DroidSlate-Setup-x64.exe.sha256
           if-no-files-found: error
           retention-days: 14

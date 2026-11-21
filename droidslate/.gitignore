@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+ui/node_modules/
+ui/.vite/
+ui/coverage/
+build/
+dist/
+.pyinstaller/
+release/
+packaging/MicrosoftEdgeWebview2Setup.exe
+# Downloaded by CI (and optionally by local builds) from Google's platform-tools.
+adb-bin/
+debug.log
+ui-error.log
