@@ -53,6 +53,10 @@ const mockApi = vi.hoisted(() => ({
   wifiMdns: vi.fn(),
   wifiPair: vi.fn(),
   adbRestart: vi.fn(),
+  updatesAdb: vi.fn(),
+  diagnosticsReport: vi.fn(),
+  diagnosticsSave: vi.fn(),
+  dropFile: vi.fn(),
   uploadBundle: vi.fn(),
   inspectBundle: vi.fn(),
   installBundle: vi.fn(),
@@ -63,6 +67,7 @@ vi.mock('./api', () => ({ api: mockApi }))
 afterEach(() => {
   window.localStorage.removeItem('droidslate.language')
   window.localStorage.removeItem('droidslate.onboarding')
+  vi.restoreAllMocks()
 })
 
 describe('DroidSlate app shell', () => {
@@ -416,5 +421,115 @@ describe('DroidSlate app shell', () => {
     // the Help button reopens the guide on demand
     await user.click(screen.getByRole('button', { name: /Help/ }))
     expect(await screen.findByRole('dialog')).toBeInTheDocument()
+  })
+
+  it('checks for adb updates from Settings', async () => {
+    mockApi.updatesAdb.mockResolvedValue({
+      localVersion: '35.0.4',
+      latestVersion: '35.0.5',
+      updateAvailable: true,
+      error: '',
+      url: 'https://developer.android.com/tools/releases/platform-tools',
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Settings/ }))
+
+    await user.click(await screen.findByRole('button', { name: 'Check for updates' }))
+    await vi.waitFor(() => expect(mockApi.updatesAdb).toHaveBeenCalledTimes(1))
+    expect(
+      await screen.findByText('Update available: 35.0.4 → 35.0.5.'),
+    ).toBeInTheDocument()
+    const link = screen.getByRole('link', { name: 'Open download page' })
+    expect(link.getAttribute('href')).toContain('platform-tools')
+  })
+
+  it('generates and saves a diagnostics report', async () => {
+    mockApi.diagnosticsReport.mockResolvedValue({ report: { app: 'DroidSlate' } })
+    mockApi.diagnosticsSave.mockResolvedValue({
+      ok: true,
+      path: 'C:\\Users\\test\\report.json',
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Settings/ }))
+
+    await user.click(await screen.findByRole('button', { name: /Generate & save report/ }))
+    await vi.waitFor(() => {
+      expect(mockApi.diagnosticsReport).toHaveBeenCalledTimes(1)
+      expect(mockApi.diagnosticsSave).toHaveBeenCalledWith({ app: 'DroidSlate' })
+    })
+    expect(
+      await screen.findByText('Report saved to C:\\Users\\test\\report.json.'),
+    ).toBeInTheDocument()
+  })
+
+  it('routes globally dropped bundles to the Installer', async () => {
+    mockApi.uploadBundle.mockResolvedValue({ name: 'game.xapk', size: 1234 })
+    mockApi.inspectBundle.mockResolvedValue({
+      format: 'xapk',
+      filename: 'game.xapk',
+      size: 1234,
+      single: false,
+      meta: null,
+      apks: [{ name: 'base.apk', size: 100 }],
+      obb: [],
+      icon: false,
+      device: null,
+      plan: null,
+    })
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+
+    const file = new File([new Uint8Array([80, 75, 3, 4])], 'game.xapk')
+    fireEvent.drop(document.querySelector('.app') as Element, {
+      dataTransfer: { files: [file], types: ['Files'] },
+    })
+
+    expect(await screen.findByText('Drop bundle files here')).toBeInTheDocument()
+    await vi.waitFor(() => expect(mockApi.uploadBundle).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('game.xapk')).toBeInTheDocument()
+  })
+
+  it('pushes globally dropped plain files to the device', async () => {
+    mockApi.dropFile.mockResolvedValue({
+      ok: true,
+      path: '/sdcard/Download/notes.txt',
+      size: 5,
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined)
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+
+    const file = new File(['hello'], 'notes.txt')
+    fireEvent.drop(document.querySelector('.app') as Element, {
+      dataTransfer: { files: [file], types: ['Files'] },
+    })
+
+    await vi.waitFor(() => expect(mockApi.dropFile).toHaveBeenCalledTimes(1))
+    expect(mockApi.dropFile.mock.calls[0][0].name).toBe('notes.txt')
+    expect(confirmSpy).toHaveBeenCalledWith('Push notes.txt to /sdcard/Download/?')
+    await vi.waitFor(() => {
+      expect(alertSpy).toHaveBeenCalledWith('Pushed 1 file(s) to /sdcard/Download/.')
+    })
+  })
+
+  it('shows the splash until the first snapshot arrives', async () => {
+    let release!: (value: AppSnapshot) => void
+    mockApi.snapshot.mockImplementation(
+      () =>
+        new Promise<AppSnapshot>((resolve) => {
+          release = resolve
+        }),
+    )
+    render(<App />)
+    expect(screen.getByText('Connecting to DroidSlate…')).toBeInTheDocument()
+
+    release(structuredClone(baseSnapshot))
+    expect((await screen.findAllByText('Pixel 8')).length).toBeGreaterThan(0)
+    expect(screen.queryByText('Connecting to DroidSlate…')).not.toBeInTheDocument()
   })
 })

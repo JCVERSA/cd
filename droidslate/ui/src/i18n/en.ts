@@ -303,4 +303,30 @@ export const en = {
   'wifi.restartAdb': 'Restart ADB',
   'wifi.restarting': 'Restarting…',
   'wifi.restarted': 'ADB server restarted.',
+
+  // -- Global drag & drop / splash --------------------------------------------
+  'drop.title': 'Drop to install or transfer',
+  'drop.hint': 'APK bundles open the Installer — other files are pushed to /sdcard/Download/',
+  'drop.needDevice': 'Select a device before dropping files.',
+  'drop.pushConfirm': 'Push {name} to /sdcard/Download/?',
+  'drop.pushedCount': 'Pushed {n} file(s) to /sdcard/Download/.',
+  'drop.pushFailed': '{name}: {error}',
+
+  // -- Settings: updates & diagnostics -----------------------------------------
+  'set.updates': 'Updates',
+  'set.updatesDesc': 'Check the bundled adb against Google’s official platform-tools index.',
+  'set.checkUpdates': 'Check for updates',
+  'set.checking': 'Checking…',
+  'set.updateAvail': 'Update available: {local} → {latest}.',
+  'set.upToDate': 'ADB is up to date ({version}).',
+  'set.checkFailed': 'Could not check for updates: {error}',
+  'set.noLocalAdb': 'The local adb version is unavailable — cannot compare.',
+  'set.openDownloadPage': 'Open download page',
+  'set.diag': 'Diagnostics',
+  'set.diagDesc':
+    'Generate a support report (app version, devices, recent logs) — no passwords or keys.',
+  'set.generateReport': 'Generate & save report…',
+  'set.generating': 'Generating…',
+  'set.reportSaved': 'Report saved to {path}.',
+  'set.reportCancelled': 'Save cancelled.',
 } as const

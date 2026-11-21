@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { api } from './api'
 import { I18nProvider, useI18n, useT, type DictKey } from './i18n'
 import type {
+  AdbUpdates,
   AppEntry,
   AppSnapshot,
   BundleInspect,
@@ -58,6 +59,8 @@ function AppShell() {
     }
   })
   const [onboardingForced, setOnboardingForced] = useState(false)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [dropOverlay, setDropOverlay] = useState(false)
 
   const applySnapshot = useCallback((next: AppSnapshot) => {
     setSnapshot(next)
@@ -100,8 +103,58 @@ function AppShell() {
     }
   }
 
+  const handleDroppedFiles = async (files: File[]) => {
+    const isBundle = (name: string) =>
+      BUNDLE_EXTS.some((ext) => name.toLowerCase().endsWith(ext))
+    const bundles = files.filter((file) => isBundle(file.name))
+    if (bundles.length > 0) {
+      setPendingFiles(bundles)
+      setPage('installer')
+      return
+    }
+    if (!snapshot?.selectedDevice) {
+      window.alert(t('drop.needDevice'))
+      return
+    }
+    let pushed = 0
+    for (const file of files) {
+      if (!window.confirm(t('drop.pushConfirm', { name: file.name }))) continue
+      try {
+        await api.dropFile(file)
+        pushed += 1
+      } catch (err) {
+        window.alert(
+          t('drop.pushFailed', {
+            name: file.name,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        )
+      }
+    }
+    if (pushed > 0) window.alert(t('drop.pushedCount', { n: pushed }))
+    await refresh()
+  }
+
   return (
-    <div className="app">
+    <div
+      className="app"
+      onDragOver={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes('Files')) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        setDropOverlay(true)
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+        setDropOverlay(false)
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.files || event.dataTransfer.files.length === 0) return
+        event.preventDefault()
+        setDropOverlay(false)
+        void handleDroppedFiles(Array.from(event.dataTransfer.files))
+      }}
+    >
       <aside className="sidebar">
         <div className="brand">
           <img src="./droidslate-logo.png" alt="" />
@@ -156,18 +209,18 @@ function AppShell() {
             <button className="btn small" onClick={() => void refresh()}>{t('app.retry')}</button>
           </div>
         ) : null}
-        {!snapshot && !error ? (
-          <div className="page-header">
-            <div className="sub">{t('app.connecting')}</div>
-          </div>
-        ) : null}
+
         {snapshot ? (
           page === 'devices' ? (
             <DevicesPage snapshot={snapshot} onChanged={refresh} />
           ) : page === 'apps' ? (
             <AppsPage snapshot={snapshot} />
           ) : page === 'installer' ? (
-            <InstallerPage snapshot={snapshot} />
+            <InstallerPage
+              snapshot={snapshot}
+              pendingFiles={pendingFiles}
+              onPendingConsumed={() => setPendingFiles([])}
+            />
           ) : page === 'files' ? (
             <FilesPage snapshot={snapshot} />
           ) : page === 'shell' ? (
@@ -181,6 +234,21 @@ function AppShell() {
           )
         ) : null}
       </main>
+      {!snapshot && !error ? (
+        <div className="splash">
+          <img src="./droidslate-logo.png" alt="" />
+          <div className="splash-name">DroidSlate</div>
+          <div className="splash-sub">{t('app.connecting')}</div>
+        </div>
+      ) : null}
+      {dropOverlay ? (
+        <div className="drop-overlay">
+          <div className="drop-overlay-card">
+            <div className="dz-title">{t('drop.title')}</div>
+            <div className="hint">{t('drop.hint')}</div>
+          </div>
+        </div>
+      ) : null}
       {showOnboarding ? (
         <div
           className="modal-overlay"
@@ -1688,7 +1756,15 @@ type BundleItem = {
 
 const BUNDLE_EXTS = ['.apk', '.apks', '.xapk', '.apkm', '.zip']
 
-function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
+function InstallerPage({
+  snapshot,
+  pendingFiles,
+  onPendingConsumed,
+}: {
+  snapshot: AppSnapshot
+  pendingFiles: File[]
+  onPendingConsumed: () => void
+}) {
   const t = useT()
   const [items, setItems] = useState<BundleItem[]>([])
   const [selected, setSelected] = useState<string | null>(null)
@@ -1758,6 +1834,13 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
     }
   }
 
+  useEffect(() => {
+    if (pendingFiles.length === 0) return
+    void addFiles(pendingFiles)
+    onPendingConsumed()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingFiles])
+
   const install = async (filename: string) => {
     patch(filename, { busy: 'install' })
     setMessage('')
@@ -1820,6 +1903,7 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
           onDragLeave={() => setDragOver(false)}
           onDrop={(event) => {
             event.preventDefault()
+            event.stopPropagation()
             setDragOver(false)
             void addFiles(event.dataTransfer.files)
           }}
@@ -2231,6 +2315,11 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState('')
   const [error, setError] = useState('')
+  const [updates, setUpdates] = useState<AdbUpdates | null>(null)
+  const [checking, setChecking] = useState(false)
+  const [diagBusy, setDiagBusy] = useState(false)
+  const [diagStatus, setDiagStatus] = useState('')
+  const [diagKind, setDiagKind] = useState<'ok' | 'error'>('ok')
 
   useEffect(() => {
     setAdbPath(snapshot.settings.adbPath)
@@ -2326,6 +2415,94 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="settings-card">
+          <h2>{t('set.updates')}</h2>
+          <div className="desc">{t('set.updatesDesc')}</div>
+          <div className="row">
+            <button
+              className="btn"
+              disabled={checking}
+              onClick={async () => {
+                setChecking(true)
+                try {
+                  setUpdates(await api.updatesAdb())
+                } catch (err) {
+                  setUpdates({
+                    localVersion: null,
+                    latestVersion: null,
+                    updateAvailable: false,
+                    error: err instanceof Error ? err.message : String(err),
+                    url: '',
+                  })
+                } finally {
+                  setChecking(false)
+                }
+              }}
+            >
+              {checking ? t('set.checking') : t('set.checkUpdates')}
+            </button>
+            {updates && updates.updateAvailable ? (
+              <a className="btn primary" href={updates.url} target="_blank" rel="noreferrer">
+                {t('set.openDownloadPage')}
+              </a>
+            ) : null}
+          </div>
+          {updates ? (
+            <div
+              className={updates.updateAvailable || updates.error ? 'error' : 'hint'}
+              style={{ marginTop: 8 }}
+            >
+              {updates.updateAvailable
+                ? t('set.updateAvail', {
+                    local: updates.localVersion ?? '?',
+                    latest: updates.latestVersion ?? '?',
+                  })
+                : updates.localVersion && updates.latestVersion && !updates.error
+                  ? t('set.upToDate', { version: updates.localVersion })
+                  : updates.error
+                    ? t('set.checkFailed', { error: updates.error })
+                    : t('set.noLocalAdb')}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="settings-card">
+          <h2>{t('set.diag')}</h2>
+          <div className="desc">{t('set.diagDesc')}</div>
+          <div className="row">
+            <button
+              className="btn"
+              disabled={diagBusy}
+              onClick={async () => {
+                setDiagBusy(true)
+                setDiagStatus('')
+                try {
+                  const { report } = await api.diagnosticsReport()
+                  const savedResult = await api.diagnosticsSave(report)
+                  setDiagKind('ok')
+                  setDiagStatus(
+                    savedResult.cancelled
+                      ? t('set.reportCancelled')
+                      : t('set.reportSaved', { path: savedResult.path ?? '' }),
+                  )
+                } catch (err) {
+                  setDiagKind('error')
+                  setDiagStatus(err instanceof Error ? err.message : String(err))
+                } finally {
+                  setDiagBusy(false)
+                }
+              }}
+            >
+              {diagBusy ? t('set.generating') : t('set.generateReport')}
+            </button>
+          </div>
+          {diagStatus ? (
+            <div className={diagKind === 'error' ? 'error' : 'hint'} style={{ marginTop: 8 }}>
+              {diagStatus}
+            </div>
+          ) : null}
         </div>
       </div>
     </>

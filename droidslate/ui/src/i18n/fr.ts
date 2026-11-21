@@ -309,4 +309,32 @@ export const fr: Record<keyof typeof en, string> = {
   'wifi.restartAdb': 'Redémarrer ADB',
   'wifi.restarting': 'Redémarrage…',
   'wifi.restarted': 'Serveur ADB redémarré.',
+
+  // -- Global drag & drop / splash --------------------------------------------
+  'drop.title': 'Déposez pour installer ou transférer',
+  'drop.hint':
+    'Les bundles APK ouvrent l’Installation — les autres fichiers sont envoyés vers /sdcard/Download/',
+  'drop.needDevice': 'Sélectionnez un appareil avant de déposer des fichiers.',
+  'drop.pushConfirm': 'Envoyer {name} vers /sdcard/Download/ ?',
+  'drop.pushedCount': '{n} fichier(s) envoyé(s) vers /sdcard/Download/.',
+  'drop.pushFailed': '{name} : {error}',
+
+  // -- Settings: updates & diagnostics -----------------------------------------
+  'set.updates': 'Mises à jour',
+  'set.updatesDesc':
+    'Vérifier l’adb inclus par rapport à l’index officiel platform-tools de Google.',
+  'set.checkUpdates': 'Rechercher des mises à jour',
+  'set.checking': 'Vérification…',
+  'set.updateAvail': 'Mise à jour disponible : {local} → {latest}.',
+  'set.upToDate': 'ADB est à jour ({version}).',
+  'set.checkFailed': 'Impossible de vérifier : {error}',
+  'set.noLocalAdb': 'Version adb locale indisponible — comparaison impossible.',
+  'set.openDownloadPage': 'Ouvrir la page de téléchargement',
+  'set.diag': 'Diagnostics',
+  'set.diagDesc':
+    'Générer un rapport de support (version, appareils, journaux récents) — aucun mot de passe ni clé.',
+  'set.generateReport': 'Générer & enregistrer le rapport…',
+  'set.generating': 'Génération…',
+  'set.reportSaved': 'Rapport enregistré dans {path}.',
+  'set.reportCancelled': 'Enregistrement annulé.',
 }

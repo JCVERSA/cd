@@ -948,3 +948,60 @@ textarea {
 .pair-block strong {
   font-weight: 600;
 }
+
+/* -- splash screen (first paint) ------------------------------------------ */
+.splash {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  z-index: 200;
+}
+
+.splash img {
+  width: 72px;
+  height: 72px;
+}
+
+.splash-name {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.splash-sub {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* -- global drop overlay --------------------------------------------------- */
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 8, 12, 0.72);
+  border: 2px dashed var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 150;
+  pointer-events: none; /* drops must keep landing on the root element */
+}
+
+.drop-overlay-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 26px 34px;
+  text-align: center;
+  max-width: 460px;
+}
+
+.drop-overlay-card .dz-title {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}

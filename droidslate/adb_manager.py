@@ -564,6 +564,21 @@ class ADBManager:
             combined = "adb pair returned no output."
         return {"success": ok, "output": combined}
 
+    _PT_VERSION_RE = re.compile(r"^Version (\d+(?:\.\d+)+)", re.MULTILINE)
+
+    def platform_tools_version(self, *, timeout: int = 10) -> str | None:
+        """Platform-tools release of the local adb (``Version 35.0.2-…`` line).
+
+        Modern adb prints this second line; very old builds only report the
+        bridge version, in which case there is nothing comparable to Google's
+        release index and we return ``None``.
+        """
+        result = self.run(["version"], timeout=timeout)
+        if not result.get("success"):
+            return None
+        match = self._PT_VERSION_RE.search(result.get("stdout", ""))
+        return match.group(1) if match else None
+
     def kill_server(self, *, timeout: int = 15) -> dict:
         """Stop the adb server (best-effort: no-op when nothing runs)."""
         return self.run(["kill-server"], timeout=timeout)

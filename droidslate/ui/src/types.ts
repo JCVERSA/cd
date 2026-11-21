@@ -32,6 +32,14 @@ export interface LogcatState {
   serial: string | null
 }
 
+export interface AdbUpdates {
+  localVersion: string | null
+  latestVersion: string | null
+  updateAvailable: boolean
+  error: string
+  url: string
+}
+
 export interface MdnsService {
   name: string
   host: string

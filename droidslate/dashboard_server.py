@@ -24,6 +24,9 @@ import tempfile
 import threading
 import time
 import urllib.parse
+import urllib.request
+import platform as platform_module
+from datetime import datetime, timezone
 
 from adb_manager import ADBManager, find_adb, parse_packages
 from bundle_inspect import BundleError, extract_entries, inspect_bundle, plan_install
@@ -50,6 +53,56 @@ BUNDLE_NAME_RE = re.compile(
 )
 SHOT_NAME_RE = re.compile(r"screenshot_\d{8}_\d{6}(_\d+)?\.png\Z")
 REBOOT_MODES = ("normal", "recovery", "bootloader")
+DROP_NAME_RE = re.compile(r"[^/\\:*?\"<>|\x00-\x1f]{1,200}\Z")
+PLATFORM_TOOLS_INDEX_URL = "https://dl.google.com/android/repository/repository2-3.xml"
+PLATFORM_TOOLS_PAGE_URL = "https://developer.android.com/tools/releases/platform-tools"
+
+
+def _fetch_platform_tools_index() -> str:
+    """Download Google's repository index (small XML) for version lookups."""
+    request = urllib.request.Request(
+        PLATFORM_TOOLS_INDEX_URL, headers={"User-Agent": "DroidSlate/1.0"}
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return response.read(4_000_000).decode("utf-8", "replace")
+
+
+def parse_platform_tools_version(xml_text: str) -> str | None:
+    """Extract the platform-tools revision from the repository XML.
+
+    Defensive: any layout change yields ``None`` ( surfaced as "could not
+    check" in the UI) instead of a crash or a wrong version.
+    """
+    block = re.search(
+        r'<remotePackage path="platform-tools"[^>]*>(.*?)</remotePackage>',
+        xml_text,
+        re.DOTALL,
+    )
+    if not block:
+        return None
+    revision = re.search(r"<revision>(.*?)</revision>", block.group(1), re.DOTALL)
+    if not revision:
+        return None
+    body = revision.group(1)
+    major = re.search(r"<major>(\d+)</major>", body)
+    if not major:
+        return None
+    minor = re.search(r"<minor>(\d+)</minor>", body)
+    micro = re.search(r"<micro>(\d+)</micro>", body)
+    return ".".join(
+        [
+            major.group(1),
+            minor.group(1) if minor else "0",
+            micro.group(1) if micro else "0",
+        ]
+    )
+
+
+def _version_key(value: str) -> tuple[int, ...]:
+    parts = []
+    for piece in value.split("."):
+        parts.append(int(piece) if piece.isdigit() else 0)
+    return tuple(parts)
 
 
 _IPV4_RE = re.compile(
@@ -775,6 +828,27 @@ class DroidSlateBackend:
         self.log("INFO", "FILES", f"Renamed {source} → {target}")
         return {"ok": True, "path": target}
 
+    def file_drop(self, filename: object, stream, length: int) -> dict:
+        """Stage + push one externally dropped file to ``/sdcard/Download/``."""
+        if not isinstance(filename, str) or not DROP_NAME_RE.fullmatch(filename):
+            raise DashboardError("File name contains unsupported characters.")
+        serial = self._require_device()
+        staged = self.stage_apk(filename, stream, length, name_re=DROP_NAME_RE)
+        source = os.path.join(self._stage_dir, staged["name"])
+        remote = f"/sdcard/Download/{staged['name']}"
+        try:
+            result = self.adb.push(serial, source, remote, timeout=1800)
+        finally:
+            try:
+                os.unlink(source)
+            except OSError:
+                pass
+        if not result["success"]:
+            detail = (result.get("stderr") or result.get("stdout") or "push failed").strip()
+            raise DashboardError(f"Push failed: {detail[:300]}", 500)
+        self.log("INFO", "FILES", f"Dropped {filename} → {remote}")
+        return {"ok": True, "path": remote, "size": length}
+
     def device_delete(self, payload: dict) -> dict:
         serial = self._require_device()
         path = self._require_device_path(payload.get("path"), label="path")
@@ -1190,6 +1264,81 @@ class DroidSlateBackend:
     def logcat_status(self) -> dict:
         return {"running": self.adb.logcat_running(), "serial": self.adb.logcat_serial()}
 
+    # -- updates & diagnostics ---------------------------------------------
+
+    def updates_adb(self, payload: dict | None = None) -> dict:
+        """Compare the bundled adb against Google's platform-tools index."""
+        local = self.adb.platform_tools_version()
+        latest: str | None = None
+        error = ""
+        try:
+            latest = parse_platform_tools_version(_fetch_platform_tools_index())
+        except Exception as exc:  # network problems degrade gracefully
+            error = str(exc)[:200] or "network error"
+        if latest is None and not error:
+            error = "could not read the platform-tools index"
+        available = bool(
+            local and latest and _version_key(latest) > _version_key(local)
+        )
+        return {
+            "localVersion": local,
+            "latestVersion": latest,
+            "updateAvailable": available,
+            "error": error,
+            "url": PLATFORM_TOOLS_PAGE_URL,
+        }
+
+    def diagnostics_report(self, payload: dict | None = None) -> dict:
+        """Support snapshot: app/ADB/device state + recent logs, no secrets."""
+        with self._lock:
+            settings = dict(self._settings)
+            devices = list(self._devices)
+        recent = []
+        for record in self.logs()[-50:]:
+            message = str(record.get("message", ""))
+            if len(message) > 300:
+                message = message[:300] + "…"
+            recent.append({**record, "message": message})
+        report = {
+            "app": "DroidSlate",
+            "version": APP_VERSION,
+            "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "platform": platform_module.platform(),
+            "python": platform_module.python_version(),
+            "adbPath": self.adb.adb_path,
+            "adbFound": bool(self.adb.adb_path)
+            and (os.path.isfile(self.adb.adb_path) or self.adb.adb_path == "adb"),
+            "adbPlatformTools": self.adb.platform_tools_version(),
+            "selectedDevice": settings.get("selected_device", ""),
+            "devices": devices,
+            "theme": settings.get("theme", "dark"),
+            "wifiHistorySize": len(settings.get("wifi_history", [])),
+            "logcat": {
+                "running": self.adb.logcat_running(),
+                "serial": self.adb.logcat_serial(),
+            },
+            "recentLogs": recent,
+        }
+        return {"report": report}
+
+    def diagnostics_save(self, payload: dict) -> dict:
+        """Write a generated report through the native save-as dialog."""
+        report = (payload or {}).get("report")
+        if not isinstance(report, dict) or not report:
+            raise DashboardError("Generate the report first.")
+        if not dialogs_supported():
+            raise DashboardError("Native file dialogs require Windows.", 501)
+        target = pick_save_path(suggested="droidslate-report.json")
+        if not target:
+            return {"cancelled": True}
+        try:
+            with open(target, "w", encoding="utf-8") as handle:
+                json.dump(report, handle, indent=2, ensure_ascii=False, default=str)
+        except OSError as exc:
+            raise DashboardError(f"Could not write the report: {exc}", 500) from exc
+        self.log("INFO", "DIAG", f"Saved report → {target}")
+        return {"ok": True, "path": target}
+
     # -- snapshot ----------------------------------------------------------
 
     def snapshot(self) -> dict:
@@ -1459,6 +1608,14 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
                 result = self.app.backend.device_rename(self._parse_json())
             elif self.command == "POST" and path == "/api/v1/files/device-delete":
                 result = self.app.backend.device_delete(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/files/drop":
+                result = self._drop_upload()
+            elif self.command == "POST" and path == "/api/v1/updates/adb":
+                result = self.app.backend.updates_adb(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/diagnostics/report":
+                result = self.app.backend.diagnostics_report(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/diagnostics/save":
+                result = self.app.backend.diagnostics_save(self._parse_json())
             elif self.command == "GET" and path == "/api/v1/degoogle":
                 result = self.app.backend.degoogle_status()
             elif self.command == "POST" and path == "/api/v1/degoogle/run":
@@ -1502,6 +1659,19 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
         filename = (params.get("name") or [""])[0]
         return self.app.backend.stage_apk(filename, self.rfile, int(length_text),
                                           name_re=name_re)
+
+    def _drop_upload(self) -> dict:
+        """Receive one raw dropped-file body and push it to the device."""
+        self.close_connection = True
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if content_type != "application/octet-stream":
+            raise DashboardError("Content-Type must be application/octet-stream.", 415)
+        length_text = self.headers.get("Content-Length")
+        if not length_text or not length_text.isdigit():
+            raise DashboardError("A valid Content-Length is required.", 411)
+        params = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        filename = (params.get("name") or [""])[0]
+        return self.app.backend.file_drop(filename, self.rfile, int(length_text))
 
     def _serve_static(self) -> None:
         if not self._valid_host():

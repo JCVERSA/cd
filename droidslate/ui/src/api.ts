@@ -1,4 +1,5 @@
 import type {
+  AdbUpdates,
   AppEntry,
   AppSnapshot,
   BundleInspect,
@@ -317,6 +318,50 @@ export const api = {
   async adbRestart(): Promise<{ ok: boolean }> {
     if (!isDesktopHost) throw new Error('ADB restart is available in the desktop app.')
     return request('/api/v1/adb/restart', { method: 'POST', body: '{}' })
+  },
+
+  // -- updates & diagnostics ------------------------------------------------
+
+  async updatesAdb(): Promise<AdbUpdates> {
+    if (!isDesktopHost) throw new Error('Updates are available in the desktop app.')
+    return request('/api/v1/updates/adb', { method: 'POST', body: '{}' })
+  },
+
+  async diagnosticsReport(): Promise<{ report: Record<string, unknown> }> {
+    if (!isDesktopHost) throw new Error('Diagnostics are available in the desktop app.')
+    return request('/api/v1/diagnostics/report', { method: 'POST', body: '{}' })
+  },
+
+  async diagnosticsSave(
+    report: Record<string, unknown>,
+  ): Promise<{ ok?: boolean; cancelled?: boolean; path?: string }> {
+    if (!isDesktopHost) throw new Error('Diagnostics are available in the desktop app.')
+    return request('/api/v1/diagnostics/save', {
+      method: 'POST',
+      body: JSON.stringify({ report }),
+    })
+  },
+
+  async dropFile(file: File): Promise<{ ok: boolean; path: string; size: number }> {
+    if (!isDesktopHost) throw new Error('File drop is available in the desktop app.')
+    await sessionReady
+    const response = await fetch(
+      `/api/v1/files/drop?name=${encodeURIComponent(file.name)}`,
+      {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/octet-stream' },
+        body: file,
+      },
+    )
+    if (!response.ok) {
+      const body = await response
+        .json()
+        .catch(() => ({ error: `Request failed (${response.status})` }))
+      throw new Error(body.error || `Request failed (${response.status})`)
+    }
+    return response.json() as Promise<{ ok: boolean; path: string; size: number }>
   },
 
   // -- installer -------------------------------------------------------------
