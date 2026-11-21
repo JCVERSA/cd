@@ -92,6 +92,35 @@ class FindAdbTests(unittest.TestCase):
         resolved = find_adb()
         self.assertTrue(resolved)
 
+    def test_finds_bundled_adb_in_pyinstaller_internal_layout(self):
+        """PyInstaller 6 one-folder builds keep data files under _internal/."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            internal = os.path.join(tmp, "_internal")
+            bundled_dir = os.path.join(internal, "adb-bin")
+            os.makedirs(bundled_dir)
+            exe_name = "adb.exe" if sys.platform == "win32" else "adb"
+            bundled = os.path.join(bundled_dir, exe_name)
+            with open(bundled, "w", encoding="utf-8"):
+                pass
+
+            saved = {name: getattr(sys, name, None) for name in ("frozen", "_MEIPASS", "executable")}
+            sys.frozen = True  # type: ignore[attr-defined]
+            sys._MEIPASS = internal  # type: ignore[attr-defined]
+            # Point the "executable" into an empty folder so the exe-dir candidate
+            # cannot accidentally shadow the bundled copy (e.g. a system /usr/bin/adb).
+            sys.executable = os.path.join(tmp, "python", "python3")  # type: ignore[attr-defined]
+            try:
+                resolved = find_adb()
+            finally:
+                for name, value in saved.items():
+                    if value is None:
+                        delattr(sys, name)
+                    else:
+                        setattr(sys, name, value)
+            self.assertEqual(resolved, bundled)
+
 
 class FakeAdb(ADBManager):
     """ADBManager with run() replaced by canned responses (no subprocess)."""

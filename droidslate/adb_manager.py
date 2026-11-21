@@ -33,13 +33,29 @@ def _app_dir() -> str:
     return os.path.dirname(os.path.abspath(__file__))
 
 
+def _bundled_roots() -> list[str]:
+    """Roots that may contain a bundled ``adb-bin/`` folder.
+
+    Frozen PyInstaller 6 one-folder builds keep data files in ``_internal``
+    (``sys._MEIPASS``) while the executable sits one level up, so both the
+    executable's directory and the resource directory are searched.
+    """
+    roots = [_app_dir()]
+    if getattr(sys, "frozen", False):
+        meipass = getattr(sys, "_MEIPASS", "") or ""
+        if meipass and os.path.abspath(meipass) not in [os.path.abspath(r) for r in roots]:
+            roots.append(meipass)
+    return roots
+
+
 def find_adb(explicit: str | None = None) -> str:
     """Resolve the adb binary.
 
     Order: explicit setting (file or directory) → bundled ``adb-bin/`` next to
-    the app → ``platform-tools/`` next to the app → PATH → common SDK
-    locations.  Returns ``"adb"`` as a last resort so failures surface as a
-    clear "adb not found" error from the subprocess call.
+    the app (or in PyInstaller's ``_internal/`` folder) → ``platform-tools/``
+    next to the app → PATH → common SDK locations.  Returns ``"adb"`` as a
+    last resort so failures surface as a clear "adb not found" error from the
+    subprocess call.
     """
     candidates: list[str] = []
     if explicit:
@@ -53,13 +69,13 @@ def find_adb(explicit: str | None = None) -> str:
             # settings screen show the configured location (adbFound reports absence).
             return explicit
 
-    base = _app_dir()
     exe = "adb.exe" if sys.platform == "win32" else "adb"
-    candidates.extend([
-        os.path.join(base, "adb-bin", exe),
-        os.path.join(base, exe),
-        os.path.join(base, "platform-tools", exe),
-    ])
+    for root in _bundled_roots():
+        candidates.extend([
+            os.path.join(root, "adb-bin", exe),
+            os.path.join(root, exe),
+            os.path.join(root, "platform-tools", exe),
+        ])
 
     on_path = shutil.which("adb") or shutil.which("adb.exe")
     if on_path:

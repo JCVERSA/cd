@@ -401,7 +401,14 @@ jobs:
             $detail = Get-Content (Join-Path $env:TEMP 'DroidSlate-self-test.log') -Raw -ErrorAction SilentlyContinue
             throw "Installed application self-test exited with $($smoke.ExitCode): $detail"
           }
-          if (-not (Test-Path (Join-Path $installDir 'adb-bin\adb.exe'))) {
+          # PyInstaller 6 one-folder layout keeps data files under _internal\.
+          $adbCandidates = @(
+            (Join-Path $installDir '_internal\adb-bin\adb.exe'),
+            (Join-Path $installDir 'adb-bin\adb.exe')
+          )
+          if (-not ($adbCandidates | Where-Object { Test-Path $_ })) {
+            Write-Output '::error title=Bundled adb missing::adb.exe was not found under adb-bin\ or _internal\adb-bin\'
+            Get-ChildItem -Recurse $installDir | Select-Object -First 60 -ExpandProperty FullName | ForEach-Object { Write-Output $_ }
             throw 'bundled adb.exe is missing from the installed package.'
           }
           $uninstaller = Join-Path $installDir 'unins000.exe'

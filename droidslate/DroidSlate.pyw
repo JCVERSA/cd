@@ -394,6 +394,12 @@ def self_test():
     manager = ADBManager()
     if not manager.adb_path:
         raise RuntimeError("ADB binary could not be resolved")
+    # PyInstaller 6 bundles data files under _internal/ (sys._MEIPASS). When a
+    # bundled adb exists there, resolution must actually find it — otherwise the
+    # packaged app would silently depend on a system-wide adb install.
+    bundled_adb = os.path.join(resource_dir, "adb-bin", "adb.exe")
+    if os.path.isfile(bundled_adb) and not os.path.isfile(manager.adb_path):
+        raise RuntimeError(f"Bundled adb.exe was not resolved (resolved: {manager.adb_path})")
     with tempfile.TemporaryDirectory() as temporary:
         backend = DroidSlateBackend(temporary, adb=manager)
         server, _ = create_dashboard_server(backend, assets)
