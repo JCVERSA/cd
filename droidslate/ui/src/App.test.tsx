@@ -8,7 +8,7 @@ const baseSnapshot: AppSnapshot = {
   runtime: { version: '1.0.0', adbPath: 'adb', adbFound: true, uptimeSeconds: 12, theme: 'dark' },
   devices: [{ id: 'emulator-5554', status: 'device', model: 'Pixel 8' }],
   selectedDevice: 'emulator-5554',
-  settings: { adbPath: '', theme: 'dark', accent: 'emerald' },
+  settings: { adbPath: '', scrcpyPath: '', theme: 'dark', accent: 'emerald' },
   wifiHistory: [],
   logcat: { running: false, serial: null },
   logs: [],
@@ -65,6 +65,7 @@ const mockApi = vi.hoisted(() => ({
   mirrorStop: vi.fn(),
   mirrorStatus: vi.fn(),
   mirrorLogs: vi.fn(),
+  mirrorCheckUpdate: vi.fn(),
 }))
 
 vi.mock('./api', () => ({ api: mockApi }))
@@ -599,6 +600,18 @@ describe('DroidSlate app shell', () => {
       ),
     )
 
+    // Update check: local vs latest GitHub release (report-only).
+    mockApi.mirrorCheckUpdate.mockResolvedValue({
+      localVersion: '5.0.1',
+      latestVersion: '5.0.1',
+      updateAvailable: false,
+      error: '',
+      url: 'https://github.com/Genymobile/scrcpy/releases/latest',
+    })
+    await user.click(screen.getByRole('button', { name: 'Check for updates' }))
+    await waitFor(() => expect(mockApi.mirrorCheckUpdate).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('scrcpy is up to date (5.0.1).')).toBeInTheDocument()
+
     // The status poll (1.5 s) picks up the running session and streams its log.
     mockApi.mirrorStatus.mockResolvedValue({
       processes: { 'emulator-5554': { pid: 4242, running: true } },
@@ -614,6 +627,25 @@ describe('DroidSlate app shell', () => {
 
     await user.click(screen.getByRole('button', { name: 'Stop' }))
     await waitFor(() => expect(mockApi.mirrorStop).toHaveBeenCalledWith('emulator-5554'))
+  })
+
+  it('exposes the scrcpy location field in Settings', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Settings/ }))
+
+    const heading = await screen.findByRole('heading', { name: 'scrcpy location' })
+    const card = heading.closest('.settings-card')
+    expect(card).not.toBeNull()
+    const scope = within(card as HTMLElement)
+    const input = scope.getByPlaceholderText('e.g. C:/scrcpy/scrcpy.exe')
+    await user.clear(input)
+    await user.type(input, 'C:/tools/scrcpy.exe')
+    await user.click(scope.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(mockApi.saveSettings).toHaveBeenCalledWith({ scrcpyPath: 'C:/tools/scrcpy.exe' }),
+    )
   })
 
   it('explains when the bundled scrcpy is missing', async () => {

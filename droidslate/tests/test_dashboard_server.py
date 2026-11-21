@@ -43,7 +43,8 @@ class BackendSettingsTests(unittest.TestCase):
     def test_defaults_roundtrip(self):
         settings = self.backend.save_settings({})
         self.assertEqual(
-            settings, {"adbPath": "", "theme": "dark", "accent": "emerald"}
+            settings,
+            {"adbPath": "", "scrcpyPath": "", "theme": "dark", "accent": "emerald"},
         )
 
     def test_theme_validation(self):

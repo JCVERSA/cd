@@ -263,6 +263,9 @@ export const en = {
   'set.activePath': 'Active: {path}',
   'set.found': ' · found',
   'set.notFound': ' · not found',
+  'set.scrLocation': 'scrcpy location',
+  'set.scrDesc':
+    'Where the Mirror engine lives. Leave empty to auto-detect the bundled scrcpy (or one on PATH).',
   'set.appearance': 'Appearance',
   'set.appearanceDesc': 'Choose the dashboard color theme.',
   'set.dark': 'Dark',
@@ -369,4 +372,5 @@ export const en = {
   'mirror.recordPathHint': 'Leave empty to save in your Videos folder.',
   'mirror.logs': 'Session log',
   'mirror.noLogs': 'No output yet.',
+  'mirror.upToDate': 'scrcpy is up to date ({version}).',
 } as const

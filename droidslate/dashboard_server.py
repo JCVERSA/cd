@@ -58,6 +58,8 @@ REBOOT_MODES = ("normal", "recovery", "bootloader")
 DROP_NAME_RE = re.compile(r"[^/\\:*?\"<>|\x00-\x1f]{1,200}\Z")
 PLATFORM_TOOLS_INDEX_URL = "https://dl.google.com/android/repository/repository2-3.xml"
 PLATFORM_TOOLS_PAGE_URL = "https://developer.android.com/tools/releases/platform-tools"
+SCRCPY_LATEST_URL = "https://api.github.com/repos/Genymobile/scrcpy/releases/latest"
+SCRCPY_PAGE_URL = "https://github.com/Genymobile/scrcpy/releases/latest"
 
 
 def _fetch_platform_tools_index() -> str:
@@ -67,6 +69,29 @@ def _fetch_platform_tools_index() -> str:
     )
     with urllib.request.urlopen(request, timeout=10) as response:
         return response.read(4_000_000).decode("utf-8", "replace")
+
+
+def _fetch_scrcpy_latest() -> str:
+    """Download the latest scrcpy release metadata (small JSON)."""
+    request = urllib.request.Request(
+        SCRCPY_LATEST_URL,
+        headers={"User-Agent": "DroidSlate/1.0", "Accept": "application/vnd.github+json"},
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return response.read(1_000_000).decode("utf-8", "replace")
+
+
+def parse_scrcpy_release_tag(text: str) -> str | None:
+    """Extract a version from a GitHub release payload (``tag_name: "v5.0.1"``)."""
+    try:
+        payload = json.loads(text)
+    except ValueError:
+        return None
+    tag = payload.get("tag_name") if isinstance(payload, dict) else None
+    if not isinstance(tag, str):
+        return None
+    version = tag[1:] if tag.startswith("v") else tag
+    return version if re.fullmatch(r"\d+(?:\.\d+)*", version) else None
 
 
 def parse_platform_tools_version(xml_text: str) -> str | None:
@@ -122,6 +147,7 @@ class DashboardError(RuntimeError):
 def default_settings() -> dict:
     return {
         "adb_path": "",
+        "scrcpy_path": "",
         "theme": "dark",
         "accent": "emerald",
         "selected_device": "",
@@ -163,6 +189,7 @@ class DroidSlateBackend:
         self._devices_checked_at = 0.0
         self._settings = self._load_settings()
         self._apply_adb_setting()
+        self._apply_scrcpy_setting()
         # APK staging is ephemeral: drop anything a previous session left behind.
         self._stage_dir = os.path.join(self.data_dir, "apk-stage")
         shutil.rmtree(self._stage_dir, ignore_errors=True)
@@ -205,6 +232,10 @@ class DroidSlateBackend:
         if explicit:
             self.adb.set_adb_path(explicit)
 
+    def _apply_scrcpy_setting(self) -> None:
+        explicit = self._settings.get("scrcpy_path") or ""
+        self.scrcpy.explicit_path = explicit or None
+
     def save_settings(self, payload: dict) -> dict:
         with self._lock:
             if "adbPath" in payload:
@@ -225,12 +256,19 @@ class DroidSlateBackend:
                 if payload["accent"] not in VALID_ACCENTS:
                     raise DashboardError("Unknown accent color.")
                 self._settings["accent"] = payload["accent"]
+            if "scrcpyPath" in payload:
+                scrcpy_path = payload["scrcpyPath"]
+                if not isinstance(scrcpy_path, str) or len(scrcpy_path) > 1024:
+                    raise DashboardError("The scrcpy path must be text.")
+                self._settings["scrcpy_path"] = scrcpy_path.strip()
+                self._apply_scrcpy_setting()
             self._save_settings()
             return self._public_settings()
 
     def _public_settings(self) -> dict:
         return {
             "adbPath": self._settings.get("adb_path", ""),
+            "scrcpyPath": self._settings.get("scrcpy_path", ""),
             "theme": self._settings.get("theme", "dark"),
             "accent": self._settings.get("accent", "emerald"),
         }
@@ -1279,6 +1317,28 @@ class DroidSlateBackend:
         """Locate the bundled scrcpy and report its version."""
         return self.scrcpy.version()
 
+    def mirror_check_update(self, payload: dict | None = None) -> dict:
+        """Compare the local scrcpy against the latest GitHub release."""
+        local = self.scrcpy.version().get("version")
+        latest: str | None = None
+        error = ""
+        try:
+            latest = parse_scrcpy_release_tag(_fetch_scrcpy_latest())
+        except Exception as exc:  # network problems degrade gracefully
+            error = str(exc)[:200] or "network error"
+        if latest is None and not error:
+            error = "could not read the latest scrcpy release"
+        available = bool(
+            local and latest and _version_key(latest) > _version_key(local)
+        )
+        return {
+            "localVersion": local,
+            "latestVersion": latest,
+            "updateAvailable": available,
+            "error": error,
+            "url": SCRCPY_PAGE_URL,
+        }
+
     def mirror_start(self, payload: dict | None = None) -> dict:
         """Start a mirror session for ``serial`` (or the selected device)."""
         payload = payload or {}
@@ -1695,6 +1755,8 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
                 result = self.app.backend.adb_restart(self._parse_json())
             elif self.command == "GET" and path == "/api/v1/mirror/version":
                 result = self.app.backend.mirror_version()
+            elif self.command == "POST" and path == "/api/v1/mirror/check-update":
+                result = self.app.backend.mirror_check_update(self._parse_json())
             elif self.command == "POST" and path == "/api/v1/mirror/start":
                 result = self.app.backend.mirror_start(self._parse_json())
             elif self.command == "POST" and path == "/api/v1/mirror/stop":

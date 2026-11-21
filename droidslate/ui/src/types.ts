@@ -27,6 +27,7 @@ export interface RuntimeState {
 
 export interface Settings {
   adbPath: string
+  scrcpyPath: string
   theme: ThemeMode
   accent: AccentId
 }

@@ -217,7 +217,8 @@ class ScrcpyManager:
     """One scrcpy process per device serial, with bounded session logs."""
 
     def __init__(self, *, scrcpy_path: str | None = None, log_limit: int = 500) -> None:
-        self._explicit_path = scrcpy_path
+        # Public so the backend can apply the scrcpyPath setting live.
+        self.explicit_path = scrcpy_path
         self._log_limit = log_limit
         self._lock = threading.Lock()
         self._procs: dict[str, subprocess.Popen] = {}
@@ -228,9 +229,11 @@ class ScrcpyManager:
 
     def version(self) -> dict:
         """Locate scrcpy and read ``scrcpy --version`` (no device needed)."""
-        path = find_scrcpy(self._explicit_path)
-        if not path:
-            return {"found": False, "path": None, "version": None}
+        path = find_scrcpy(self.explicit_path)
+        if not path or not os.path.isfile(path):
+            # ``path`` may be a configured-but-missing location: report it so
+            # the Settings screen can show "not found" next to the input.
+            return {"found": False, "path": path, "version": None}
         version_text = None
         try:
             result = subprocess.run(
@@ -256,7 +259,9 @@ class ScrcpyManager:
     def start(self, serial: str, raw_config: dict | None) -> dict:
         """Spawn scrcpy for ``serial`` with a validated config."""
         cfg = normalize_config(raw_config)
-        path = find_scrcpy(self._explicit_path)
+        path = find_scrcpy(self.explicit_path)
+        if path and not os.path.isfile(path):
+            path = None  # configured location missing → treated as not found
         if not path:
             raise ScrcpyError(
                 "scrcpy was not found. Reinstall DroidSlate to restore the bundled mirror engine.",

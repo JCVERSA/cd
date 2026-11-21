@@ -268,6 +268,9 @@ export const fr: Record<keyof typeof en, string> = {
   'set.activePath': 'Actif : {path}',
   'set.found': ' · trouvé',
   'set.notFound': ' · introuvable',
+  'set.scrLocation': 'Emplacement de scrcpy',
+  'set.scrDesc':
+    "Où se trouve le moteur de miroir. Laissez vide pour détecter automatiquement scrcpy intégré (ou sur le PATH).",
   'set.appearance': 'Apparence',
   'set.appearanceDesc': 'Choisissez le thème de couleur du tableau de bord.',
   'set.dark': 'Sombre',
@@ -377,4 +380,5 @@ export const fr: Record<keyof typeof en, string> = {
   'mirror.recordPathHint': 'Laissez vide pour enregistrer dans votre dossier Vidéos.',
   'mirror.logs': 'Journal de session',
   'mirror.noLogs': 'Pas encore de sortie.',
+  'mirror.upToDate': 'scrcpy est à jour ({version}).',
 }

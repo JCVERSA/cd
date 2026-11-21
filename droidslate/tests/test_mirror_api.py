@@ -20,7 +20,11 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from adb_manager import ADBManager
-from dashboard_server import DashboardError, DroidSlateBackend
+from dashboard_server import (
+    DashboardError,
+    DroidSlateBackend,
+    parse_scrcpy_release_tag,
+)
 from scrcpy_manager import (
     ScrcpyError,
     ScrcpyManager,
@@ -28,6 +32,8 @@ from scrcpy_manager import (
     find_scrcpy,
     normalize_config,
 )
+
+RELEASE_JSON = '{"tag_name": "v5.0.1", "name": "v5.0.1"}'
 
 
 class _NoopADB(ADBManager):
@@ -150,19 +156,36 @@ class DiscoveryTests(unittest.TestCase):
             self.assertIsNone(find_scrcpy())
 
     def test_version_parses_output(self):
-        manager = ScrcpyManager(scrcpy_path="/nonexistent/scrcpy")
-        completed = mock.Mock(stdout="scrcpy 5.0.1 (https://github.com/Genymobile/scrcpy)\n", stderr="")
-        with mock.patch("scrcpy_manager.find_scrcpy", return_value="/bin/scrcpy"), \
-             mock.patch("scrcpy_manager.subprocess.run", return_value=completed):
-            result = manager.version()
-        self.assertTrue(result["found"])
-        self.assertEqual(result["version"], "5.0.1")
+        with tempfile.NamedTemporaryFile(prefix="scrcpy", delete=False) as handle:
+            binary = handle.name
+        try:
+            manager = ScrcpyManager(scrcpy_path=binary)
+            completed = mock.Mock(
+                stdout="scrcpy 5.0.1 (https://github.com/Genymobile/scrcpy)\n", stderr=""
+            )
+            with mock.patch("scrcpy_manager.find_scrcpy", return_value=binary), \
+                 mock.patch("scrcpy_manager.subprocess.run", return_value=completed):
+                result = manager.version()
+            self.assertTrue(result["found"])
+            self.assertEqual(result["version"], "5.0.1")
+        finally:
+            os.unlink(binary)
 
     def test_version_reports_missing_binary(self):
         manager = ScrcpyManager()
         with mock.patch("scrcpy_manager.find_scrcpy", return_value=None):
             result = manager.version()
         self.assertEqual(result, {"found": False, "path": None, "version": None})
+
+    def test_version_reports_configured_but_missing_location(self):
+        manager = ScrcpyManager(scrcpy_path="/nowhere/scrcpy")
+        with mock.patch(
+            "scrcpy_manager.find_scrcpy", return_value="/nowhere/scrcpy"
+        ):
+            result = manager.version()
+        self.assertEqual(
+            result, {"found": False, "path": "/nowhere/scrcpy", "version": None}
+        )
 
 
 @unittest.skipIf(sys.platform == "win32", "fake scrcpy is a shell script")
@@ -250,6 +273,57 @@ class BackendTests(unittest.TestCase):
         with mock.patch("scrcpy_manager.find_scrcpy", return_value=None):
             result = self.backend.mirror_version()
         self.assertFalse(result["found"])
+
+    def test_scrcpy_path_setting_applies_live(self):
+        self.assertEqual(self.backend.save_settings({})["scrcpyPath"], "")
+        with self.assertRaises(DashboardError):
+            self.backend.save_settings({"scrcpyPath": 42})
+        result = self.backend.save_settings({"scrcpyPath": "  C:/tools/scrcpy.exe "})
+        self.assertEqual(result["scrcpyPath"], "C:/tools/scrcpy.exe")
+        self.assertEqual(self.backend.scrcpy.explicit_path, "C:/tools/scrcpy.exe")
+        # Clearing the setting falls back to bundled/PATH discovery.
+        self.backend.save_settings({"scrcpyPath": ""})
+        self.assertIsNone(self.backend.scrcpy.explicit_path)
+
+    def test_parse_scrcpy_release_tag(self):
+        self.assertEqual(parse_scrcpy_release_tag(RELEASE_JSON), "5.0.1")
+        self.assertEqual(parse_scrcpy_release_tag('{"tag_name": "5.0.1"}'), "5.0.1")
+        self.assertIsNone(parse_scrcpy_release_tag("not json"))
+        self.assertIsNone(parse_scrcpy_release_tag('{"tag_name": "latest"}'))
+        self.assertIsNone(parse_scrcpy_release_tag("{}"))
+
+    def test_check_update_available(self):
+        with mock.patch("scrcpy_manager.find_scrcpy", return_value=None), \
+             mock.patch("dashboard_server._fetch_scrcpy_latest", return_value=RELEASE_JSON):
+            # No local version → nothing to update even though latest is known.
+            result = self.backend.mirror_check_update()
+        self.assertEqual(result["latestVersion"], "5.0.1")
+        self.assertFalse(result["updateAvailable"])
+        self.assertEqual(result["error"], "")
+        self.assertIn("github.com", result["url"])
+
+        with tempfile.NamedTemporaryFile(prefix="scrcpy", delete=False) as handle:
+            binary = handle.name
+        try:
+            completed = mock.Mock(stdout="scrcpy 4.0.0\n", stderr="")
+            with mock.patch("scrcpy_manager.find_scrcpy", return_value=binary), \
+                 mock.patch("scrcpy_manager.subprocess.run", return_value=completed), \
+                 mock.patch("dashboard_server._fetch_scrcpy_latest", return_value=RELEASE_JSON):
+                result = self.backend.mirror_check_update()
+            self.assertTrue(result["updateAvailable"])
+            self.assertEqual(result["localVersion"], "4.0.0")
+        finally:
+            os.unlink(binary)
+
+    def test_check_update_network_error_degrades(self):
+        with mock.patch("scrcpy_manager.find_scrcpy", return_value=None), \
+             mock.patch(
+                 "dashboard_server._fetch_scrcpy_latest",
+                 side_effect=OSError("no route to host"),
+             ):
+            result = self.backend.mirror_check_update()
+        self.assertFalse(result["updateAvailable"])
+        self.assertIn("no route to host", result["error"])
 
     @unittest.skipIf(sys.platform == "win32", "fake scrcpy is a shell script")
     def test_full_lifecycle_through_backend(self):
@@ -368,6 +442,17 @@ class MirrorHTTPTests(unittest.TestCase):
             status, payload = self.post("/api/v1/mirror/start", {}, cookie)
         self.assertEqual(status, 404)
         self.assertIn("scrcpy", json.loads(payload)["error"].lower())
+
+    def test_check_update_route(self):
+        cookie = self.cookie()
+        with mock.patch(
+            "dashboard_server._fetch_scrcpy_latest", return_value=RELEASE_JSON
+        ), mock.patch("scrcpy_manager.find_scrcpy", return_value=None):
+            status, payload = self.post("/api/v1/mirror/check-update", {}, cookie)
+        self.assertEqual(status, 200)
+        body = json.loads(payload)
+        self.assertEqual(body["latestVersion"], "5.0.1")
+        self.assertFalse(body["updateAvailable"])
 
     def test_status_and_logs_routes(self):
         cookie = self.cookie()

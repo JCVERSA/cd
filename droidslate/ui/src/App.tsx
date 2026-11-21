@@ -360,6 +360,8 @@ function MirrorPage({ snapshot }: { snapshot: AppSnapshot }) {
   const [logs, setLogs] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [updates, setUpdates] = useState<AdbUpdates | null>(null)
+  const [checking, setChecking] = useState(false)
 
   const active = Boolean(status[device]?.running)
 
@@ -439,16 +441,49 @@ function MirrorPage({ snapshot }: { snapshot: AppSnapshot }) {
     }
   }
 
+  const checkUpdates = async () => {
+    setChecking(true)
+    try {
+      setUpdates(await api.mirrorCheckUpdate())
+    } catch (exc) {
+      setUpdates({
+        localVersion: null,
+        latestVersion: null,
+        updateAvailable: false,
+        error: exc instanceof Error ? exc.message : String(exc),
+        url: '',
+      })
+    } finally {
+      setChecking(false)
+    }
+  }
+
   const startDisabled = !device || busy || active || (version !== null && !version.found)
 
   return (
     <section>
       <h1>{t('mirror.title')}</h1>
       <p className="hint">{t('mirror.sub')}</p>
-      {version?.found ? (
-        <p className="hint">{t('mirror.version', { version: version.version ?? '?' })}</p>
-      ) : null}
+      <div className="row" style={{ marginBottom: 8 }}>
+        {version?.found ? (
+          <span className="hint">{t('mirror.version', { version: version.version ?? '?' })}</span>
+        ) : null}
+        <button className="btn small" disabled={checking} onClick={() => void checkUpdates()}>
+          {checking ? t('set.checking') : t('set.checkUpdates')}
+        </button>
+        {updates?.updateAvailable ? (
+          <a className="btn primary" href={updates.url} target="_blank" rel="noreferrer">
+            {t('set.openDownloadPage')}
+          </a>
+        ) : null}
+      </div>
       {version && !version.found ? <p className="error">{t('mirror.notFound')}</p> : null}
+      {updates && !updates.updateAvailable && !updates.error ? (
+        <p className="hint">
+          {t('mirror.upToDate', { version: updates.latestVersion ?? updates.localVersion ?? '?' })}
+        </p>
+      ) : null}
+      {updates?.error ? <p className="error">{updates.error}</p> : null}
       {!device ? <p className="hint">{t('mirror.noDevice')}</p> : null}
       {error ? <p className="error">{error}</p> : null}
 
@@ -2706,6 +2741,7 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
   const t = useT()
   const { lang, setLang } = useI18n()
   const [adbPath, setAdbPath] = useState(snapshot.settings.adbPath)
+  const [scrcpyPath, setScrcpyPath] = useState(snapshot.settings.scrcpyPath)
   const [theme, setTheme] = useState(snapshot.settings.theme)
   const [accent, setAccent] = useState(snapshot.settings.accent)
   const [saving, setSaving] = useState(false)
@@ -2719,11 +2755,22 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
 
   useEffect(() => {
     setAdbPath(snapshot.settings.adbPath)
+    setScrcpyPath(snapshot.settings.scrcpyPath)
     setTheme(snapshot.settings.theme)
     setAccent(snapshot.settings.accent)
-  }, [snapshot.settings.adbPath, snapshot.settings.theme, snapshot.settings.accent])
+  }, [
+    snapshot.settings.adbPath,
+    snapshot.settings.scrcpyPath,
+    snapshot.settings.theme,
+    snapshot.settings.accent,
+  ])
 
-  const save = async (patch: { adbPath?: string; theme?: ThemeMode; accent?: AccentId }) => {
+  const save = async (patch: {
+    adbPath?: string
+    scrcpyPath?: string
+    theme?: ThemeMode
+    accent?: AccentId
+  }) => {
     setSaving(true)
     setError('')
     setSaved('')
@@ -2770,6 +2817,30 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
             {snapshot.runtime.adbFound ? t('set.found') : t('set.notFound')}
           </div>
           {error ? <div className="error" style={{ marginTop: 8 }}>{error}</div> : null}
+        </div>
+
+        <div className="settings-card">
+          <h2>{t('set.scrLocation')}</h2>
+          <div className="desc">{t('set.scrDesc')}</div>
+          <div className="row">
+            <input
+              className="input"
+              placeholder="e.g. C:/scrcpy/scrcpy.exe"
+              value={scrcpyPath}
+              onChange={(event) => setScrcpyPath(event.target.value)}
+            />
+            <button
+              className="btn primary"
+              onClick={() => void save({ scrcpyPath })}
+              disabled={saving}
+            >
+              {t('set.save')}
+            </button>
+          </div>
+          <div className="hint" style={{ marginTop: 8 }}>
+            {t('set.activePath', { path: '' })}
+            <code>{snapshot.settings.scrcpyPath || 'scrcpy-bin'}</code>
+          </div>
         </div>
 
         <div className="settings-card">

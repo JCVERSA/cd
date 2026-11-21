@@ -73,7 +73,7 @@ const previewSnapshot: AppSnapshot = {
   runtime: { version: '1.0.0-preview', adbPath: 'adb', adbFound: true, uptimeSeconds: 0, theme: 'dark' },
   devices: [],
   selectedDevice: '',
-  settings: { adbPath: '', theme: 'dark', accent: 'emerald' },
+  settings: { adbPath: '', scrcpyPath: '', theme: 'dark', accent: 'emerald' },
   wifiHistory: [],
   logcat: { running: false, serial: null },
   logs: [],
@@ -443,5 +443,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ serial, limit }),
     })
+  },
+
+  async mirrorCheckUpdate(): Promise<AdbUpdates> {
+    if (!isDesktopHost) throw new Error('Updates are available in the desktop app.')
+    return request('/api/v1/mirror/check-update', { method: 'POST', body: '{}' })
   },
 }
