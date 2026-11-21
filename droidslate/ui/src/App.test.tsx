@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSnapshot } from './types'
 import App from './App'
 
@@ -55,6 +55,10 @@ const mockApi = vi.hoisted(() => ({
 }))
 
 vi.mock('./api', () => ({ api: mockApi }))
+
+afterEach(() => {
+  window.localStorage.removeItem('droidslate.language')
+})
 
 describe('DroidSlate app shell', () => {
   beforeEach(() => {
@@ -284,5 +288,22 @@ describe('DroidSlate app shell', () => {
     expect(screen.getByText('config.x86.apk').closest('.split-row')?.className)
       .toContain('skipped')
     expect(screen.getByRole('button', { name: 'Install' })).toBeEnabled()
+  })
+
+  it('switches the interface language to French and back via Settings', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Settings/ }))
+    expect(await screen.findByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Français' }))
+    expect(screen.getByRole('button', { name: /Appareils/ })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Paramètres' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'English' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'English' }))
+    expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Devices/ })).toBeInTheDocument()
   })
 })

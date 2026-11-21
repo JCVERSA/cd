@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { api } from './api'
+import { I18nProvider, useI18n, useT, type DictKey } from './i18n'
 import type {
   AppEntry,
   AppSnapshot,
@@ -17,15 +18,15 @@ import type {
 
 type Page = 'devices' | 'apps' | 'installer' | 'files' | 'shell' | 'logcat' | 'degoogle' | 'settings'
 
-const NAV: { id: Page; label: string; glyph: string }[] = [
-  { id: 'devices', label: 'Devices', glyph: '▣' },
-  { id: 'apps', label: 'Apps', glyph: '▦' },
-  { id: 'installer', label: 'Installer', glyph: '⬇' },
-  { id: 'files', label: 'Files', glyph: '◫' },
-  { id: 'shell', label: 'Shell', glyph: '>_' },
-  { id: 'logcat', label: 'Logcat', glyph: '≡' },
-  { id: 'degoogle', label: 'DeGoogle', glyph: '⊘' },
-  { id: 'settings', label: 'Settings', glyph: '⚙' },
+const NAV: { id: Page; labelKey: DictKey; glyph: string }[] = [
+  { id: 'devices', labelKey: 'nav.devices', glyph: '▣' },
+  { id: 'apps', labelKey: 'nav.apps', glyph: '▦' },
+  { id: 'installer', labelKey: 'nav.installer', glyph: '⬇' },
+  { id: 'files', labelKey: 'nav.files', glyph: '◫' },
+  { id: 'shell', labelKey: 'nav.shell', glyph: '>_' },
+  { id: 'logcat', labelKey: 'nav.logcat', glyph: '≡' },
+  { id: 'degoogle', labelKey: 'nav.degoogle', glyph: '⊘' },
+  { id: 'settings', labelKey: 'nav.settings', glyph: '⚙' },
 ]
 
 function formatUptime(seconds: number): string {
@@ -36,6 +37,15 @@ function formatUptime(seconds: number): string {
 }
 
 export default function App() {
+  return (
+    <I18nProvider>
+      <AppShell />
+    </I18nProvider>
+  )
+}
+
+function AppShell() {
+  const t = useT()
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [page, setPage] = useState<Page>('devices')
   const [error, setError] = useState('')
@@ -81,37 +91,43 @@ export default function App() {
             onClick={() => setPage(item.id)}
           >
             <span className="glyph">{item.glyph}</span>
-            {item.label}
+            {t(item.labelKey)}
           </button>
         ))}
         <div className="spacer" />
         <div
           className={`status-chip${selectedDevice && selectedDevice.status === 'device' ? ' on' : ''}`}
-          title={selected ? `Selected device: ${selected}` : 'No device selected'}
+          title={selected ? t('side.selected', { id: selected }) : t('side.noSelected')}
         >
           <span className="dot" />
           {selected
             ? selectedDevice?.model || selected
             : snapshot?.devices.length
-              ? `${snapshot.devices.length} device(s)`
-              : 'No device'}
+              ? t('side.deviceCount', { n: snapshot.devices.length })
+              : t('side.noDevice')}
         </div>
-        <div className="status-chip" title={`ADB: ${snapshot?.runtime.adbPath || '…'} · uptime ${snapshot ? formatUptime(snapshot.runtime.uptimeSeconds) : '…'}`}>
+        <div
+          className="status-chip"
+          title={t('side.adbTitle', {
+            path: snapshot?.runtime.adbPath || '…',
+            uptime: snapshot ? formatUptime(snapshot.runtime.uptimeSeconds) : '…',
+          })}
+        >
           <span className={`dot${snapshot?.runtime.adbFound ? ' on' : ''}`} style={{ background: snapshot?.runtime.adbFound ? 'var(--accent)' : undefined }} />
-          ADB {snapshot?.runtime.adbFound ? 'ready' : 'missing'}
+          {snapshot?.runtime.adbFound ? t('side.adbReady') : t('side.adbMissing')}
         </div>
       </aside>
 
       <main className="main">
         {error ? (
           <div className="page-header">
-            <div className="error">Connection error: {error}</div>
-            <button className="btn small" onClick={() => void refresh()}>Retry</button>
+            <div className="error">{t('app.connectionError', { error })}</div>
+            <button className="btn small" onClick={() => void refresh()}>{t('app.retry')}</button>
           </div>
         ) : null}
         {!snapshot && !error ? (
           <div className="page-header">
-            <div className="sub">Connecting to DroidSlate…</div>
+            <div className="sub">{t('app.connecting')}</div>
           </div>
         ) : null}
         {snapshot ? (
@@ -141,6 +157,7 @@ export default function App() {
 /* ---------------- Devices ---------------- */
 
 function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged: () => Promise<void> }) {
+  const t = useT()
   const [info, setInfo] = useState<DeviceInfo | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -204,26 +221,24 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
         const result = await api.wifiGetIp()
         setWifiIp(result.ip)
         setWifiStatusKind('ok')
-        setWifiStatus(`Found device IP: ${result.ip} — now click Enable TCP/IP.`)
+        setWifiStatus(t('wifi.foundIp', { ip: result.ip }))
       } else if (action === 'enable-tcp') {
         const result = await api.wifiEnableTcp()
         setWifiStatusKind('ok')
-        setWifiStatus(
-          `Wi-Fi mode enabled on port ${result.port} — you can unplug USB now, then Connect.`,
-        )
+        setWifiStatus(t('wifi.tcpEnabled', { port: result.port }))
       } else if (action === 'connect') {
         const ip = wifiIp.trim()
-        if (!ip) throw new Error('Enter the device IP first (Get IP fills it automatically).')
+        if (!ip) throw new Error(t('wifi.needIp'))
         const result = await api.wifiConnect(ip)
         setWifiStatusKind('ok')
-        setWifiStatus(`Connected to ${result.target} — it now appears in the device list above.`)
+        setWifiStatus(t('wifi.connected', { target: result.target }))
         await onChanged()
       } else {
         const ip = wifiIp.trim()
-        if (!ip) throw new Error('Enter the device IP to disconnect.')
+        if (!ip) throw new Error(t('wifi.needIpDisconnect'))
         const result = await api.wifiDisconnect(ip)
         setWifiStatusKind('ok')
-        setWifiStatus(`Disconnected ${result.target}.`)
+        setWifiStatus(t('wifi.disconnected', { target: result.target }))
         await onChanged()
       }
     } catch (err) {
@@ -238,8 +253,8 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
     <>
       <div className="page-header">
         <div>
-          <h1>Devices</h1>
-          <div className="sub">Refreshed automatically every 2.5 seconds</div>
+          <h1>{t('devices.title')}</h1>
+          <div className="sub">{t('devices.sub')}</div>
         </div>
         <button
           className="btn"
@@ -254,16 +269,16 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
           }}
           disabled={busy}
         >
-          Refresh
+          {t('devices.refresh')}
         </button>
       </div>
       <div className="page-body">
         {message ? <div className="error" style={{ marginBottom: 10 }}>{message}</div> : null}
         {snapshot.devices.length === 0 ? (
           <div className="empty">
-            No Android device detected.
+            {t('devices.emptyTitle')}
             <br />
-            Enable USB debugging, connect the device, then approve the RSA prompt.
+            {t('devices.emptyHint')}
           </div>
         ) : (
           <div className="device-list">
@@ -275,11 +290,11 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
               >
                 <div className="device-glyph">▣</div>
                 <div className="device-meta">
-                  <div className="name">{device.model || device.product || 'Android device'}</div>
+                  <div className="name">{device.model || device.product || t('devices.fallbackName')}</div>
                   <div className="id">{device.id}</div>
                 </div>
                 <span className={`badge${device.status === 'device' ? ' ok' : ' warn'}`}>
-                  {device.status === 'device' ? 'Connected' : device.status}
+                  {device.status === 'device' ? t('devices.connected') : device.status}
                 </span>
               </div>
             ))}
@@ -297,7 +312,7 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
         ) : null}
         {selected ? (
           <div className="settings-card" style={{ marginTop: 16 }}>
-            <h2>Device actions</h2>
+            <h2>{t('devices.actions')}</h2>
             <div className="row">
               <button
                 className="btn"
@@ -314,7 +329,7 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
                   }
                 }}
               >
-                {actionBusy === 'shot' ? 'Capturing…' : 'Take screenshot'}
+                {actionBusy === 'shot' ? t('devices.capturing') : t('devices.takeScreenshot')}
               </button>
               <select
                 className="select"
@@ -322,22 +337,24 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
                 value={rebootMode}
                 onChange={(event) => setRebootMode(event.target.value as typeof rebootMode)}
               >
-                <option value="normal">Reboot: system</option>
-                <option value="recovery">Reboot: recovery</option>
-                <option value="bootloader">Reboot: bootloader</option>
+                <option value="normal">{t('devices.rebootSystem')}</option>
+                <option value="recovery">{t('devices.rebootRecovery')}</option>
+                <option value="bootloader">{t('devices.rebootBootloader')}</option>
               </select>
               <button
                 className="btn danger"
                 disabled={Boolean(actionBusy)}
                 onClick={async () => {
                   const label =
-                    rebootMode === 'normal' ? 'reboot normally' : `boot into ${rebootMode}`
-                  if (!window.confirm(`Really ${label}?`)) return
+                    rebootMode === 'normal'
+                      ? t('devices.rebootLabelNormal')
+                      : t('devices.rebootLabelMode', { mode: rebootMode })
+                  if (!window.confirm(t('devices.rebootConfirm', { label }))) return
                   setActionBusy('reboot')
                   setMessage('')
                   try {
                     await api.reboot(rebootMode)
-                    setMessage(`Reboot command sent (${rebootMode}).`)
+                    setMessage(t('devices.rebootSent', { mode: rebootMode }))
                     await onChanged()
                   } catch (err) {
                     setMessage(err instanceof Error ? err.message : String(err))
@@ -346,12 +363,12 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
                   }
                 }}
               >
-                {actionBusy === 'reboot' ? 'Rebooting…' : 'Reboot'}
+                {actionBusy === 'reboot' ? t('devices.rebooting') : t('devices.reboot')}
               </button>
             </div>
             {shot ? (
               <div className="shot-result">
-                <img src={shot.url} alt="Latest screenshot" />
+                <img src={shot.url} alt={t('devices.screenshotAlt')} />
                 <div className="shot-meta">
                   <div className="hint">{shot.path}</div>
                   <button
@@ -364,24 +381,24 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
                       }
                     }}
                   >
-                    Open folder
+                    {t('devices.openFolder')}
                   </button>
                 </div>
               </div>
             ) : (
               <div className="hint" style={{ marginTop: 10 }}>
-                No screenshot yet — capture the current screen to save it as a PNG.
+                {t('devices.noScreenshot')}
               </div>
             )}
           </div>
         ) : null}
         {selected ? (
           <div className="settings-card" style={{ marginTop: 16 }}>
-            <h2>WiFi (no cable)</h2>
+            <h2>{t('wifi.title')}</h2>
             <div className="desc">
-              One-time USB flow: <strong>Get IP</strong> → <strong>Enable TCP/IP</strong> →
-              unplug the cable → <strong>Connect</strong>. Phone and computer must share the
-              same Wi-Fi network.
+              {t('wifi.descLead')} <strong>{t('wifi.stepGetIp')}</strong> →{' '}
+              <strong>{t('wifi.stepEnableTcp')}</strong> → {t('wifi.descUnplug')} →{' '}
+              <strong>{t('wifi.stepConnect')}</strong>. {t('wifi.descSameNetwork')}
             </div>
             <div className="row" style={{ marginBottom: 8 }}>
               <input
@@ -389,7 +406,7 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
                 style={{ maxWidth: 220 }}
                 value={wifiIp}
                 placeholder="192.168.1.25"
-                aria-label="Device IP"
+                aria-label={t('wifi.ipAria')}
                 onChange={(event) => setWifiIp(event.target.value)}
               />
               <button
@@ -397,37 +414,34 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
                 disabled={Boolean(wifiBusy)}
                 onClick={() => void wifiAction('get-ip')}
               >
-                {wifiBusy === 'get-ip' ? 'Reading…' : 'Get IP'}
+                {wifiBusy === 'get-ip' ? t('wifi.reading') : t('wifi.getIp')}
               </button>
               <button
                 className="btn"
                 disabled={Boolean(wifiBusy)}
                 onClick={() => void wifiAction('enable-tcp')}
               >
-                {wifiBusy === 'enable-tcp' ? 'Enabling…' : 'Enable TCP/IP'}
+                {wifiBusy === 'enable-tcp' ? t('wifi.enabling') : t('wifi.enableTcp')}
               </button>
               <button
                 className="btn primary"
                 disabled={Boolean(wifiBusy)}
                 onClick={() => void wifiAction('connect')}
               >
-                {wifiBusy === 'connect' ? 'Connecting…' : 'Connect'}
+                {wifiBusy === 'connect' ? t('wifi.connecting') : t('wifi.connect')}
               </button>
               <button
                 className="btn"
                 disabled={Boolean(wifiBusy)}
                 onClick={() => void wifiAction('disconnect')}
               >
-                {wifiBusy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+                {wifiBusy === 'disconnect' ? t('wifi.disconnecting') : t('wifi.disconnect')}
               </button>
             </div>
             {wifiStatus ? (
               <div className={wifiStatusKind === 'error' ? 'error' : 'hint'}>{wifiStatus}</div>
             ) : (
-              <div className="hint">
-                TCP/IP mode lasts until the phone reboots. Legacy ADB over TCP is
-                unencrypted — only use it on a trusted network.
-              </div>
+              <div className="hint">{t('wifi.legacyHint')}</div>
             )}
           </div>
         ) : null}
@@ -441,11 +455,13 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
 type AppFilter = 'all' | 'user' | 'system'
 
 function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
+  const t = useT()
   const [apps, setApps] = useState<AppEntry[] | null>(null)
   const [filter, setFilter] = useState<AppFilter>('all')
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
+  const [messageKind, setMessageKind] = useState<'ok' | 'error'>('error')
   const [installPhase, setInstallPhase] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const selected = snapshot.selectedDevice
@@ -476,9 +492,13 @@ function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
     setMessage('')
     try {
       await action()
-      if (done) setMessage(done)
+      if (done) {
+        setMessageKind('ok')
+        setMessage(done)
+      }
       await load()
     } catch (err) {
+      setMessageKind('error')
       setMessage(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy('')
@@ -491,18 +511,28 @@ function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
     setBusy('install')
     setMessage('')
     try {
-      setInstallPhase(`Uploading 1/${list.length}…`)
+      setInstallPhase(t('apps.uploading', { index: 1, total: list.length }))
       const staged: string[] = []
       for (let index = 0; index < list.length; index += 1) {
-        setInstallPhase(`Uploading ${index + 1}/${list.length}…`)
+        setInstallPhase(t('apps.uploading', { index: index + 1, total: list.length }))
         const stagedFile = await api.stageApk(list[index])
         staged.push(stagedFile.name)
       }
-      setInstallPhase(staged.length > 1 ? `Installing ${staged.length} split APKs…` : 'Installing…')
+      setInstallPhase(
+        staged.length > 1
+          ? t('apps.installingSplits', { n: staged.length })
+          : t('apps.installing'),
+      )
       await api.installStaged(staged)
-      setMessage(`Installed ${staged.length === 1 ? staged[0] : `${staged.length} split APKs`}.`)
+      setMessageKind('ok')
+      setMessage(
+        staged.length === 1
+          ? t('apps.installedFile', { name: staged[0] })
+          : t('apps.installedSplits', { n: staged.length }),
+      )
       await load()
     } catch (err) {
+      setMessageKind('error')
       setMessage(err instanceof Error ? err.message : String(err))
     } finally {
       setInstallPhase('')
@@ -526,9 +556,11 @@ function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
     <>
       <div className="page-header">
         <div>
-          <h1>Apps</h1>
+          <h1>{t('apps.title')}</h1>
           <div className="sub">
-            {selected ? `${apps ? apps.length : '…'} packages on ${selected}` : 'Select a device first'}
+            {selected
+              ? t('apps.subPackages', { count: apps ? apps.length : '…', device: selected })
+              : t('apps.selectFirst')}
           </div>
         </div>
         <div className="row">
@@ -545,31 +577,33 @@ function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
             disabled={!selected || Boolean(busy)}
             onClick={() => fileRef.current?.click()}
           >
-            Install APK…
+            {t('apps.installApk')}
           </button>
           <button className="btn" disabled={!selected || Boolean(busy)} onClick={() => void load()}>
-            {busy === 'load' ? 'Loading…' : 'Refresh'}
+            {busy === 'load' ? t('apps.loading') : t('apps.refresh')}
           </button>
         </div>
       </div>
       <div className="page-body">
         {message ? (
-          <div className={message.startsWith('Installed') ? 'saved' : 'error'} style={{ marginBottom: 10 }}>
+          <div className={messageKind === 'ok' ? 'saved' : 'error'} style={{ marginBottom: 10 }}>
             {message}
           </div>
         ) : null}
         {installPhase ? <div className="hint" style={{ marginBottom: 10 }}>{installPhase}</div> : null}
         {!selected ? (
-          <div className="empty">Select a connected device to manage its apps.</div>
+          <div className="empty">{t('apps.emptyNoDevice')}</div>
         ) : !apps ? (
-          <div className="empty">{busy === 'load' ? 'Loading packages…' : 'No package list yet.'}</div>
+          <div className="empty">
+            {busy === 'load' ? t('apps.loadingPackages') : t('apps.noList')}
+          </div>
         ) : (
           <>
             <div className="logcat-toolbar">
               <input
                 className="input"
                 style={{ maxWidth: 320 }}
-                placeholder="Search packages…"
+                placeholder={t('apps.search')}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
               />
@@ -580,24 +614,32 @@ function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
                     className={filter === value ? 'active' : ''}
                     onClick={() => setFilter(value)}
                   >
-                    {value === 'all' ? 'All' : value === 'user' ? 'User' : 'System'}
+                    {value === 'all'
+                      ? t('apps.filterAll')
+                      : value === 'user'
+                        ? t('apps.filterUser')
+                        : t('apps.filterSystem')}
                   </button>
                 ))}
               </div>
-              <span className="hint">{visible.length} shown</span>
+              <span className="hint">{t('apps.shown', { n: visible.length })}</span>
             </div>
             <div className="device-list">
               {visible.length === 0 ? (
-                <div className="empty">No packages match this filter.</div>
+                <div className="empty">{t('apps.noMatch')}</div>
               ) : (
                 visible.map((app) => (
                   <div className="app-row" key={app.name}>
                     <div className="device-meta">
                       <div className="name mono">{app.name}</div>
                       <div className="badges">
-                        <span className="badge">{app.system ? 'System' : 'User'}</span>
-                        {app.disabled ? <span className="badge warn">Disabled</span> : null}
-                        {!app.installed ? <span className="badge warn">Uninstalled</span> : null}
+                        <span className="badge">
+                          {app.system ? t('apps.badgeSystem') : t('apps.badgeUser')}
+                        </span>
+                        {app.disabled ? <span className="badge warn">{t('apps.badgeDisabled')}</span> : null}
+                        {!app.installed ? (
+                          <span className="badge warn">{t('apps.badgeUninstalled')}</span>
+                        ) : null}
                       </div>
                     </div>
                     <div className="row">
@@ -610,11 +652,17 @@ function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
                               void runAction(
                                 `enable-${app.name}`,
                                 () => api.setAppEnabled(app.name, app.disabled),
-                                `${app.disabled ? 'Enabled' : 'Disabled'} ${app.name}.`,
+                                app.disabled
+                                  ? t('apps.enabledMsg', { name: app.name })
+                                  : t('apps.disabledMsg', { name: app.name }),
                               )
                             }
                           >
-                            {busy === `enable-${app.name}` ? '…' : app.disabled ? 'Enable' : 'Disable'}
+                            {busy === `enable-${app.name}`
+                              ? '…'
+                              : app.disabled
+                                ? t('apps.enable')
+                                : t('apps.disable')}
                           </button>
                           <button
                             className="btn small danger"
@@ -623,11 +671,11 @@ function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
                               void runAction(
                                 `uninstall-${app.name}`,
                                 () => api.uninstallApp(app.name),
-                                `Uninstalled ${app.name}.`,
+                                t('apps.uninstalledMsg', { name: app.name }),
                               )
                             }
                           >
-                            {busy === `uninstall-${app.name}` ? '…' : 'Uninstall'}
+                            {busy === `uninstall-${app.name}` ? '…' : t('apps.uninstall')}
                           </button>
                         </>
                       ) : (
@@ -638,11 +686,11 @@ function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
                             void runAction(
                               `reinstall-${app.name}`,
                               () => api.reinstallApp(app.name),
-                              `Restored ${app.name}.`,
+                              t('apps.restoredMsg', { name: app.name }),
                             )
                           }
                         >
-                          {busy === `reinstall-${app.name}` ? '…' : 'Reinstall'}
+                          {busy === `reinstall-${app.name}` ? '…' : t('apps.reinstall')}
                         </button>
                       )}
                     </div>
@@ -760,6 +808,7 @@ function FilePane({
   headerExtra?: ReactNode
   emptyMessage: string
 }) {
+  const t = useT()
   const [draft, setDraft] = useState(data.path)
   const [dropActive, setDropActive] = useState(false)
   useEffect(() => {
@@ -797,12 +846,12 @@ function FilePane({
       </div>
       <div className="pane-path">
         <button className="btn small" disabled={!data.parent} onClick={() => data.parent && onNavigate(data.parent)}>
-          Up
+          {t('files.up')}
         </button>
         <input
           className="input"
           value={draft}
-          placeholder={disabled ? 'Select a device first' : 'Path…'}
+          placeholder={disabled ? t('files.selectDeviceFirst') : t('files.pathPlaceholder')}
           disabled={disabled}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -811,7 +860,7 @@ function FilePane({
         />
         <button className="btn small" disabled={disabled || !draft.trim()}
           onClick={() => onNavigate(draft.trim())}>
-          Go
+          {t('files.go')}
         </button>
         <button className="btn small" disabled={disabled || loading}
           onClick={() => data.path && onNavigate(data.path)}>
@@ -838,13 +887,15 @@ function FilePane({
       ) : null}
       <div className="file-table">
         <div className="file-head">
-          {column('name', 'Name', 'grow')}
-          {column('size', 'Size', 'num')}
-          {column('modified', 'Modified', 'date')}
+          {column('name', t('files.colName'), 'grow')}
+          {column('size', t('files.colSize'), 'num')}
+          {column('modified', t('files.colModified'), 'date')}
         </div>
         <div className="file-rows">
           {disabled || (!loading && entries.length === 0) ? (
-            <div className="empty tight">{disabled ? emptyMessage : loading ? 'Loading…' : emptyMessage}</div>
+            <div className="empty tight">
+              {disabled ? emptyMessage : loading ? t('files.loading') : emptyMessage}
+            </div>
           ) : (
             entries.map((entry) => {
               const fullPath = joinPath(data.path, entry.name)
@@ -880,6 +931,7 @@ function FilePane({
 }
 
 function FilesPage({ snapshot }: { snapshot: AppSnapshot }) {
+  const t = useT()
   const [local, setLocal] = useState<PaneData>(EMPTY_PANE)
   const [device, setDevice] = useState<PaneData>(EMPTY_PANE)
   const [localLoading, setLocalLoading] = useState(false)
@@ -963,15 +1015,15 @@ function FilesPage({ snapshot }: { snapshot: AppSnapshot }) {
     if (payload.kind === target) return
     await withBusy('transfer', async () => {
       if (target === 'device') {
-        if (!device.path) throw new Error('Select a device first.')
+        if (!device.path) throw new Error(t('files.selectDeviceFirst'))
         const destination = joinPath(device.path, payload.entry.name)
         await api.pushFile(payload.fullPath, destination)
-        setMessage(`Pushed ${payload.entry.name} → ${destination}`)
+        setMessage(t('files.pushedTo', { name: payload.entry.name, path: destination }))
         await loadDevice(device.path)
       } else {
         const destination = joinPath(local.path, payload.entry.name)
         await api.pullFile(payload.fullPath, destination)
-        setMessage(`Pulled ${payload.entry.name} → ${destination}`)
+        setMessage(t('files.pulledTo', { name: payload.entry.name, path: destination }))
         await loadLocal(local.path)
       }
     })
@@ -987,52 +1039,55 @@ function FilesPage({ snapshot }: { snapshot: AppSnapshot }) {
         onClick={() => void withBusy('pick', async () => {
           const result = await api.pushPick(device.path || '/sdcard')
           if (result.cancelled) return
-          setMessage(`Pushed ${result.pushed ?? 0} file(s)${result.failed ? `, ${result.failed} failed` : ''}.`)
+          setMessage(
+            t('files.pushedCount', { n: result.pushed ?? 0 }) +
+              (result.failed ? t('files.pushFailed', { n: result.failed }) : ''),
+          )
           if (device.path) await loadDevice(device.path)
         })}>
-        Push file…
+        {t('files.pushFile')}
       </button>
       <button className="btn small" disabled={!deviceSelected || deviceSelected.is_dir || Boolean(busy)}
         onClick={() => void withBusy('save', async () => {
           const target = joinPath(device.path, deviceSelected!.name)
           const result = await api.saveAs(target)
           if (result.cancelled) return
-          setMessage(`Saved to ${result.path}`)
+          setMessage(t('files.savedTo', { path: result.path ?? '' }))
         })}>
-        Save as…
+        {t('files.saveAs')}
       </button>
       <button className="btn small" disabled={!selectedDevice || Boolean(busy)}
         onClick={() => void withBusy('mkdir', async () => {
-          const name = window.prompt('New folder name:')
+          const name = window.prompt(t('files.newFolderName'))
           if (!name || !name.trim()) return
           await api.deviceMkdir(joinPath(device.path, name.trim()))
-          setMessage(`Created ${name.trim()}.`)
+          setMessage(t('files.created', { name: name.trim() }))
           await loadDevice(device.path)
         })}>
-        New folder
+        {t('files.newFolder')}
       </button>
       <button className="btn small" disabled={!deviceSelected || Boolean(busy)}
         onClick={() => void withBusy('rename', async () => {
-          const name = window.prompt('New name:', deviceSelected!.name)
+          const name = window.prompt(t('files.newName'), deviceSelected!.name)
           if (!name || !name.trim() || name.trim() === deviceSelected!.name) return
           await api.deviceRename(
             joinPath(device.path, deviceSelected!.name),
             joinPath(device.path, name.trim()),
           )
-          setMessage(`Renamed to ${name.trim()}.`)
+          setMessage(t('files.renamed', { name: name.trim() }))
           await loadDevice(device.path)
         })}>
-        Rename
+        {t('files.rename')}
       </button>
       <button className="btn small danger" disabled={!deviceSelected || Boolean(busy)}
         onClick={() => void withBusy('delete', async () => {
           const target = joinPath(device.path, deviceSelected!.name)
-          if (!window.confirm(`Delete ${deviceSelected!.name} from the device?`)) return
+          if (!window.confirm(t('files.deleteConfirm', { name: deviceSelected!.name }))) return
           await api.deviceDelete(target)
-          setMessage(`Deleted ${deviceSelected!.name}.`)
+          setMessage(t('files.deleted', { name: deviceSelected!.name }))
           await loadDevice(device.path)
         })}>
-        Delete
+        {t('files.delete')}
       </button>
     </>
   )
@@ -1041,14 +1096,12 @@ function FilesPage({ snapshot }: { snapshot: AppSnapshot }) {
     <>
       <div className="page-header">
         <div>
-          <h1>Files</h1>
-          <div className="sub">
-            Drag rows between panes to push (→ device) or pull (← PC). Drop only — not external Explorer windows.
-          </div>
+          <h1>{t('files.title')}</h1>
+          <div className="sub">{t('files.sub')}</div>
         </div>
         <div className="row">
           <span className={`badge${busy ? ' warn' : ' ok'}`}>
-            {busy ? 'Working…' : 'Ready'}
+            {busy ? t('files.working') : t('files.ready')}
           </span>
         </div>
       </div>
@@ -1056,7 +1109,7 @@ function FilesPage({ snapshot }: { snapshot: AppSnapshot }) {
         {message ? <div className="hint" style={{ marginBottom: 8 }}>{message}</div> : null}
         <div className="file-panes">
           <FilePane
-            title="This PC"
+            title={t('files.paneLocal')}
             kind="local"
             data={local}
             loading={localLoading}
@@ -1071,10 +1124,10 @@ function FilesPage({ snapshot }: { snapshot: AppSnapshot }) {
             onOpen={(entry) => openEntry('local', entry)}
             onDropEntry={handleDrop('device')}
             onDragStateChange={setDrag}
-            emptyMessage="This folder is empty."
+            emptyMessage={t('files.empty')}
           />
           <FilePane
-            title="Android device"
+            title={t('files.paneDevice')}
             kind="device"
             data={device}
             loading={deviceLoading}
@@ -1096,7 +1149,7 @@ function FilesPage({ snapshot }: { snapshot: AppSnapshot }) {
             onOpen={(entry) => openEntry('device', entry)}
             onDropEntry={handleDrop('local')}
             onDragStateChange={setDrag}
-            emptyMessage={selectedDevice ? 'This folder is empty.' : 'Select a device to browse it.'}
+            emptyMessage={selectedDevice ? t('files.empty') : t('files.emptyDeviceNoDev')}
           />
         </div>
       </div>
@@ -1107,6 +1160,7 @@ function FilesPage({ snapshot }: { snapshot: AppSnapshot }) {
 /* ---------------- DeGoogle ---------------- */
 
 function DeGooglePage() {
+  const t = useT()
   const [status, setStatus] = useState<DeGoogleStatus | null>(null)
   const [error, setError] = useState('')
   const [mode, setMode] = useState<'simple' | 'custom'>('simple')
@@ -1189,12 +1243,12 @@ function DeGooglePage() {
     return (
       <details className={`bucket bucket-${key}`} key={key} open={key === 'safe'}>
         <summary>
-          {label} — {list.length} installed
+          {t('deg.bucketSummary', { label, n: list.length })}
           {key === 'unsafe' ? ' ⚠' : ''}
         </summary>
         <div className="bucket-list">
           {list.length === 0 ? (
-            <div className="hint">None of these are installed.</div>
+            <div className="hint">{t('deg.noneInstalled')}</div>
           ) : (
             list.map((pkg) => (
               <label className="check-row" key={pkg}>
@@ -1222,30 +1276,34 @@ function DeGooglePage() {
     <>
       <div className="page-header">
         <div>
-          <h1>DeGoogle</h1>
+          <h1>{t('deg.title')}</h1>
           <div className="sub">
             {status?.device
-              ? `Working on ${status.device}`
-              : 'Select a device first'}
-            {installed ? ` · ${installed.safe.length + installed.risky.length + installed.unsafe.length} catalog packages installed` : ''}
+              ? t('deg.workingOn', { device: status.device })
+              : t('deg.selectFirst')}
+            {installed
+              ? t('deg.catalogCount', {
+                  n: installed.safe.length + installed.risky.length + installed.unsafe.length,
+                })
+              : ''}
           </div>
         </div>
         <button className="btn" disabled={busy || running} onClick={() => void load()}>
-          Refresh
+          {t('deg.refresh')}
         </button>
       </div>
       <div className="page-body">
         {error ? <div className="error" style={{ marginBottom: 10 }}>{error}</div> : null}
         {!status?.device ? (
-          <div className="empty">Select a connected device to run DeGoogle.</div>
+          <div className="empty">{t('deg.empty')}</div>
         ) : (
           <>
             {running ? (
               <div className="settings-card">
-                <h2>{job?.phase === 'undo' ? 'Restoring packages…' : 'Removing packages…'}</h2>
+                <h2>{job?.phase === 'undo' ? t('deg.restoring') : t('deg.removing')}</h2>
                 <div className="desc">
-                  {job?.done ?? 0}/{job?.total ?? 0}
-                  {job?.current ? ` · ${job.current}` : ''}
+                  {t('deg.progress', { done: job?.done ?? 0, total: job?.total ?? 0 })}
+                  {job?.current ? t('deg.progressCurrent', { current: job.current }) : ''}
                 </div>
                 <div className="progress">
                   <div
@@ -1257,30 +1315,30 @@ function DeGooglePage() {
             ) : null}
 
             <div className="settings-card">
-              <h2>Mode</h2>
+              <h2>{t('deg.mode')}</h2>
               <div className="desc">
-                <strong>Simple</strong> removes optional Google apps (never system-critical ones).
-                <strong> Custom</strong> lets you pick every catalog package, including unsafe ones.
+                <strong>{t('deg.simple')}</strong> {t('deg.simpleDesc')}{' '}
+                <strong>{t('deg.custom')}</strong> {t('deg.customDesc')}
               </div>
               <div className="row" style={{ marginBottom: 10 }}>
                 <div className="seg">
                   <button className={mode === 'simple' ? 'active' : ''}
                     onClick={() => setMode('simple')} disabled={running || busy}>
-                    Simple
+                    {t('deg.simple')}
                   </button>
                   <button className={mode === 'custom' ? 'active' : ''}
                     onClick={() => setMode('custom')} disabled={running || busy}>
-                    Custom
+                    {t('deg.custom')}
                   </button>
                 </div>
                 <div className="seg">
                   <button className={action === 'disable' ? 'active' : ''}
                     onClick={() => setAction('disable')} disabled={running || busy}>
-                    Disable
+                    {t('deg.disable')}
                   </button>
                   <button className={action === 'uninstall' ? 'active' : ''}
                     onClick={() => setAction('uninstall')} disabled={running || busy}>
-                    Uninstall for user
+                    {t('deg.uninstallUser')}
                   </button>
                 </div>
               </div>
@@ -1288,31 +1346,41 @@ function DeGooglePage() {
                 <label className="check-row">
                   <input type="checkbox" checked={includeRisky} disabled={running || busy}
                     onChange={(event) => setIncludeRisky(event.target.checked)} />
-                  Also include risky services (login / sync adapters — may break Google sign-in and sync)
+                  {t('deg.includeRisky')}
                 </label>
               ) : (
                 <div className="buckets">
-                  {bucketDetails('safe', 'Safe')}
-                  {bucketDetails('risky', 'Risky')}
-                  {bucketDetails('unsafe', 'Unsafe ⚠')}
+                  {bucketDetails('safe', t('deg.bucketSafe'))}
+                  {bucketDetails('risky', t('deg.bucketRisky'))}
+                  {bucketDetails('unsafe', t('deg.bucketUnsafe'))}
                   <div className="error" style={{ marginTop: 8 }}>
-                    Unsafe packages can bootloop the device or kill camera, network, launcher and OTA.
-                    Only select them if you know exactly what you are doing.
+                    {t('deg.unsafeWarning')}
                   </div>
                 </div>
               )}
               <div className="row" style={{ marginTop: 12 }}>
                 <button className="btn primary" disabled={running || busy}
                   onClick={() => void run()}>
-                  {busy ? 'Starting…' : mode === 'simple'
-                    ? `Run Simple cleanup (${action === 'disable' ? 'disable' : 'uninstall'})`
-                    : `Run Custom selection (${picked.size})`}
+                  {busy
+                    ? t('deg.starting')
+                    : mode === 'simple'
+                      ? t('deg.runSimple', {
+                          action:
+                            action === 'disable'
+                              ? t('deg.actionDisable')
+                              : t('deg.actionUninstall'),
+                        })
+                      : t('deg.runCustom', { n: picked.size })}
                 </button>
               </div>
               {job?.lastRun && !running ? (
                 <div className="hint" style={{ marginTop: 10 }}>
-                  Last run ({job.lastRun.finished}): {job.lastRun.disabled.length} disabled,{' '}
-                  {job.lastRun.uninstalled.length} uninstalled, {job.lastRun.failed.length} failed.
+                  {t('deg.lastRun', {
+                    finished: job.lastRun.finished,
+                    disabled: job.lastRun.disabled.length,
+                    uninstalled: job.lastRun.uninstalled.length,
+                    failed: job.lastRun.failed.length,
+                  })}
                   {job.lastRun.failed.length > 0 ? (
                     <div className="error">
                       {job.lastRun.failed.slice(0, 5).map((item) => `${item.package}: ${item.error}`).join(' · ')}
@@ -1324,18 +1392,17 @@ function DeGooglePage() {
             </div>
 
             <div className="settings-card">
-              <h2>Undo</h2>
-              <div className="desc">
-                Restore packages this device previously removed through DeGoogle (enabled / reinstalled
-                for your user account).
-              </div>
+              <h2>{t('deg.undo')}</h2>
+              <div className="desc">{t('deg.undoDesc')}</div>
               {!hasUndo ? (
-                <div className="hint">Nothing to restore for this device.</div>
+                <div className="hint">{t('deg.nothingToRestore')}</div>
               ) : (
                 <>
                   {status.state.disabled.length > 0 ? (
                     <div className="bucket-list" style={{ marginBottom: 8 }}>
-                      <div className="hint">Disabled ({status.state.disabled.length}):</div>
+                      <div className="hint">
+                        {t('deg.disabledCount', { n: status.state.disabled.length })}
+                      </div>
                       {status.state.disabled.map((pkg) => (
                         <label className="check-row" key={pkg}>
                           <input type="checkbox" checked={undoDisabled.has(pkg)} disabled={running || busy}
@@ -1352,7 +1419,9 @@ function DeGooglePage() {
                   ) : null}
                   {status.state.uninstalled.length > 0 ? (
                     <div className="bucket-list" style={{ marginBottom: 8 }}>
-                      <div className="hint">Uninstalled ({status.state.uninstalled.length}):</div>
+                      <div className="hint">
+                        {t('deg.uninstalledCount', { n: status.state.uninstalled.length })}
+                      </div>
                       {status.state.uninstalled.map((pkg) => (
                         <label className="check-row" key={pkg}>
                           <input type="checkbox" checked={undoUninstalled.has(pkg)} disabled={running || busy}
@@ -1368,12 +1437,17 @@ function DeGooglePage() {
                     </div>
                   ) : null}
                   <button className="btn" disabled={running || busy} onClick={() => void undo()}>
-                    {busy ? 'Starting…' : `Restore ${undoDisabled.size + undoUninstalled.size} package(s)`}
+                    {busy
+                      ? t('deg.starting')
+                      : t('deg.restoreBtn', { n: undoDisabled.size + undoUninstalled.size })}
                   </button>
                   {job?.lastUndo && !running ? (
                     <div className="hint" style={{ marginTop: 10 }}>
-                      Last restore ({job.lastUndo.finished}): {job.lastUndo.restored.length} restored,{' '}
-                      {job.lastUndo.failed.length} failed.
+                      {t('deg.lastRestore', {
+                        finished: job.lastUndo.finished,
+                        restored: job.lastUndo.restored.length,
+                        failed: job.lastUndo.failed.length,
+                      })}
                     </div>
                   ) : null}
                 </>
@@ -1401,6 +1475,7 @@ type BundleItem = {
 const BUNDLE_EXTS = ['.apk', '.apks', '.xapk', '.apkm', '.zip']
 
 function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
+  const t = useT()
   const [items, setItems] = useState<BundleItem[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const [options, setOptions] = useState({
@@ -1437,7 +1512,7 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
           filename: file.name,
           size: file.size,
           info: null,
-          error: 'Unsupported type — use .apk, .apks, .xapk, .apkm or .zip.',
+          error: t('inst.unsupportedExt'),
           busy: '',
           installed: false,
           result: null,
@@ -1477,10 +1552,18 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
       patch(filename, { busy: '', installed: true, result })
       setMessageKind('ok')
       const obbNote = result.obbPushed.length
-        ? ` · ${result.obbPushed.length} OBB file(s) pushed`
+        ? t('inst.obbPushedNote', { n: result.obbPushed.length })
         : ''
       setMessage(
-        `Installed ${filename} (${result.installed} APK${result.installed === 1 ? '' : 's'})${obbNote}.`,
+        t('inst.installedMsg', {
+          filename,
+          apks:
+            result.installed === 1
+              ? t('inst.apkUnitOne')
+              : t('inst.apkUnitMany', { n: result.installed }),
+        }) +
+          obbNote +
+          '.',
       )
     } catch (err) {
       patch(filename, { busy: '' })
@@ -1498,11 +1581,8 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
     <>
       <div className="page-header">
         <div>
-          <h1>Installer</h1>
-          <div className="sub">
-            APK · APKS · XAPK · APKM · ZIP — drag files here or browse; splits are matched
-            to the selected device automatically
-          </div>
+          <h1>{t('inst.title')}</h1>
+          <div className="sub">{t('inst.sub')}</div>
         </div>
       </div>
       <div className="page-body">
@@ -1513,8 +1593,7 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
         ) : null}
         {!hasDevice ? (
           <div className="hint" style={{ marginBottom: 10 }}>
-            Select a connected device first — splits are chosen for its CPU, density and
-            language.
+            {t('inst.noDeviceHint')}
           </div>
         ) : null}
         <div
@@ -1531,8 +1610,8 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
             void addFiles(event.dataTransfer.files)
           }}
         >
-          <div className="dz-title">Drop bundle files here</div>
-          <div className="hint">or click to browse — .apk .apks .xapk .apkm .zip</div>
+          <div className="dz-title">{t('inst.dropTitle')}</div>
+          <div className="hint">{t('inst.dropHint')}</div>
           <input
             ref={fileRef}
             type="file"
@@ -1552,7 +1631,7 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
               checked={options.reinstall}
               onChange={(event) => setOptions((prev) => ({ ...prev, reinstall: event.target.checked }))}
             />
-            Replace existing (-r)
+            {t('inst.optReplace')}
           </label>
           <label className="check-row">
             <input
@@ -1560,7 +1639,7 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
               checked={options.downgrade}
               onChange={(event) => setOptions((prev) => ({ ...prev, downgrade: event.target.checked }))}
             />
-            Allow downgrade (-d)
+            {t('inst.optDowngrade')}
           </label>
           <label className="check-row">
             <input
@@ -1568,7 +1647,7 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
               checked={options.grant}
               onChange={(event) => setOptions((prev) => ({ ...prev, grant: event.target.checked }))}
             />
-            Grant permissions (-g)
+            {t('inst.optGrant')}
           </label>
           <label className="check-row">
             <input
@@ -1576,11 +1655,11 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
               checked={options.obb}
               onChange={(event) => setOptions((prev) => ({ ...prev, obb: event.target.checked }))}
             />
-            Push OBB data
+            {t('inst.optObb')}
           </label>
         </div>
         {items.length === 0 ? (
-          <div className="empty">No bundle added yet.</div>
+          <div className="empty">{t('inst.empty')}</div>
         ) : (
           items.map((item) => (
             <div
@@ -1590,7 +1669,15 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
             >
               <div className="bundle-head">
                 <span className={`badge${item.error ? ' warn' : item.installed ? ' ok' : ''}`}>
-                  {item.error ? 'Error' : item.installed ? 'Installed' : item.info ? item.info.format.toUpperCase() : item.busy === 'upload' ? 'Uploading…' : '…'}
+                  {item.error
+                    ? t('inst.badgeError')
+                    : item.installed
+                      ? t('inst.badgeInstalled')
+                      : item.info
+                        ? item.info.format.toUpperCase()
+                        : item.busy === 'upload'
+                          ? t('inst.uploading')
+                          : '…'}
                 </span>
                 <span className="bundle-name">{item.filename}</span>
                 <span className="hint">{formatSize(item.size)}</span>
@@ -1601,44 +1688,56 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
                     removeItem(item.filename)
                   }}
                 >
-                  Remove
+                  {t('inst.remove')}
                 </button>
               </div>
               {item.error ? <div className="error">{item.error}</div> : null}
               {item.busy === 'upload' && !item.error ? (
-                <div className="hint">Uploading and inspecting…</div>
+                <div className="hint">{t('inst.uploadingInspecting')}</div>
               ) : null}
               {item.result ? (
                 <div className="hint">
-                  Last install: {item.result.output || `${item.result.installed} APK(s)`}
+                  {t('inst.lastInstall', {
+                    output:
+                      item.result.output || t('inst.apkCount', { n: item.result.installed }),
+                  })}
                   {item.result.notes.length ? ` — ${item.result.notes.join(' · ')}` : ''}
                 </div>
               ) : null}
               {selected === item.filename && item.info ? (
                 <div className="bundle-detail" onClick={(event) => event.stopPropagation()}>
                   <div className="meta-grid">
-                    <div className="k">Package</div>
+                    <div className="k">{t('inst.kPackage')}</div>
                     <div className="v mono">
-                      {item.info.meta?.package ?? (item.info.single ? '—' : 'unknown (no JSON descriptor)')}
+                      {item.info.meta?.package ??
+                        (item.info.single ? '—' : t('inst.unknownNoJson'))}
                     </div>
-                    <div className="k">App</div>
+                    <div className="k">{t('inst.kApp')}</div>
                     <div className="v">
                       {item.info.meta?.label ?? '—'}
-                      {item.info.meta?.version ? ` · v${item.info.meta.version}` : ''}
+                      {item.info.meta?.version
+                        ? t('inst.versionSep', { version: item.info.meta.version })
+                        : ''}
                     </div>
-                    <div className="k">Device</div>
+                    <div className="k">{t('inst.kDevice')}</div>
                     <div className="v">
                       {item.info.device
-                        ? `${item.info.device.abis[0] ?? 'unknown ABI'} · ${item.info.device.density || '?'} dpi · SDK ${item.info.device.sdk || '?'}`
-                        : 'not connected'}
+                        ? t('inst.deviceProfile', {
+                            abi: item.info.device.abis[0] ?? t('inst.unknownAbi'),
+                            dpi: item.info.device.density || '?',
+                            sdk: item.info.device.sdk || '?',
+                          })
+                        : t('inst.notConnected')}
                     </div>
-                    <div className="k">Contents</div>
+                    <div className="k">{t('inst.kContents')}</div>
                     <div className="v">
                       {item.info.single
-                        ? 'Single APK'
-                        : `${item.info.apks.length} APK(s)` +
-                          (item.info.obb.length ? ` · ${item.info.obb.length} OBB` : '') +
-                          (item.info.icon ? ' · icon' : '')}
+                        ? t('inst.singleApk')
+                        : t('inst.apkCount', { n: item.info.apks.length }) +
+                          (item.info.obb.length
+                            ? t('inst.obbCount', { n: item.info.obb.length })
+                            : '') +
+                          (item.info.icon ? t('inst.iconSep') : '')}
                     </div>
                   </div>
                   {item.info.plan && item.info.apks.length > 0 ? (
@@ -1662,7 +1761,9 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
                   ) : null}
                   {item.info.obb.length > 0 ? (
                     <div className="hint" style={{ marginTop: 6 }}>
-                      OBB: {item.info.obb.map((entry) => entry.name).join(', ')}
+                      {t('inst.obbLabel', {
+                        list: item.info.obb.map((entry) => entry.name).join(', '),
+                      })}
                     </div>
                   ) : null}
                   <div className="row" style={{ marginTop: 10 }}>
@@ -1672,12 +1773,14 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
                       onClick={() => void install(item.filename)}
                     >
                       {item.busy === 'install'
-                        ? 'Installing…'
+                        ? t('inst.installing')
                         : item.installed
-                          ? 'Install again'
-                          : 'Install'}
+                          ? t('inst.installAgain')
+                          : t('inst.install')}
                     </button>
-                    {!hasDevice ? <span className="hint">No device selected</span> : null}
+                    {!hasDevice ? (
+                      <span className="hint">{t('inst.noDeviceSelected')}</span>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -1692,6 +1795,7 @@ function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
 /* ---------------- Shell ---------------- */
 
 function ShellPage({ snapshot }: { snapshot: AppSnapshot }) {
+  const t = useT()
   const [command, setCommand] = useState('')
   const [running, setRunning] = useState(false)
   const [clientError, setClientError] = useState('')
@@ -1731,17 +1835,20 @@ function ShellPage({ snapshot }: { snapshot: AppSnapshot }) {
     <>
       <div className="page-header">
         <div>
-          <h1>Shell</h1>
-          <div className="sub">{selected ? `Running on ${selected}` : 'Select a device first'}</div>
+          <h1>{t('shell.title')}</h1>
+          <div className="sub">
+            {selected ? t('shell.runningOn', { device: selected }) : t('shell.selectFirst')}
+          </div>
         </div>
-        <span className="hint">Output is streamed from the device</span>
+        <span className="hint">{t('shell.streamed')}</span>
       </div>
       <div className="page-body">
         <div className="shell">
           <div className="shell-output" ref={outputRef}>
             {shellLogs.length === 0 ? (
               <span className="shell-line out">
-                Run any adb shell command, e.g. <span className="prompt">getprop ro.build.version.release</span>
+                {t('shell.exampleLead')}{' '}
+                <span className="prompt">{t('shell.exampleCmd')}</span>
               </span>
             ) : (
               shellLogs.map((record) => {
@@ -1758,7 +1865,9 @@ function ShellPage({ snapshot }: { snapshot: AppSnapshot }) {
           <div className="shell-input-row">
             <input
               className="input"
-              placeholder={selected ? 'Enter shell command…' : 'Select a device to use the shell'}
+              placeholder={
+                selected ? t('shell.placeholderSel') : t('shell.placeholderNoDev')
+              }
               value={command}
               disabled={!selected || running}
               onChange={(event) => setCommand(event.target.value)}
@@ -1780,12 +1889,14 @@ function ShellPage({ snapshot }: { snapshot: AppSnapshot }) {
               }}
             />
             <button className="btn primary" onClick={() => void submit()} disabled={!selected || running || !command.trim()}>
-              {running ? 'Running…' : 'Run'}
+              {running ? t('shell.running') : t('shell.run')}
             </button>
           </div>
           {clientError ? <div className="error" style={{ marginTop: 8 }}>{clientError}</div> : null}
           <div className="hint" style={{ marginTop: 8 }}>
-            Output appears above. ↑/↓ browse your command history. A leading <code>adb shell</code> is stripped automatically.
+            {t('shell.hintLead')}
+            <code>{t('shell.hintCode')}</code>
+            {t('shell.hintTail')}
           </div>
         </div>
       </div>
@@ -1796,6 +1907,7 @@ function ShellPage({ snapshot }: { snapshot: AppSnapshot }) {
 /* ---------------- Logcat ---------------- */
 
 function LogcatPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged: () => Promise<void> }) {
+  const t = useT()
   const [filter, setFilter] = useState('')
   const [clientError, setClientError] = useState('')
   const viewRef = useRef<HTMLDivElement>(null)
@@ -1834,15 +1946,19 @@ function LogcatPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged:
     <>
       <div className="page-header">
         <div>
-          <h1>Logcat</h1>
-          <div className="sub">{running ? `Streaming ${snapshot.logcat.serial || ''}` : 'Not streaming'}</div>
+          <h1>{t('log.title')}</h1>
+          <div className="sub">
+            {running
+              ? t('log.streaming', { serial: snapshot.logcat.serial || '' })
+              : t('log.notStreaming')}
+          </div>
         </div>
         <button
           className={`btn ${running ? 'danger' : 'primary'}`}
           onClick={() => void toggle()}
           disabled={!selected}
         >
-          {running ? 'Stop' : 'Start'}
+          {running ? t('log.stop') : t('log.start')}
         </button>
       </div>
       <div className="page-body">
@@ -1851,11 +1967,11 @@ function LogcatPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged:
             <input
               className="input"
               style={{ maxWidth: 320 }}
-              placeholder="Filter output…"
+              placeholder={t('log.filter')}
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
             />
-            <span className="hint">{visible.length} line(s)</span>
+            <span className="hint">{t('log.lineCount', { n: visible.length })}</span>
             {clientError ? <span className="error" style={{ marginLeft: 'auto' }}>{clientError}</span> : null}
           </div>
           <div
@@ -1870,10 +1986,10 @@ function LogcatPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged:
             {visible.length === 0 ? (
               <div className="hint">
                 {!selected
-                  ? 'Select a device first.'
+                  ? t('log.noDevice')
                   : running
-                    ? 'Waiting for log output…'
-                    : 'Press Start to stream the device log.'}
+                    ? t('log.waiting')
+                    : t('log.pressStart')}
               </div>
             ) : (
               visible.map((record: LogRecord) => (
@@ -1894,6 +2010,8 @@ function LogcatPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged:
 /* ---------------- Settings ---------------- */
 
 function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged: () => Promise<void> }) {
+  const t = useT()
+  const { lang, setLang } = useI18n()
   const [adbPath, setAdbPath] = useState(snapshot.settings.adbPath)
   const [theme, setTheme] = useState(snapshot.settings.theme)
   const [saving, setSaving] = useState(false)
@@ -1913,7 +2031,7 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
       await api.saveSettings(patch)
       document.documentElement.dataset.theme = patch.theme ?? document.documentElement.dataset.theme
       await onChanged()
-      setSaved('Saved.')
+      setSaved(t('set.saved'))
       window.setTimeout(() => setSaved(''), 2000)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
@@ -1926,17 +2044,14 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
     <>
       <div className="page-header">
         <div>
-          <h1>Settings</h1>
-          <div className="sub">DroidSlate {snapshot.runtime.version}</div>
+          <h1>{t('set.title')}</h1>
+          <div className="sub">{t('set.versionLine', { version: snapshot.runtime.version })}</div>
         </div>
       </div>
       <div className="page-body">
         <div className="settings-card">
-          <h2>ADB location</h2>
-          <div className="desc">
-            DroidSlate bundles its own adb binary. Set a custom path only if you need a
-            specific platform-tools version. Leave empty to use the bundled/PATH copy.
-          </div>
+          <h2>{t('set.adbLocation')}</h2>
+          <div className="desc">{t('set.adbDesc')}</div>
           <div className="row">
             <input
               className="input"
@@ -1945,19 +2060,20 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
               onChange={(event) => setAdbPath(event.target.value)}
             />
             <button className="btn primary" onClick={() => void save({ adbPath })} disabled={saving}>
-              Save
+              {t('set.save')}
             </button>
           </div>
           <div className="hint" style={{ marginTop: 8 }}>
-            Active: <code>{snapshot.runtime.adbPath}</code>
-            {snapshot.runtime.adbFound ? ' · found' : ' · not found'}
+            {t('set.activePath', { path: '' })}
+            <code>{snapshot.runtime.adbPath}</code>
+            {snapshot.runtime.adbFound ? t('set.found') : t('set.notFound')}
           </div>
           {error ? <div className="error" style={{ marginTop: 8 }}>{error}</div> : null}
         </div>
 
         <div className="settings-card">
-          <h2>Appearance</h2>
-          <div className="desc">Choose the dashboard color theme.</div>
+          <h2>{t('set.appearance')}</h2>
+          <div className="desc">{t('set.appearanceDesc')}</div>
           <div className="row">
             <div className="seg">
               <button
@@ -1967,7 +2083,7 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
                   void save({ theme: 'dark' })
                 }}
               >
-                Dark
+                {t('set.dark')}
               </button>
               <button
                 className={theme === 'light' ? 'active' : ''}
@@ -1976,10 +2092,25 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
                   void save({ theme: 'light' })
                 }}
               >
-                Light
+                {t('set.light')}
               </button>
             </div>
             {saved ? <span className="saved">{saved}</span> : null}
+          </div>
+        </div>
+
+        <div className="settings-card">
+          <h2>{t('set.language')}</h2>
+          <div className="desc">{t('set.languageDesc')}</div>
+          <div className="row">
+            <div className="seg">
+              <button className={lang === 'en' ? 'active' : ''} onClick={() => setLang('en')}>
+                {t('set.langEn')}
+              </button>
+              <button className={lang === 'fr' ? 'active' : ''} onClick={() => setLang('fr')}>
+                {t('set.langFr')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
