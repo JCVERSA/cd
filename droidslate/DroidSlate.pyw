@@ -400,6 +400,18 @@ def self_test():
     bundled_adb = os.path.join(resource_dir, "adb-bin", "adb.exe")
     if os.path.isfile(bundled_adb) and not os.path.isfile(manager.adb_path):
         raise RuntimeError(f"Bundled adb.exe was not resolved (resolved: {manager.adb_path})")
+    # Same contract for the Mirror engine: the bundled scrcpy must both
+    # resolve and execute (a PATH fallback could otherwise mask a broken
+    # bundle while the Mirror tab reports "not found").
+    from scrcpy_manager import ScrcpyManager
+
+    bundled_scrcpy = os.path.join(resource_dir, "scrcpy-bin", "scrcpy.exe")
+    if os.path.isfile(bundled_scrcpy):
+        info = ScrcpyManager().version()
+        resolved = os.path.normcase(os.path.normpath(info["path"] or ""))
+        expected = os.path.normcase(os.path.normpath(bundled_scrcpy))
+        if not info["found"] or resolved != expected or not info["version"]:
+            raise RuntimeError(f"Bundled scrcpy.exe was not resolved: {info}")
     with tempfile.TemporaryDirectory() as temporary:
         backend = DroidSlateBackend(temporary, adb=manager)
         server, _ = create_dashboard_server(backend, assets)

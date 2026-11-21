@@ -155,6 +155,18 @@ class DiscoveryTests(unittest.TestCase):
              mock.patch("scrcpy_manager.shutil.which", return_value=None):
             self.assertIsNone(find_scrcpy())
 
+    def test_bundled_scrcpy_bin_layout(self):
+        """The PyInstaller layout (``_internal/scrcpy-bin/``) must resolve."""
+        with tempfile.TemporaryDirectory() as root:
+            bindir = os.path.join(root, "scrcpy-bin")
+            os.makedirs(bindir)
+            binary = os.path.join(bindir, "scrcpy.exe" if sys.platform == "win32" else "scrcpy")
+            with open(binary, "w", encoding="utf-8") as handle:
+                handle.write("x")
+            with mock.patch("scrcpy_manager._bundled_roots", return_value=[root]), \
+                 mock.patch("scrcpy_manager.shutil.which", return_value=None):
+                self.assertEqual(find_scrcpy(), binary)
+
     def test_version_parses_output(self):
         with tempfile.NamedTemporaryFile(prefix="scrcpy", delete=False) as handle:
             binary = handle.name
