@@ -310,13 +310,33 @@ class ADBManager:
 
     # -- apps --------------------------------------------------------------
 
-    def install_apk(self, serial: str, apk_path: str, *, timeout: int = 600) -> dict:
-        return self.run(["install", "-r", apk_path], serial=serial, timeout=timeout)
+    def install_apk(self, serial: str, apk_path: str, *, timeout: int = 600,
+                    reinstall: bool = True, downgrade: bool = False,
+                    grant: bool = False) -> dict:
+        args = ["install"]
+        if reinstall:
+            args.append("-r")
+        if downgrade:
+            args.append("-d")
+        if grant:
+            args.append("-g")
+        args.append(apk_path)
+        return self.run(args, serial=serial, timeout=timeout)
 
-    def install_multiple(self, serial: str, apk_paths: list[str], *, timeout: int = 900) -> dict:
+    def install_multiple(self, serial: str, apk_paths: list[str], *, timeout: int = 900,
+                         reinstall: bool = True, downgrade: bool = False,
+                         grant: bool = False) -> dict:
         if not apk_paths:
             return {"success": False, "stdout": "", "stderr": "No APK files selected.", "returncode": -1}
-        return self.run(["install-multiple", "-r", *apk_paths], serial=serial, timeout=timeout)
+        args = ["install-multiple"]
+        if reinstall:
+            args.append("-r")
+        if downgrade:
+            args.append("-d")
+        if grant:
+            args.append("-g")
+        args.extend(apk_paths)
+        return self.run(args, serial=serial, timeout=timeout)
 
     def uninstall(self, serial: str, package: str, *, for_user: bool = False) -> dict:
         args = ["uninstall"]
@@ -390,6 +410,37 @@ class ADBManager:
             return {"success": False, "stderr": "Unknown reboot mode."}
         args = ["reboot"] if mode == "normal" else ["reboot", mode]
         return self.run(args, serial=serial, timeout=15)
+
+    # -- install profiles --------------------------------------------------
+
+    _GETPROP_RE = re.compile(r"\[([^\]]+)\]: \[([^\]]*)\]")
+
+    def device_install_profile(self, serial: str, *, timeout: int = 20) -> dict:
+        """Device spec used to pick bundle splits (bundletool device-spec style).
+
+        One ``getprop`` dump covers ABI list, density, SDK, and locale;
+        falls back to ``wm density`` when the property is absent.
+        """
+        profile = {"abis": [], "density": 0, "sdk": 0, "locales": ["en"]}
+        result = self.run(["shell", "getprop"], serial=serial, timeout=timeout)
+        props: dict[str, str] = {}
+        if result.get("success"):
+            props = dict(self._GETPROP_RE.findall(result.get("stdout", "")))
+        abilist = props.get("ro.product.cpu.abilist") or props.get("ro.product.cpu.abi") or ""
+        abis = [part.strip() for part in abilist.split(",") if part.strip()]
+        profile["abis"] = abis
+        density_raw = props.get("ro.sf.lcd_density") or props.get("qemu.sf.lcd_density") or ""
+        if not density_raw.isdigit():
+            wm = self.run(["shell", "wm", "density"], serial=serial, timeout=timeout)
+            match = re.search(r"(?:Physical|Override) density:\s*(\d+)",
+                              wm.get("stdout", "") or "")
+            density_raw = match.group(1) if match else "0"
+        profile["density"] = int(density_raw) if density_raw.isdigit() else 0
+        sdk_raw = props.get("ro.build.version.sdk") or ""
+        profile["sdk"] = int(sdk_raw) if sdk_raw.isdigit() else 0
+        locale = props.get("persist.sys.locale") or props.get("ro.product.locale") or "en"
+        profile["locales"] = [locale.replace("_", "-")] if locale else ["en"]
+        return profile
 
     # -- wireless (WiFi) ---------------------------------------------------
 

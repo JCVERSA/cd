@@ -26,6 +26,7 @@ import time
 import urllib.parse
 
 from adb_manager import ADBManager, find_adb, parse_packages
+from bundle_inspect import BundleError, extract_entries, inspect_bundle, plan_install
 from degoogle import (
     ALL_SET,
     BUCKETS,
@@ -44,6 +45,9 @@ VALID_THEMES = {"dark", "light"}
 APP_VERSION = "1.0.0"
 PACKAGE_NAME_RE = re.compile(r"[A-Za-z0-9._]{1,255}\Z")
 APK_NAME_RE = re.compile(r"[^/\\:*?\"<>|\x00-\x1f]{1,200}\.apk\Z", re.IGNORECASE)
+BUNDLE_NAME_RE = re.compile(
+    r"[^/\\:*?\"<>|\x00-\x1f]{1,200}\.(apk|apks|xapk|apkm|zip)\Z", re.IGNORECASE
+)
 SHOT_NAME_RE = re.compile(r"screenshot_\d{8}_\d{6}(_\d+)?\.png\Z")
 REBOOT_MODES = ("normal", "recovery", "bootloader")
 
@@ -330,10 +334,15 @@ class DroidSlateBackend:
         self.log("INFO", "APPS", f"{verb} {package}")
         return {"ok": True, "package": package, "enabled": enabled}
 
-    def stage_apk(self, filename: object, stream, length: int) -> dict:
-        """Stream one uploaded APK into the staging directory (never in memory)."""
-        if not isinstance(filename, str) or not APK_NAME_RE.fullmatch(filename):
-            raise DashboardError("APK file names must end in .apk and contain no path separators.")
+    def stage_apk(self, filename: object, stream, length: int, *, name_re=None) -> dict:
+        """Stream one uploaded file into the staging directory (never in memory)."""
+        pattern = name_re or APK_NAME_RE
+        if not isinstance(filename, str) or not pattern.fullmatch(filename):
+            raise DashboardError(
+                "File name must be a plain .apk name."
+                if pattern is APK_NAME_RE else
+                "File name must be a plain .apk/.apks/.xapk/.apkm/.zip name."
+            )
         if length <= 0:
             raise DashboardError("The upload is empty.", 411)
         if length > MAX_APK_BYTES:
@@ -394,6 +403,142 @@ class DroidSlateBackend:
         label = names[0] if len(names) == 1 else f"{len(names)} split APKs"
         self.log("INFO", "APPS", f"Installed {label}")
         return {"ok": True, "files": names}
+
+    # -- installer ---------------------------------------------------------
+
+    def _bundle_path(self, value: object) -> tuple[str, str]:
+        """Validate a staged bundle name and return ``(name, realpath)``."""
+        if not isinstance(value, str) or not BUNDLE_NAME_RE.fullmatch(value):
+            raise DashboardError("Invalid bundle file name.")
+        path = os.path.realpath(os.path.join(self._stage_dir, value))
+        if os.path.dirname(path) != os.path.realpath(self._stage_dir):
+            raise DashboardError("Invalid bundle file name.")
+        if not os.path.isfile(path):
+            raise DashboardError("Staged bundle not found.", 404)
+        return value, path
+
+    def inspect_staged_bundle(self, payload: dict) -> dict:
+        """Describe a staged bundle; adds device split plan when connected."""
+        name, path = self._bundle_path(payload.get("filename"))
+        try:
+            info = inspect_bundle(path, name)
+        except BundleError as exc:
+            raise DashboardError(str(exc), 400) from exc
+        profile = None
+        plan = None
+        try:
+            self._require_device()
+            serial = self._settings.get("selected_device")
+            profile = self.adb.device_install_profile(serial)
+            names = [name] if info["single"] else [a["name"] for a in info["apks"]]
+            plan = plan_install(names, profile)
+        except DashboardError:
+            pass  # no device: contents preview still works
+        except BundleError as exc:
+            plan = {"selected": [], "notes": [str(exc)]}
+        return {**info, "device": profile, "plan": plan}
+
+    def install_staged_bundle(self, payload: dict) -> dict:
+        """Extract the matching split set and install it, then push OBB."""
+        name, path = self._bundle_path(payload.get("filename"))
+        options = payload.get("options")
+        if options is None:
+            options = {}
+        if not isinstance(options, dict):
+            raise DashboardError("Invalid install options.")
+        reinstall = options.get("reinstall", True)
+        downgrade = options.get("downgrade", False)
+        grant = options.get("grant", False)
+        push_obb = options.get("obb", True)
+        for flag_name, flag in (("reinstall", reinstall), ("downgrade", downgrade),
+                                ("grant", grant), ("obb", push_obb)):
+            if not isinstance(flag, bool):
+                raise DashboardError(f"The {flag_name} option must be true or false.")
+        serial = self._require_device()
+        try:
+            info = inspect_bundle(path, name)
+        except BundleError as exc:
+            raise DashboardError(str(exc), 400) from exc
+
+        extract_dir: str | None = None
+        pushed: list[str] = []
+        obb_failed: list[str] = []
+        notes: list[str] = []
+        obb_paths: list[str] = []
+        package = (info.get("meta") or {}).get("package")
+        try:
+            if info["single"]:
+                apk_paths = [path]
+                selected = [name]
+            else:
+                profile = self.adb.device_install_profile(serial)
+                try:
+                    plan = plan_install([a["name"] for a in info["apks"]], profile)
+                except BundleError as exc:
+                    raise DashboardError(str(exc), 400) from exc
+                selected = plan["selected"]
+                notes.extend(plan["notes"])
+                extract_dir = os.path.join(self._stage_dir, name + ".extract")
+                shutil.rmtree(extract_dir, ignore_errors=True)
+                try:
+                    apk_paths = extract_entries(path, selected, extract_dir)
+                except BundleError as exc:
+                    raise DashboardError(str(exc), 400) from exc
+
+                obb_entries = info.get("obb") or []
+                if obb_entries and push_obb and package:
+                    try:
+                        obb_paths = extract_entries(
+                            path, [o["name"] for o in obb_entries], extract_dir,
+                        )
+                    except BundleError as exc:
+                        notes.append(f"OBB skipped: {exc}")
+                        obb_paths = []
+                else:
+                    obb_paths = []
+                    if obb_entries and not push_obb:
+                        notes.append("OBB data not pushed (disabled).")
+                    elif obb_entries and not package:
+                        notes.append("OBB data skipped: package name unknown.")
+
+            with self._install_lock:
+                try:
+                    if len(apk_paths) == 1:
+                        result = self.adb.install_apk(
+                            serial, apk_paths[0], reinstall=reinstall,
+                            downgrade=downgrade, grant=grant,
+                        )
+                    else:
+                        result = self.adb.install_multiple(
+                            serial, apk_paths, reinstall=reinstall,
+                            downgrade=downgrade, grant=grant,
+                        )
+                    if not self._apk_result_ok(result):
+                        detail = (result.get("stderr") or result.get("stdout")
+                                  or "install failed").strip()
+                        raise DashboardError(f"Install failed: {detail[:400]}", 500)
+                    for obb_path in obb_paths:
+                        target = f"/sdcard/Android/obb/{package}/{os.path.basename(obb_path)}"
+                        push_result = self.adb.push(serial, obb_path, target, timeout=1800)
+                        if push_result.get("success"):
+                            pushed.append(target)
+                        else:
+                            obb_failed.append(target)
+                finally:
+                    if extract_dir:
+                        shutil.rmtree(extract_dir, ignore_errors=True)
+        finally:
+            if extract_dir:
+                shutil.rmtree(extract_dir, ignore_errors=True)
+
+        combined = f"{result.get('stdout', '')}{result.get('stderr', '')}".strip()
+        self.log("INFO", "APPS", f"Installed bundle {name} ({len(apk_paths)} apk(s))")
+        return {
+            "ok": True, "filename": name, "format": info["format"],
+            "installed": len(apk_paths), "selected": selected,
+            "obbPushed": pushed, "obbFailed": obb_failed,
+            "notes": notes, "output": combined[-400:],
+        }
 
     # -- device actions ----------------------------------------------------
 
@@ -1214,6 +1359,12 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
                 result = self.app.backend.list_apps()
             elif self.command == "POST" and path == "/api/v1/apps/stage":
                 result = self._stage_upload()
+            elif self.command == "POST" and path == "/api/v1/installer/stage":
+                result = self._stage_upload(name_re=BUNDLE_NAME_RE)
+            elif self.command == "POST" and path == "/api/v1/installer/inspect":
+                result = self.app.backend.inspect_staged_bundle(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/installer/install":
+                result = self.app.backend.install_staged_bundle(self._parse_json())
             elif self.command == "POST" and path == "/api/v1/apps/install":
                 result = self.app.backend.install_staged(self._parse_json())
             elif self.command == "POST" and path == "/api/v1/apps/uninstall":
@@ -1274,7 +1425,7 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
         except Exception:
             self._error(500, "The dashboard request failed.")
 
-    def _stage_upload(self) -> dict:
+    def _stage_upload(self, *, name_re=None) -> dict:
         """Receive one raw APK body and stream it into the staging directory."""
         # The body may be up to 2 GiB; never let this connection be reused with
         # unread bytes still queued (a rejected upload skips reading entirely).
@@ -1287,7 +1438,8 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
             raise DashboardError("A valid Content-Length is required.", 411)
         params = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
         filename = (params.get("name") or [""])[0]
-        return self.app.backend.stage_apk(filename, self.rfile, int(length_text))
+        return self.app.backend.stage_apk(filename, self.rfile, int(length_text),
+                                          name_re=name_re)
 
     def _serve_static(self) -> None:
         if not self._valid_host():

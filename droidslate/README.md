@@ -34,6 +34,14 @@ React 19 + TypeScript + Vite interface.
   runs as a single background job with progress, and every removal is
   recorded per device for one-click undo (`pm enable` /
   `pm install-existing` + enable).
+- **Installer** — dedicated tab for app bundles: drop or browse
+  **.apk / .apks / .xapk / .apkm / .zip**, get a preview (format, JSON
+  metadata, contents), and install with the split set **matched to the
+  device** (primary ABI, closest density bucket, languages, feature
+  modules — bundletool-style rules, pure stdlib, no Java). Options:
+  replace (-r), downgrade (-d), grant permissions (-g), OBB push to
+  `/sdcard/Android/obb/<package>/`. Zip-slip and zip-bomb guards on
+  every archive.
 - **WiFi (no cable)** — ADB over the network in three steps:
   **Get IP** (reads the phone's wlan0 address, with `ip route` fallback),
   **Enable TCP/IP** (`adb tcpip 5555` over USB), then unplug and
@@ -56,6 +64,7 @@ dashboard_server.py   Loopback-only HTTP API: capability bootstrap →
                       HttpOnly session cookie, strict CSP, static UI serving
 ui_host.py            Isolated pywebview (edgechromium) window; no js_api
 adb_manager.py        ADB subprocess layer (argument lists only, CREATE_NO_WINDOW)
+bundle_inspect.py     Bundle formats (apk/apks/xapk/apkm/zip): split rules, safe extract
 degoogle.py           DeGoogle catalogs (safe/risky/unsafe) + per-device undo state
 win32_dialogs.py      Native open/save dialogs (WebView2 cannot expose paths)
 ui/                   React 19 + TypeScript source (Vite)

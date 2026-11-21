@@ -131,6 +131,56 @@ export interface WifiConnectResult {
   output: string
 }
 
+export interface BundleApkEntry {
+  name: string
+  size: number
+}
+
+export interface BundleMeta {
+  package: string
+  label: string | null
+  version: string | null
+  versionCode: string | null
+  minSdk: string | null
+}
+
+export interface InstallProfile {
+  abis: string[]
+  density: number
+  sdk: number
+  locales: string[]
+}
+
+export interface BundlePlan {
+  selected: string[]
+  notes: string[]
+}
+
+export interface BundleInspect {
+  format: 'apk' | 'apks' | 'xapk' | 'apkm' | 'zip'
+  filename: string
+  size: number
+  single: boolean
+  meta: BundleMeta | null
+  apks: BundleApkEntry[]
+  obb: BundleApkEntry[]
+  icon: boolean
+  device: InstallProfile | null
+  plan: BundlePlan | null
+}
+
+export interface BundleInstallResult {
+  ok: boolean
+  filename: string
+  format: string
+  installed: number
+  selected: string[]
+  obbPushed: string[]
+  obbFailed: string[]
+  notes: string[]
+  output: string
+}
+
 export interface DeviceInfo {
   Model: string
   Manufacturer: string

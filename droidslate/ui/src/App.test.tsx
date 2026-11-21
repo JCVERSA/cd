@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSnapshot } from './types'
@@ -49,6 +49,9 @@ const mockApi = vi.hoisted(() => ({
   wifiEnableTcp: vi.fn(),
   wifiConnect: vi.fn(),
   wifiDisconnect: vi.fn(),
+  uploadBundle: vi.fn(),
+  inspectBundle: vi.fn(),
+  installBundle: vi.fn(),
 }))
 
 vi.mock('./api', () => ({ api: mockApi }))
@@ -226,5 +229,60 @@ describe('DroidSlate app shell', () => {
     expect(
       screen.getByText('Found device IP: 192.168.1.25 — now click Enable TCP/IP.'),
     ).toBeInTheDocument()
+  })
+
+  it('inspects a dropped bundle and offers matching splits on the Installer tab', async () => {
+    mockApi.uploadBundle.mockResolvedValue({ name: 'game.xapk', size: 1234 })
+    mockApi.inspectBundle.mockResolvedValue({
+      format: 'xapk',
+      filename: 'game.xapk',
+      size: 1234,
+      single: false,
+      meta: {
+        package: 'com.example.game',
+        label: 'Example Game',
+        version: '2.1.0',
+        versionCode: '210',
+        minSdk: '24',
+      },
+      apks: [
+        { name: 'base.apk', size: 100 },
+        { name: 'config.arm64_v8a.apk', size: 50 },
+        { name: 'config.x86.apk', size: 50 },
+      ],
+      obb: [],
+      icon: true,
+      device: { abis: ['arm64-v8a'], density: 440, sdk: 34, locales: ['fr-FR'] },
+      plan: {
+        selected: ['base.apk', 'config.arm64_v8a.apk'],
+        notes: ['2 of 3 APK(s) selected for this device.'],
+      },
+    })
+
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Installer/ }))
+
+    expect(screen.getByText('Drop bundle files here')).toBeInTheDocument()
+    expect(screen.getByText('No bundle added yet.')).toBeInTheDocument()
+
+    const input = document.querySelector('.dropzone input[type="file"]') as HTMLInputElement
+    const file = new File([new Uint8Array([80, 75, 3, 4])], 'game.xapk')
+    fireEvent.change(input, { target: { files: [file] } })
+
+    expect(await screen.findByText('game.xapk')).toBeInTheDocument()
+    await vi.waitFor(() => {
+      expect(mockApi.uploadBundle).toHaveBeenCalledTimes(1)
+      expect(mockApi.inspectBundle).toHaveBeenCalledWith('game.xapk')
+    })
+    expect(await screen.findByText('com.example.game')).toBeInTheDocument()
+    expect(screen.getByText('Example Game · v2.1.0')).toBeInTheDocument()
+    expect(screen.getByText('XAPK')).toBeInTheDocument()
+    // split table: 2 chosen (✓), 1 skipped
+    expect(screen.getAllByText('✓')).toHaveLength(2)
+    expect(screen.getByText('config.x86.apk').closest('.split-row')?.className)
+      .toContain('skipped')
+    expect(screen.getByRole('button', { name: 'Install' })).toBeEnabled()
   })
 })

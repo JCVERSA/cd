@@ -4,6 +4,8 @@ import { api } from './api'
 import type {
   AppEntry,
   AppSnapshot,
+  BundleInspect,
+  BundleInstallResult,
   DeGoogleStatus,
   Device,
   DeviceInfo,
@@ -13,11 +15,12 @@ import type {
   ScreenshotRef,
 } from './types'
 
-type Page = 'devices' | 'apps' | 'files' | 'shell' | 'logcat' | 'degoogle' | 'settings'
+type Page = 'devices' | 'apps' | 'installer' | 'files' | 'shell' | 'logcat' | 'degoogle' | 'settings'
 
 const NAV: { id: Page; label: string; glyph: string }[] = [
   { id: 'devices', label: 'Devices', glyph: '▣' },
   { id: 'apps', label: 'Apps', glyph: '▦' },
+  { id: 'installer', label: 'Installer', glyph: '⬇' },
   { id: 'files', label: 'Files', glyph: '◫' },
   { id: 'shell', label: 'Shell', glyph: '>_' },
   { id: 'logcat', label: 'Logcat', glyph: '≡' },
@@ -116,6 +119,8 @@ export default function App() {
             <DevicesPage snapshot={snapshot} onChanged={refresh} />
           ) : page === 'apps' ? (
             <AppsPage snapshot={snapshot} />
+          ) : page === 'installer' ? (
+            <InstallerPage snapshot={snapshot} />
           ) : page === 'files' ? (
             <FilesPage snapshot={snapshot} />
           ) : page === 'shell' ? (
@@ -1375,6 +1380,309 @@ function DeGooglePage() {
               )}
             </div>
           </>
+        )}
+      </div>
+    </>
+  )
+}
+
+/* ---------------- Installer ---------------- */
+
+type BundleItem = {
+  filename: string
+  size: number
+  info: BundleInspect | null
+  error: string
+  busy: '' | 'upload' | 'install'
+  installed: boolean
+  result: BundleInstallResult | null
+}
+
+const BUNDLE_EXTS = ['.apk', '.apks', '.xapk', '.apkm', '.zip']
+
+function InstallerPage({ snapshot }: { snapshot: AppSnapshot }) {
+  const [items, setItems] = useState<BundleItem[]>([])
+  const [selected, setSelected] = useState<string | null>(null)
+  const [options, setOptions] = useState({
+    reinstall: true,
+    downgrade: false,
+    grant: false,
+    obb: true,
+  })
+  const [message, setMessage] = useState('')
+  const [messageKind, setMessageKind] = useState<'ok' | 'error'>('ok')
+  const [dragOver, setDragOver] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const hasDevice = Boolean(snapshot.selectedDevice)
+
+  const upsert = (item: BundleItem) =>
+    setItems((prev) => {
+      const index = prev.findIndex((entry) => entry.filename === item.filename)
+      if (index === -1) return [...prev, item]
+      const next = [...prev]
+      next[index] = item
+      return next
+    })
+
+  const patch = (filename: string, changes: Partial<BundleItem>) =>
+    setItems((prev) =>
+      prev.map((entry) => (entry.filename === filename ? { ...entry, ...changes } : entry)),
+    )
+
+  const addFiles = async (files: FileList | File[]) => {
+    for (const file of Array.from(files)) {
+      const lower = file.name.toLowerCase()
+      if (!BUNDLE_EXTS.some((ext) => lower.endsWith(ext))) {
+        upsert({
+          filename: file.name,
+          size: file.size,
+          info: null,
+          error: 'Unsupported type — use .apk, .apks, .xapk, .apkm or .zip.',
+          busy: '',
+          installed: false,
+          result: null,
+        })
+        continue
+      }
+      upsert({
+        filename: file.name,
+        size: file.size,
+        info: null,
+        error: '',
+        busy: 'upload',
+        installed: false,
+        result: null,
+      })
+      setSelected(file.name)
+      setMessage('')
+      try {
+        const staged = await api.uploadBundle(file)
+        const info = await api.inspectBundle(staged.name)
+        patch(staged.name, { info, busy: '', size: staged.size })
+        setSelected(staged.name)
+      } catch (err) {
+        patch(file.name, {
+          busy: '',
+          error: err instanceof Error ? err.message : String(err),
+        })
+      }
+    }
+  }
+
+  const install = async (filename: string) => {
+    patch(filename, { busy: 'install' })
+    setMessage('')
+    try {
+      const result = await api.installBundle(filename, options)
+      patch(filename, { busy: '', installed: true, result })
+      setMessageKind('ok')
+      const obbNote = result.obbPushed.length
+        ? ` · ${result.obbPushed.length} OBB file(s) pushed`
+        : ''
+      setMessage(
+        `Installed ${filename} (${result.installed} APK${result.installed === 1 ? '' : 's'})${obbNote}.`,
+      )
+    } catch (err) {
+      patch(filename, { busy: '' })
+      setMessageKind('error')
+      setMessage(err instanceof Error ? err.message : String(err))
+    }
+  }
+
+  const removeItem = (filename: string) => {
+    setItems((prev) => prev.filter((entry) => entry.filename !== filename))
+    setSelected((prev) => (prev === filename ? null : prev))
+  }
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1>Installer</h1>
+          <div className="sub">
+            APK · APKS · XAPK · APKM · ZIP — drag files here or browse; splits are matched
+            to the selected device automatically
+          </div>
+        </div>
+      </div>
+      <div className="page-body">
+        {message ? (
+          <div className={messageKind === 'error' ? 'error' : 'hint'} style={{ marginBottom: 10 }}>
+            {message}
+          </div>
+        ) : null}
+        {!hasDevice ? (
+          <div className="hint" style={{ marginBottom: 10 }}>
+            Select a connected device first — splits are chosen for its CPU, density and
+            language.
+          </div>
+        ) : null}
+        <div
+          className={`dropzone${dragOver ? ' over' : ''}`}
+          onClick={() => fileRef.current?.click()}
+          onDragOver={(event) => {
+            event.preventDefault()
+            setDragOver(true)
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(event) => {
+            event.preventDefault()
+            setDragOver(false)
+            void addFiles(event.dataTransfer.files)
+          }}
+        >
+          <div className="dz-title">Drop bundle files here</div>
+          <div className="hint">or click to browse — .apk .apks .xapk .apkm .zip</div>
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            style={{ display: 'none' }}
+            accept=".apk,.apks,.xapk,.apkm,.zip"
+            onChange={(event) => {
+              if (event.target.files) void addFiles(event.target.files)
+              event.target.value = ''
+            }}
+          />
+        </div>
+        <div className="row" style={{ margin: '12px 0', flexWrap: 'wrap' }}>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={options.reinstall}
+              onChange={(event) => setOptions((prev) => ({ ...prev, reinstall: event.target.checked }))}
+            />
+            Replace existing (-r)
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={options.downgrade}
+              onChange={(event) => setOptions((prev) => ({ ...prev, downgrade: event.target.checked }))}
+            />
+            Allow downgrade (-d)
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={options.grant}
+              onChange={(event) => setOptions((prev) => ({ ...prev, grant: event.target.checked }))}
+            />
+            Grant permissions (-g)
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={options.obb}
+              onChange={(event) => setOptions((prev) => ({ ...prev, obb: event.target.checked }))}
+            />
+            Push OBB data
+          </label>
+        </div>
+        {items.length === 0 ? (
+          <div className="empty">No bundle added yet.</div>
+        ) : (
+          items.map((item) => (
+            <div
+              key={item.filename}
+              className={`bundle-card${selected === item.filename ? ' selected' : ''}`}
+              onClick={() => setSelected(item.filename)}
+            >
+              <div className="bundle-head">
+                <span className={`badge${item.error ? ' warn' : item.installed ? ' ok' : ''}`}>
+                  {item.error ? 'Error' : item.installed ? 'Installed' : item.info ? item.info.format.toUpperCase() : item.busy === 'upload' ? 'Uploading…' : '…'}
+                </span>
+                <span className="bundle-name">{item.filename}</span>
+                <span className="hint">{formatSize(item.size)}</span>
+                <button
+                  className="btn small"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    removeItem(item.filename)
+                  }}
+                >
+                  Remove
+                </button>
+              </div>
+              {item.error ? <div className="error">{item.error}</div> : null}
+              {item.busy === 'upload' && !item.error ? (
+                <div className="hint">Uploading and inspecting…</div>
+              ) : null}
+              {item.result ? (
+                <div className="hint">
+                  Last install: {item.result.output || `${item.result.installed} APK(s)`}
+                  {item.result.notes.length ? ` — ${item.result.notes.join(' · ')}` : ''}
+                </div>
+              ) : null}
+              {selected === item.filename && item.info ? (
+                <div className="bundle-detail" onClick={(event) => event.stopPropagation()}>
+                  <div className="meta-grid">
+                    <div className="k">Package</div>
+                    <div className="v mono">
+                      {item.info.meta?.package ?? (item.info.single ? '—' : 'unknown (no JSON descriptor)')}
+                    </div>
+                    <div className="k">App</div>
+                    <div className="v">
+                      {item.info.meta?.label ?? '—'}
+                      {item.info.meta?.version ? ` · v${item.info.meta.version}` : ''}
+                    </div>
+                    <div className="k">Device</div>
+                    <div className="v">
+                      {item.info.device
+                        ? `${item.info.device.abis[0] ?? 'unknown ABI'} · ${item.info.device.density || '?'} dpi · SDK ${item.info.device.sdk || '?'}`
+                        : 'not connected'}
+                    </div>
+                    <div className="k">Contents</div>
+                    <div className="v">
+                      {item.info.single
+                        ? 'Single APK'
+                        : `${item.info.apks.length} APK(s)` +
+                          (item.info.obb.length ? ` · ${item.info.obb.length} OBB` : '') +
+                          (item.info.icon ? ' · icon' : '')}
+                    </div>
+                  </div>
+                  {item.info.plan && item.info.apks.length > 0 ? (
+                    <>
+                      <div className="hint" style={{ margin: '8px 0 4px' }}>
+                        {item.info.plan.notes.join(' ')}
+                      </div>
+                      <div className="split-list">
+                        {item.info.apks.map((apk) => {
+                          const chosen = item.info?.plan?.selected.includes(apk.name)
+                          return (
+                            <div className={`split-row${chosen ? '' : ' skipped'}`} key={apk.name}>
+                              <span className="tick">{chosen ? '✓' : '·'}</span>
+                              <span className="mono grow">{apk.name}</span>
+                              <span className="hint">{formatSize(apk.size)}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </>
+                  ) : null}
+                  {item.info.obb.length > 0 ? (
+                    <div className="hint" style={{ marginTop: 6 }}>
+                      OBB: {item.info.obb.map((entry) => entry.name).join(', ')}
+                    </div>
+                  ) : null}
+                  <div className="row" style={{ marginTop: 10 }}>
+                    <button
+                      className="btn primary"
+                      disabled={!hasDevice || Boolean(item.busy)}
+                      onClick={() => void install(item.filename)}
+                    >
+                      {item.busy === 'install'
+                        ? 'Installing…'
+                        : item.installed
+                          ? 'Install again'
+                          : 'Install'}
+                    </button>
+                    {!hasDevice ? <span className="hint">No device selected</span> : null}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ))
         )}
       </div>
     </>

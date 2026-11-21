@@ -1,6 +1,8 @@
 import type {
   AppEntry,
   AppSnapshot,
+  BundleInspect,
+  BundleInstallResult,
   DeGoogleStatus,
   Device,
   DeviceInfo,
@@ -295,5 +297,48 @@ export const api = {
   async wifiDisconnect(ip: string, port?: number): Promise<WifiConnectResult> {
     if (!isDesktopHost) throw new Error('WiFi connect is available in the desktop app.')
     return request('/api/v1/wifi/disconnect', { method: 'POST', body: JSON.stringify({ ip, port }) })
+  },
+
+  // -- installer -------------------------------------------------------------
+
+  async uploadBundle(file: File): Promise<{ name: string; size: number }> {
+    if (!isDesktopHost) throw new Error('The Installer is available in the desktop app.')
+    await sessionReady
+    // The File body is streamed from disk by the browser — no arrayBuffer(),
+    // so multi-gigabyte bundles never sit in JS memory.
+    const response = await fetch(
+      `/api/v1/installer/stage?name=${encodeURIComponent(file.name)}`,
+      {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: file,
+      },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ error: `Upload failed (${response.status})` }))
+      throw new Error(body.error || `Upload failed (${response.status})`)
+    }
+    return response.json() as Promise<{ name: string; size: number }>
+  },
+
+  async inspectBundle(filename: string): Promise<BundleInspect> {
+    if (!isDesktopHost) throw new Error('The Installer is available in the desktop app.')
+    return request('/api/v1/installer/inspect', {
+      method: 'POST',
+      body: JSON.stringify({ filename }),
+    })
+  },
+
+  async installBundle(
+    filename: string,
+    options: { reinstall: boolean; downgrade: boolean; grant: boolean; obb: boolean },
+  ): Promise<BundleInstallResult> {
+    if (!isDesktopHost) throw new Error('The Installer is available in the desktop app.')
+    return request('/api/v1/installer/install', {
+      method: 'POST',
+      body: JSON.stringify({ filename, options }),
+    })
   },
 }
