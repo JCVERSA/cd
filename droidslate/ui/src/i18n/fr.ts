@@ -276,4 +276,37 @@ export const fr: Record<keyof typeof en, string> = {
   'set.languageDesc': 'Langue de l’interface.',
   'set.langEn': 'English',
   'set.langFr': 'Français',
+
+  // -- Onboarding ------------------------------------------------------------
+  'side.help': 'Aide',
+  'onb.title': 'Connectez votre premier appareil',
+  'onb.step1':
+    'Sur le téléphone : Paramètres → À propos du téléphone → appuyez 7 fois sur « Numéro de build » pour débloquer les options pour les développeurs.',
+  'onb.step2':
+    'Paramètres → Système → Options pour les développeurs → activez le débogage USB.',
+  'onb.step3':
+    'Branchez le câble USB et acceptez « Autoriser le débogage USB ? » (cochez « Toujours autoriser »).',
+  'onb.step4':
+    'Pas de câble ? Une fois un appareil sélectionné, utilisez la carte WiFi pour vous connecter sur le même réseau.',
+  'onb.dismiss': 'Compris',
+
+  // -- WiFi pairing (Android 11+) --------------------------------------------
+  'wifi.pairSection': 'Appairer (Android 11+)',
+  'wifi.pairDesc':
+    'Débogage sans fil → « Appareiller avec un code d’appairage », puis découvrez le service et saisissez le code.',
+  'wifi.discover': 'Découvrir',
+  'wifi.discovering': 'Recherche…',
+  'wifi.noServices': 'Aucun service mDNS trouvé — activez le débogage sans fil sur le téléphone.',
+  'wifi.pairCodeAria': 'Code d’appairage',
+  'wifi.pairCodePlaceholder': 'Code à 6 chiffres',
+  'wifi.pair': 'Appairer',
+  'wifi.pairing': 'Appairage…',
+  'wifi.paired': 'Appairé avec {target} — l’appareil devrait maintenant apparaître dans la liste.',
+  'wifi.needService': 'Sélectionnez d’abord un service d’appairage découvert.',
+  'wifi.needCode': 'Saisissez le code d’appairage à 6 chiffres affiché sur le téléphone.',
+  'wifi.portAria': 'Port ADB',
+  'wifi.recent': 'Récents :',
+  'wifi.restartAdb': 'Redémarrer ADB',
+  'wifi.restarting': 'Redémarrage…',
+  'wifi.restarted': 'Serveur ADB redémarré.',
 }

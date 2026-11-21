@@ -7,6 +7,7 @@ import type {
   Device,
   DeviceInfo,
   DirListing,
+  MdnsService,
   PickResult,
   ScreenshotRef,
   Settings,
@@ -69,6 +70,7 @@ const previewSnapshot: AppSnapshot = {
   devices: [],
   selectedDevice: '',
   settings: { adbPath: '', theme: 'dark' },
+  wifiHistory: [],
   logcat: { running: false, serial: null },
   logs: [],
 }
@@ -297,6 +299,24 @@ export const api = {
   async wifiDisconnect(ip: string, port?: number): Promise<WifiConnectResult> {
     if (!isDesktopHost) throw new Error('WiFi connect is available in the desktop app.')
     return request('/api/v1/wifi/disconnect', { method: 'POST', body: JSON.stringify({ ip, port }) })
+  },
+
+  async wifiMdns(): Promise<{ services: MdnsService[] }> {
+    if (!isDesktopHost) throw new Error('WiFi connect is available in the desktop app.')
+    return request('/api/v1/wifi/mdns', { method: 'POST', body: '{}' })
+  },
+
+  async wifiPair(target: string, code: string): Promise<{ target: string; output: string }> {
+    if (!isDesktopHost) throw new Error('WiFi connect is available in the desktop app.')
+    return request('/api/v1/wifi/pair', {
+      method: 'POST',
+      body: JSON.stringify({ target, code }),
+    })
+  },
+
+  async adbRestart(): Promise<{ ok: boolean }> {
+    if (!isDesktopHost) throw new Error('ADB restart is available in the desktop app.')
+    return request('/api/v1/adb/restart', { method: 'POST', body: '{}' })
   },
 
   // -- installer -------------------------------------------------------------

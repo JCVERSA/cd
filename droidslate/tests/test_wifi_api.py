@@ -29,6 +29,15 @@ ROUTE_OUTPUT = (
     "10.8.0.0/24 via 10.8.0.1 dev rmnet0\n"
 )
 
+MDNS_OUTPUT = (
+    "List of discovered mdns services\n"
+    "adb-1GKNWS93G2Y7I3Z5_adb-tls-connect._tcp\t192.168.1.25:37451\n"
+    "adb-1GKNWS93G2Y7I3Z5_adb-tls-pairing._tcp\t192.168.1.25:42123\n"
+    "weird name with spaces._tcp 10.0.0.2:5555\n"
+    "garbage line without address\n"
+    "not-an-ip:99999 _adb-tls-pairing._tcp\n"
+)
+
 
 class FakeADB(ADBManager):
     def __init__(self):
@@ -39,6 +48,9 @@ class FakeADB(ADBManager):
         self.tcpip = ("success", "restarting in TCP mode port: 5555")
         self.connect = ("success", "connected to 192.168.1.5:5555")
         self.disconnect = ("success", "disconnected 192.168.1.5:5555")
+        self.mdns = ("success", MDNS_OUTPUT)
+        self.pair = ("success", "Successfully paired with 192.168.1.25:42123 [guid=android]")
+        self.start = ("success", "* daemon started successfully")
 
     def run(self, args, *, serial=None, timeout=30):
         self.calls.append((list(args), serial))
@@ -53,6 +65,14 @@ class FakeADB(ADBManager):
             state, output = self.connect
         elif args[:1] == ["disconnect"]:
             state, output = self.disconnect
+        elif args[:1] == ["mdns"]:
+            state, output = self.mdns
+        elif args[:1] == ["pair"]:
+            state, output = self.pair
+        elif args[:1] == ["kill-server"]:
+            state, output = "success", ""
+        elif args[:1] == ["start-server"]:
+            state, output = self.start
         return {
             "success": state == "success",
             "stdout": output,
@@ -128,6 +148,48 @@ class WifiManagerTests(unittest.TestCase):
     def test_adb_disconnect_cannot_is_failure(self):
         self.adb.disconnect = ("success", "cannot disconnect 192.168.1.5:5555")
         self.assertFalse(self.adb.adb_disconnect("192.168.1.5")["success"])
+
+    def test_mdns_services_parses_pairing_and_connect(self):
+        services = self.adb.mdns_services()
+        self.assertEqual(self.adb.calls[-1][0], ["mdns", "services"])
+        # garbage + header lines skipped; 3 valid entries remain
+        self.assertEqual(len(services), 3)
+        connect = services[0]
+        self.assertEqual(connect["type"], "connect")
+        self.assertEqual(connect["target"], "192.168.1.25:37451")
+        self.assertEqual(connect["port"], 37451)
+        pairing = services[1]
+        self.assertEqual(pairing["type"], "pairing")
+        self.assertEqual(pairing["target"], "192.168.1.25:42123")
+        # service names may contain spaces (host:port is parsed from the end)
+        self.assertEqual(services[2]["type"], "other")
+        self.assertEqual(services[2]["target"], "10.0.0.2:5555")
+
+    def test_mdns_services_failure_returns_empty(self):
+        self.adb.mdns = ("failure", "adb: mdns not found")
+        self.assertEqual(self.adb.mdns_services(), [])
+
+    def test_adb_pair_success_detection(self):
+        result = self.adb.adb_pair("192.168.1.25:42123", "482913")
+        self.assertTrue(result["success"])
+        self.assertEqual(self.adb.calls[-1][0], ["pair", "192.168.1.25:42123", "482913"])
+
+    def test_adb_pair_requires_confirmation_line(self):
+        # exit code alone is not enough — adb can print errors with rc 0
+        self.adb.pair = ("success", "failed: Wrong password or pairing code")
+        self.assertFalse(self.adb.adb_pair("192.168.1.25:42123", "000000")["success"])
+
+    def test_adb_pair_failure_output_kept(self):
+        self.adb.pair = ("failure", "error: no services found")
+        result = self.adb.adb_pair("192.168.1.25:42123", "482913")
+        self.assertFalse(result["success"])
+        self.assertIn("no services", result["output"])
+
+    def test_kill_and_start_server(self):
+        self.assertTrue(self.adb.kill_server()["success"])
+        self.assertEqual(self.adb.calls[-1][0], ["kill-server"])
+        self.assertTrue(self.adb.start_server()["success"])
+        self.assertEqual(self.adb.calls[-1][0], ["start-server"])
 
 
 class WifiBackendTests(unittest.TestCase):
@@ -208,6 +270,68 @@ class WifiBackendTests(unittest.TestCase):
         self.adb.disconnect = ("failure", "error: device offline")
         with self.assertRaises(DashboardError) as ctx:
             self.backend.wifi_disconnect({"ip": "192.168.1.5"})
+        self.assertEqual(ctx.exception.status, 500)
+
+    def test_mdns_returns_services(self):
+        result = self.backend.wifi_mdns({})
+        self.assertEqual(len(result["services"]), 3)
+        self.assertEqual(result["services"][1]["type"], "pairing")
+
+    def test_pair_validates_target(self):
+        for bad in (None, "", "nope", "192.168.1.25", "192.168.1.25:99999",
+                    "999.1.1.1:42123", "192.168.1.25:abc", 12345):
+            with self.assertRaises(DashboardError) as ctx:
+                self.backend.wifi_pair({"target": bad, "code": "482913"})
+            self.assertEqual(ctx.exception.status, 400, bad)
+
+    def test_pair_validates_code(self):
+        for bad in (None, "", "12345", "1234567", "abcdef", "48 913", 482913, True):
+            with self.assertRaises(DashboardError) as ctx:
+                self.backend.wifi_pair({"target": "192.168.1.25:42123", "code": bad})
+            self.assertEqual(ctx.exception.status, 400, bad)
+
+    def test_pair_success(self):
+        result = self.backend.wifi_pair({"target": "192.168.1.25:42123", "code": "482913"})
+        self.assertEqual(result["target"], "192.168.1.25:42123")
+        self.assertIn("Successfully paired", result["output"])
+
+    def test_pair_failure_is_500(self):
+        self.adb.pair = ("failure", "error: wrong password")
+        with self.assertRaises(DashboardError) as ctx:
+            self.backend.wifi_pair({"target": "192.168.1.25:42123", "code": "482913"})
+        self.assertEqual(ctx.exception.status, 500)
+        self.assertIn("wrong password", str(ctx.exception))
+
+    def test_connect_records_wifi_history(self):
+        self.backend.wifi_connect({"ip": "192.168.1.5"})
+        self.assertEqual(self.backend.snapshot()["wifiHistory"], ["192.168.1.5"])
+        # most recent first, duplicates collapsed
+        self.backend.wifi_connect({"ip": "192.168.1.6"})
+        self.backend.wifi_connect({"ip": "192.168.1.5"})
+        self.assertEqual(
+            self.backend.snapshot()["wifiHistory"],
+            ["192.168.1.5", "192.168.1.6"],
+        )
+        # capped at 8 entries
+        for index in range(10):
+            self.backend.wifi_connect({"ip": f"10.0.0.{index}"})
+        history = self.backend.snapshot()["wifiHistory"]
+        self.assertEqual(len(history), 8)
+        self.assertEqual(history[0], "10.0.0.9")
+
+    def test_wifi_history_persisted_to_settings(self):
+        self.backend.wifi_connect({"ip": "192.168.1.5"})
+        path = os.path.join(self.tmp.name, "settings.json")
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual(json.load(handle)["wifi_history"], ["192.168.1.5"])
+
+    def test_adb_restart_success_and_failure(self):
+        self.assertEqual(self.backend.adb_restart({}), {"ok": True})
+        self.assertEqual(self.adb.calls[-2][0], ["kill-server"])
+        self.assertEqual(self.adb.calls[-1][0], ["start-server"])
+        self.adb.start = ("failure", "cannot start daemon")
+        with self.assertRaises(DashboardError) as ctx:
+            self.backend.adb_restart({})
         self.assertEqual(ctx.exception.status, 500)
 
 
@@ -311,6 +435,43 @@ class WifiHTTPTests(unittest.TestCase):
         status, payload = self.post("/api/v1/wifi/connect", {"ip": "not-an-ip"}, cookie)
         self.assertEqual(status, 400)
         self.assertIn("IPv4", json.loads(payload)["error"])
+
+    def test_mdns_pair_restart_routes_over_http(self):
+        cookie = self.cookie()
+        status, payload = self.post("/api/v1/wifi/mdns", {}, cookie)
+        self.assertEqual(status, 200)
+        services = json.loads(payload)["services"]
+        self.assertEqual(len(services), 3)
+        self.assertEqual(services[1]["type"], "pairing")
+
+        status, payload = self.post(
+            "/api/v1/wifi/pair", {"target": "192.168.1.25:42123", "code": "482913"}, cookie
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Successfully paired", json.loads(payload)["output"])
+
+        status, payload = self.post("/api/v1/wifi/pair", {"target": "192.168.1.25:42123"}, cookie)
+        self.assertEqual(status, 400)
+        self.assertIn("pairing code", json.loads(payload)["error"])
+
+        status, payload = self.post("/api/v1/adb/restart", {}, cookie)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(payload), {"ok": True})
+
+    def test_snapshot_exposes_wifi_history(self):
+        cookie = self.cookie()
+        status, _ = self.post("/api/v1/wifi/connect", {"ip": "192.168.1.9"}, cookie)
+        self.assertEqual(status, 200)
+        status, payload = self.request("GET", "/api/v1/snapshot", headers={
+            "Host": f"127.0.0.1:{self.port}",
+            "Cookie": cookie,
+            "Origin": f"http://127.0.0.1:{self.port}",
+            "Sec-Fetch-Site": "same-origin",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Dest": "empty",
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(payload)["wifiHistory"], ["192.168.1.9"])
 
 
 if __name__ == "__main__":

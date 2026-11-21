@@ -271,4 +271,36 @@ export const en = {
   'set.languageDesc': 'Interface language.',
   'set.langEn': 'English',
   'set.langFr': 'Français',
+
+  // -- Onboarding ------------------------------------------------------------
+  'side.help': 'Help',
+  'onb.title': 'Connect your first device',
+  'onb.step1':
+    'On the phone: Settings → About phone → tap “Build number” 7 times to unlock Developer options.',
+  'onb.step2': 'Settings → System → Developer options → turn on USB debugging.',
+  'onb.step3':
+    'Plug in the USB cable and accept “Allow USB debugging?” (tick “Always allow”).',
+  'onb.step4':
+    'No cable? Once a device is selected, use the WiFi card to connect over the same network.',
+  'onb.dismiss': 'Got it',
+
+  // -- WiFi pairing (Android 11+) --------------------------------------------
+  'wifi.pairSection': 'Pair (Android 11+)',
+  'wifi.pairDesc':
+    'Wireless debugging → “Pair device with pairing code”, then discover the service and enter the code.',
+  'wifi.discover': 'Discover',
+  'wifi.discovering': 'Discovering…',
+  'wifi.noServices': 'No mDNS services found — turn on Wireless debugging on the phone.',
+  'wifi.pairCodeAria': 'Pairing code',
+  'wifi.pairCodePlaceholder': '6-digit code',
+  'wifi.pair': 'Pair',
+  'wifi.pairing': 'Pairing…',
+  'wifi.paired': 'Paired with {target} — the device should now show up in the list.',
+  'wifi.needService': 'Select a discovered pairing service first.',
+  'wifi.needCode': 'Enter the 6-digit pairing code shown on the phone.',
+  'wifi.portAria': 'ADB port',
+  'wifi.recent': 'Recent:',
+  'wifi.restartAdb': 'Restart ADB',
+  'wifi.restarting': 'Restarting…',
+  'wifi.restarted': 'ADB server restarted.',
 } as const

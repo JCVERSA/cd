@@ -446,6 +446,9 @@ class ADBManager:
 
     _WIFI_INET_RE = re.compile(r"inet\s+(\d{1,3}(?:\.\d{1,3}){3})")
     _WIFI_SRC_RE = re.compile(r"\bsrc\s+(\d{1,3}(?:\.\d{1,3}){3})")
+    _MDNS_LINE_RE = re.compile(
+        r"^(?P<name>.+?)\s+(?P<addr>\d{1,3}(?:\.\d{1,3}){3}:\d{1,5})$"
+    )
 
     @staticmethod
     def _valid_ipv4(candidate: str) -> bool:
@@ -509,6 +512,65 @@ class ADBManager:
         if not combined:
             combined = f"Disconnected {target}" if ok else "adb disconnect returned no output."
         return {"success": ok, "target": target, "output": combined}
+
+    def mdns_services(self, *, timeout: int = 10) -> list[dict]:
+        """``adb mdns services`` → discovered adb services (Android 11+
+        Wireless debugging): ``[{name, host, port, type, target}]``.
+
+        Lines look like ``adb-XXXX_adb-tls-pairing._tcp 192.168.1.25:42123``;
+        unknown or unparsable lines are skipped silently (best-effort probe).
+        """
+        result = self.run(["mdns", "services"], timeout=timeout)
+        if not result.get("success"):
+            return []
+        services: list[dict] = []
+        for line in result.get("stdout", "").splitlines():
+            line = line.strip()
+            if not line or line.lower().startswith("list of discovered"):
+                continue
+            match = self._MDNS_LINE_RE.match(line)
+            if not match:
+                continue
+            name = match.group("name").strip()
+            target = match.group("addr")
+            host, _, port_text = target.rpartition(":")
+            if not self._valid_ipv4(host) or not port_text.isdigit():
+                continue
+            port = int(port_text)
+            if not 1 <= port <= 65535:
+                continue
+            if "_adb-tls-pairing" in name:
+                kind = "pairing"
+            elif "_adb-tls-connect" in name:
+                kind = "connect"
+            else:
+                kind = "other"
+            services.append(
+                {"name": name, "host": host, "port": port, "type": kind, "target": target}
+            )
+        return services
+
+    def adb_pair(self, target: str, code: str, *, timeout: int = 30) -> dict:
+        """``adb pair ip:port code`` (Android 11+ Wireless debugging).
+
+        Success is detected from adb's own confirmation line
+        (``Successfully paired with …``), not just the exit code.
+        """
+        result = self.run(["pair", target, code], timeout=timeout)
+        combined = f"{result.get('stdout', '')} {result.get('stderr', '')}".strip()
+        lowered = combined.lower()
+        ok = result.get("success") and "successfully paired" in lowered
+        if not combined:
+            combined = "adb pair returned no output."
+        return {"success": ok, "output": combined}
+
+    def kill_server(self, *, timeout: int = 15) -> dict:
+        """Stop the adb server (best-effort: no-op when nothing runs)."""
+        return self.run(["kill-server"], timeout=timeout)
+
+    def start_server(self, *, timeout: int = 15) -> dict:
+        """Start the adb server daemon."""
+        return self.run(["start-server"], timeout=timeout)
 
     # -- files -------------------------------------------------------------
 

@@ -69,6 +69,7 @@ def default_settings() -> dict:
         "adb_path": "",
         "theme": "dark",
         "selected_device": "",
+        "wifi_history": [],
     }
 
 
@@ -1079,7 +1080,16 @@ class DroidSlateBackend:
             raise DashboardError(
                 f"Connection to {result['target']} failed: {result['output'][:300]}", 500,
             )
+        self._remember_wifi_ip(ip)
         return {"target": result["target"], "output": result["output"]}
+
+    def _remember_wifi_ip(self, ip: str) -> None:
+        """Record a successfully connected IP for one-click reconnects."""
+        with self._lock:
+            history = [entry for entry in self._settings.get("wifi_history", []) if entry != ip]
+            history.insert(0, ip)
+            self._settings["wifi_history"] = history[:8]
+            self._save_settings()
 
     def wifi_disconnect(self, payload: dict) -> dict:
         ip = self._require_ip(payload.get("ip"))
@@ -1090,6 +1100,50 @@ class DroidSlateBackend:
                 f"Could not disconnect {result['target']}: {result['output'][:300]}", 500,
             )
         return {"target": result["target"], "output": result["output"]}
+
+    def wifi_mdns(self, payload: dict | None = None) -> dict:
+        """Discover adb mDNS services for the Android 11+ pairing flow."""
+        return {"services": self.adb.mdns_services()}
+
+    @staticmethod
+    def _pair_target(value: object) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise DashboardError("Select a discovered mDNS service first.")
+        target = value.strip()
+        match = re.fullmatch(r"(\d{1,3}(?:\.\d{1,3}){3}):(\d{1,5})", target)
+        if not match or not _IPV4_RE.match(match.group(1)):
+            raise DashboardError("The pairing target must look like 192.168.1.25:42123.")
+        if not 1 <= int(match.group(2)) <= 65535:
+            raise DashboardError("The pairing target must look like 192.168.1.25:42123.")
+        return target
+
+    @staticmethod
+    def _pair_code(value: object) -> str:
+        if not isinstance(value, str) or not re.fullmatch(r"\d{6}", value.strip()):
+            raise DashboardError("Enter the 6-digit pairing code shown on the phone.")
+        return value.strip()
+
+    def wifi_pair(self, payload: dict) -> dict:
+        """``adb pair ip:port code`` — Android 11+ Wireless debugging."""
+        target = self._pair_target((payload or {}).get("target"))
+        code = self._pair_code((payload or {}).get("code"))
+        result = self.adb.adb_pair(target, code)
+        if not result["success"]:
+            raise DashboardError(
+                f"Pairing with {target} failed: {result['output'][:300]}", 500,
+            )
+        return {"target": target, "output": result["output"]}
+
+    def adb_restart(self, payload: dict | None = None) -> dict:
+        """Kill + restart the adb server (clears stale transport state)."""
+        self.adb.kill_server()
+        result = self.adb.start_server()
+        if not result.get("success"):
+            detail = (result.get("stderr") or result.get("stdout") or "").strip()
+            raise DashboardError(
+                f"Could not restart adb: {detail[:300] or 'adb start-server failed.'}", 500,
+            )
+        return {"ok": True}
 
     # -- shell -------------------------------------------------------------
 
@@ -1143,6 +1197,7 @@ class DroidSlateBackend:
             settings = self._public_settings()
             devices = list(self._devices)
             selected = self._settings.get("selected_device", "")
+            wifi_history = list(self._settings.get("wifi_history", []))
             adb_path = self.adb.adb_path
             logcat = {"running": self.adb.logcat_running(), "serial": self.adb.logcat_serial()}
         return {
@@ -1156,6 +1211,7 @@ class DroidSlateBackend:
             "devices": devices,
             "selectedDevice": selected,
             "settings": settings,
+            "wifiHistory": wifi_history,
             "logcat": logcat,
             "logs": self.logs(),
         }
@@ -1417,6 +1473,12 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
                 result = self.app.backend.wifi_connect(self._parse_json())
             elif self.command == "POST" and path == "/api/v1/wifi/disconnect":
                 result = self.app.backend.wifi_disconnect(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/wifi/mdns":
+                result = self.app.backend.wifi_mdns(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/wifi/pair":
+                result = self.app.backend.wifi_pair(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/adb/restart":
+                result = self.app.backend.adb_restart(self._parse_json())
             else:
                 raise DashboardError("Endpoint not found.", 404)
             self._json(200, result)

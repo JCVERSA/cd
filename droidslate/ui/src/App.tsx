@@ -13,6 +13,7 @@ import type {
   DirListing,
   FileEntry,
   LogRecord,
+  MdnsService,
   ScreenshotRef,
 } from './types'
 
@@ -49,6 +50,14 @@ function AppShell() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null)
   const [page, setPage] = useState<Page>('devices')
   const [error, setError] = useState('')
+  const [onboardingClosed, setOnboardingClosed] = useState(() => {
+    try {
+      return window.localStorage.getItem('droidslate.onboarding') === '1'
+    } catch {
+      return true
+    }
+  })
+  const [onboardingForced, setOnboardingForced] = useState(false)
 
   const applySnapshot = useCallback((next: AppSnapshot) => {
     setSnapshot(next)
@@ -77,6 +86,20 @@ function AppShell() {
     [snapshot, selected],
   )
 
+  const showOnboarding = Boolean(
+    snapshot && (onboardingForced || (!onboardingClosed && snapshot.devices.length === 0)),
+  )
+
+  const dismissOnboarding = () => {
+    setOnboardingClosed(true)
+    setOnboardingForced(false)
+    try {
+      window.localStorage.setItem('droidslate.onboarding', '1')
+    } catch {
+      // localStorage may be unavailable — the session-level close still applies.
+    }
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -94,6 +117,14 @@ function AppShell() {
             {t(item.labelKey)}
           </button>
         ))}
+        <button
+          className="nav-btn"
+          onClick={() => setOnboardingForced(true)}
+          title={t('onb.title')}
+        >
+          <span className="glyph">?</span>
+          {t('side.help')}
+        </button>
         <div className="spacer" />
         <div
           className={`status-chip${selectedDevice && selectedDevice.status === 'device' ? ' on' : ''}`}
@@ -150,6 +181,29 @@ function AppShell() {
           )
         ) : null}
       </main>
+      {showOnboarding ? (
+        <div
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label={t('onb.title')}
+        >
+          <div className="modal-card">
+            <h2>{t('onb.title')}</h2>
+            <ol className="onb-steps">
+              <li>{t('onb.step1')}</li>
+              <li>{t('onb.step2')}</li>
+              <li>{t('onb.step3')}</li>
+              <li>{t('onb.step4')}</li>
+            </ol>
+            <div className="row">
+              <button className="btn primary" onClick={dismissOnboarding}>
+                {t('onb.dismiss')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -165,9 +219,18 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
   const [rebootMode, setRebootMode] = useState<'normal' | 'recovery' | 'bootloader'>('normal')
   const [actionBusy, setActionBusy] = useState('')
   const [wifiIp, setWifiIp] = useState('')
+  const [wifiPort, setWifiPort] = useState('5555')
   const [wifiBusy, setWifiBusy] = useState('')
   const [wifiStatus, setWifiStatus] = useState('')
   const [wifiStatusKind, setWifiStatusKind] = useState<'ok' | 'error'>('ok')
+  const [pairServices, setPairServices] = useState<MdnsService[] | null>(null)
+  const [pairTarget, setPairTarget] = useState('')
+  const [pairCode, setPairCode] = useState('')
+  const [pairBusy, setPairBusy] = useState<'' | 'discover' | 'pair'>('')
+  const [pairStatus, setPairStatus] = useState('')
+  const [pairStatusKind, setPairStatusKind] = useState<'ok' | 'error'>('ok')
+  const [restartBusy, setRestartBusy] = useState(false)
+  const [messageKind, setMessageKind] = useState<'ok' | 'error'>('error')
   const selected = snapshot.selectedDevice
 
   useEffect(() => {
@@ -229,14 +292,20 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
       } else if (action === 'connect') {
         const ip = wifiIp.trim()
         if (!ip) throw new Error(t('wifi.needIp'))
-        const result = await api.wifiConnect(ip)
+        const result = await api.wifiConnect(
+          ip,
+          wifiPort.trim() ? Number(wifiPort) : undefined,
+        )
         setWifiStatusKind('ok')
         setWifiStatus(t('wifi.connected', { target: result.target }))
         await onChanged()
       } else {
         const ip = wifiIp.trim()
         if (!ip) throw new Error(t('wifi.needIpDisconnect'))
-        const result = await api.wifiDisconnect(ip)
+        const result = await api.wifiDisconnect(
+          ip,
+          wifiPort.trim() ? Number(wifiPort) : undefined,
+        )
         setWifiStatusKind('ok')
         setWifiStatus(t('wifi.disconnected', { target: result.target }))
         await onChanged()
@@ -249,6 +318,70 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
     }
   }
 
+  const discoverServices = async () => {
+    setPairBusy('discover')
+    setPairStatus('')
+    try {
+      const result = await api.wifiMdns()
+      setPairServices(result.services)
+      const first = result.services.find((item) => item.type === 'pairing')
+      if (first) setPairTarget(first.target)
+      setPairStatusKind('ok')
+    } catch (err) {
+      setPairStatusKind('error')
+      setPairStatus(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPairBusy('')
+    }
+  }
+
+  const pairDevice = async () => {
+    const target = pairTarget.trim()
+    const code = pairCode.trim()
+    if (!target) {
+      setPairStatusKind('error')
+      setPairStatus(t('wifi.needService'))
+      return
+    }
+    if (!/^\d{6}$/.test(code)) {
+      setPairStatusKind('error')
+      setPairStatus(t('wifi.needCode'))
+      return
+    }
+    setPairBusy('pair')
+    setPairStatus('')
+    try {
+      const result = await api.wifiPair(target, code)
+      setPairStatusKind('ok')
+      setPairStatus(t('wifi.paired', { target: result.target }))
+      setPairCode('')
+      await onChanged()
+    } catch (err) {
+      setPairStatusKind('error')
+      setPairStatus(err instanceof Error ? err.message : String(err))
+    } finally {
+      setPairBusy('')
+    }
+  }
+
+  const restartAdb = async () => {
+    setRestartBusy(true)
+    setMessage('')
+    try {
+      await api.adbRestart()
+      setMessageKind('ok')
+      setMessage(t('wifi.restarted'))
+      await onChanged()
+    } catch (err) {
+      setMessageKind('error')
+      setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setRestartBusy(false)
+    }
+  }
+
+  const pairingServices = (pairServices ?? []).filter((item) => item.type === 'pairing')
+
   return (
     <>
       <div className="page-header">
@@ -256,24 +389,37 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
           <h1>{t('devices.title')}</h1>
           <div className="sub">{t('devices.sub')}</div>
         </div>
-        <button
-          className="btn"
-          onClick={async () => {
-            setBusy(true)
-            try {
-              await api.refreshDevices()
-              await onChanged()
-            } finally {
-              setBusy(false)
-            }
-          }}
-          disabled={busy}
-        >
-          {t('devices.refresh')}
-        </button>
+        <div className="row">
+          <button
+            className="btn"
+            disabled={busy || restartBusy}
+            onClick={() => void restartAdb()}
+          >
+            {restartBusy ? t('wifi.restarting') : t('wifi.restartAdb')}
+          </button>
+          <button
+            className="btn"
+            onClick={async () => {
+              setBusy(true)
+              try {
+                await api.refreshDevices()
+                await onChanged()
+              } finally {
+                setBusy(false)
+              }
+            }}
+            disabled={busy}
+          >
+            {t('devices.refresh')}
+          </button>
+        </div>
       </div>
       <div className="page-body">
-        {message ? <div className="error" style={{ marginBottom: 10 }}>{message}</div> : null}
+        {message ? (
+          <div className={messageKind === 'ok' ? 'saved' : 'error'} style={{ marginBottom: 10 }}>
+            {message}
+          </div>
+        ) : null}
         {snapshot.devices.length === 0 ? (
           <div className="empty">
             {t('devices.emptyTitle')}
@@ -409,6 +555,14 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
                 aria-label={t('wifi.ipAria')}
                 onChange={(event) => setWifiIp(event.target.value)}
               />
+              <input
+                className="input"
+                style={{ maxWidth: 84 }}
+                value={wifiPort}
+                placeholder="5555"
+                aria-label={t('wifi.portAria')}
+                onChange={(event) => setWifiPort(event.target.value)}
+              />
               <button
                 className="btn"
                 disabled={Boolean(wifiBusy)}
@@ -437,6 +591,66 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
               >
                 {wifiBusy === 'disconnect' ? t('wifi.disconnecting') : t('wifi.disconnect')}
               </button>
+            </div>
+            {snapshot.wifiHistory.length > 0 ? (
+              <div className="quick-paths" style={{ marginTop: 6 }}>
+                <span className="hint">{t('wifi.recent')}</span>
+                {snapshot.wifiHistory.slice(0, 6).map((ip) => (
+                  <button key={ip} className="btn small" onClick={() => setWifiIp(ip)}>
+                    {ip}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="pair-block">
+              <div className="row" style={{ marginTop: 10, marginBottom: 4 }}>
+                <strong>{t('wifi.pairSection')}</strong>
+                <button
+                  className="btn small"
+                  disabled={Boolean(pairBusy)}
+                  onClick={() => void discoverServices()}
+                >
+                  {pairBusy === 'discover' ? t('wifi.discovering') : t('wifi.discover')}
+                </button>
+                {pairTarget ? <span className="badge ok">{pairTarget}</span> : null}
+              </div>
+              <div className="desc">{t('wifi.pairDesc')}</div>
+              {pairServices !== null && pairingServices.length === 0 ? (
+                <div className="hint">{t('wifi.noServices')}</div>
+              ) : null}
+              {pairingServices.length > 0 ? (
+                <div className="quick-paths" style={{ marginBottom: 6 }}>
+                  {pairingServices.map((item) => (
+                    <button
+                      key={item.target}
+                      className={`btn small${pairTarget === item.target ? ' primary' : ''}`}
+                      onClick={() => setPairTarget(item.target)}
+                    >
+                      {item.target}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              <div className="row">
+                <input
+                  className="input"
+                  style={{ maxWidth: 160 }}
+                  value={pairCode}
+                  placeholder={t('wifi.pairCodePlaceholder')}
+                  aria-label={t('wifi.pairCodeAria')}
+                  onChange={(event) => setPairCode(event.target.value)}
+                />
+                <button
+                  className="btn primary"
+                  disabled={Boolean(pairBusy)}
+                  onClick={() => void pairDevice()}
+                >
+                  {pairBusy === 'pair' ? t('wifi.pairing') : t('wifi.pair')}
+                </button>
+              </div>
+              {pairStatus ? (
+                <div className={pairStatusKind === 'error' ? 'error' : 'hint'}>{pairStatus}</div>
+              ) : null}
             </div>
             {wifiStatus ? (
               <div className={wifiStatusKind === 'error' ? 'error' : 'hint'}>{wifiStatus}</div>

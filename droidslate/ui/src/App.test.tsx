@@ -9,6 +9,7 @@ const baseSnapshot: AppSnapshot = {
   devices: [{ id: 'emulator-5554', status: 'device', model: 'Pixel 8' }],
   selectedDevice: 'emulator-5554',
   settings: { adbPath: '', theme: 'dark' },
+  wifiHistory: [],
   logcat: { running: false, serial: null },
   logs: [],
 }
@@ -49,6 +50,9 @@ const mockApi = vi.hoisted(() => ({
   wifiEnableTcp: vi.fn(),
   wifiConnect: vi.fn(),
   wifiDisconnect: vi.fn(),
+  wifiMdns: vi.fn(),
+  wifiPair: vi.fn(),
+  adbRestart: vi.fn(),
   uploadBundle: vi.fn(),
   inspectBundle: vi.fn(),
   installBundle: vi.fn(),
@@ -58,6 +62,7 @@ vi.mock('./api', () => ({ api: mockApi }))
 
 afterEach(() => {
   window.localStorage.removeItem('droidslate.language')
+  window.localStorage.removeItem('droidslate.onboarding')
 })
 
 describe('DroidSlate app shell', () => {
@@ -305,5 +310,111 @@ describe('DroidSlate app shell', () => {
     await user.click(screen.getByRole('button', { name: 'English' }))
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Devices/ })).toBeInTheDocument()
+  })
+
+  it('pairs an Android 11+ device through the mDNS flow', async () => {
+    mockApi.wifiMdns.mockResolvedValue({
+      services: [
+        {
+          name: 'adb-TEST_adb-tls-connect._tcp',
+          host: '192.168.1.25',
+          port: 37451,
+          type: 'connect',
+          target: '192.168.1.25:37451',
+        },
+        {
+          name: 'adb-TEST_adb-tls-pairing._tcp',
+          host: '192.168.1.25',
+          port: 42123,
+          type: 'pairing',
+          target: '192.168.1.25:42123',
+        },
+      ],
+    })
+    mockApi.wifiPair.mockResolvedValue({
+      target: '192.168.1.25:42123',
+      output: 'Successfully paired with 192.168.1.25:42123',
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+
+    await user.click(screen.getByRole('button', { name: 'Discover' }))
+    await vi.waitFor(() => expect(mockApi.wifiMdns).toHaveBeenCalledTimes(1))
+    // pairing service is pre-selected, connect service is not a pairing target
+    const serviceButton = await screen.findByRole('button', { name: '192.168.1.25:42123' })
+    expect(serviceButton.className).toContain('primary')
+
+    await user.type(screen.getByLabelText('Pairing code'), '482913')
+    await user.click(screen.getByRole('button', { name: 'Pair' }))
+    await vi.waitFor(() => {
+      expect(mockApi.wifiPair).toHaveBeenCalledWith('192.168.1.25:42123', '482913')
+    })
+    expect(
+      screen.getByText('Paired with 192.168.1.25:42123 — the device should now show up in the list.'),
+    ).toBeInTheDocument()
+  })
+
+  it('validates the pairing code before calling the backend', async () => {
+    mockApi.wifiMdns.mockResolvedValue({ services: [] })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+
+    await user.click(screen.getByRole('button', { name: 'Discover' }))
+    await vi.waitFor(() => expect(mockApi.wifiMdns).toHaveBeenCalledTimes(1))
+    expect(screen.getByText(/No mDNS services found/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Pair' }))
+    expect(
+      screen.getByText('Select a discovered pairing service first.'),
+    ).toBeInTheDocument()
+    expect(mockApi.wifiPair).not.toHaveBeenCalled()
+  })
+
+  it('restarts the ADB server from the Devices header', async () => {
+    mockApi.adbRestart.mockResolvedValue({ ok: true })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+
+    await user.click(screen.getByRole('button', { name: 'Restart ADB' }))
+    await vi.waitFor(() => expect(mockApi.adbRestart).toHaveBeenCalledTimes(1))
+    expect(screen.getByText('ADB server restarted.')).toBeInTheDocument()
+  })
+
+  it('offers recent WiFi IPs as one-click chips', async () => {
+    mockApi.snapshot.mockResolvedValue({
+      ...structuredClone(baseSnapshot),
+      wifiHistory: ['192.168.1.5', '10.0.0.2'],
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+
+    const chip = screen.getByRole('button', { name: '192.168.1.5' })
+    await user.click(chip)
+    expect((screen.getByLabelText('Device IP') as HTMLInputElement).value).toBe('192.168.1.5')
+  })
+
+  it('shows the first-connection guide when no device is present', async () => {
+    mockApi.snapshot.mockResolvedValue({
+      ...structuredClone(baseSnapshot),
+      devices: [],
+      selectedDevice: '',
+    })
+    const user = userEvent.setup()
+    render(<App />)
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByText('Connect your first device')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Got it' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(window.localStorage.getItem('droidslate.onboarding')).toBe('1')
+
+    // the Help button reopens the guide on demand
+    await user.click(screen.getByRole('button', { name: /Help/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
   })
 })

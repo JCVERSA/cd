@@ -32,11 +32,20 @@ export interface LogcatState {
   serial: string | null
 }
 
+export interface MdnsService {
+  name: string
+  host: string
+  port: number
+  type: 'pairing' | 'connect' | 'other'
+  target: string
+}
+
 export interface AppSnapshot {
   runtime: RuntimeState
   devices: Device[]
   selectedDevice: string
   settings: Settings
+  wifiHistory: string[]
   logcat: LogcatState
   logs: LogRecord[]
 }
