@@ -1,7 +1,8 @@
 # DroidSlate
 
 A lightweight Android Debug Bridge (ADB) desktop tool for Windows — devices,
-shell, logcat, and settings in a small tray-resident app.
+shell, logcat, file browsing, package management, and DeGoogle in a small
+tray-resident app.
 
 DroidSlate recreates the feature set of
 [Nxzume/GUI-for-Android-Debug-Bridge-ADB-UI](https://github.com/Nxzume/GUI-for-Android-Debug-Bridge-ADB-UI)
@@ -19,13 +20,27 @@ React 19 + TypeScript + Vite interface.
   (streamed upload, never held in memory), uninstall with system-app
   fallback (`--user 0`), reinstall (`pm install-existing`), enable/disable,
   and instant search over the whole package list.
+- **Files** — two-pane explorer (This PC ↔ Android device) with HTML5
+  drag & drop between rows (drag a PC file onto the device pane to push,
+  a device file onto the PC pane to pull), sortable Name/Size/Modified
+  columns, quick paths (/sdcard, /data/local/tmp, /), Windows drive letters,
+  native Win32 open/save dialogs for "Push file…" / "Save as…" (WebView2
+  cannot expose real paths), and device-side new folder / rename / delete
+  (top-level paths like `/` and `/sdcard` are protected).
+- **DeGoogle** — Simple mode removes the safe catalog (optionally the risky
+  login/sync services — never unsafe packages); Custom mode offers
+  per-package checkboxes over the full catalog, unsafe ones behind an
+  explicit warning. Action is `pm disable-user` or `pm uninstall --user 0`,
+  runs as a single background job with progress, and every removal is
+  recorded per device for one-click undo (`pm enable` /
+  `pm install-existing` + enable).
 - **Shell** — run any `adb shell` command with streaming output and
   command history (↑/↓). A leading `adb shell` is stripped automatically.
 - **Logcat** — live `logcat` streaming with text filtering and follow mode.
 - **Settings** — custom ADB location (bundled `adb.exe` by default) and
   dark/light theme.
 
-Later phases add the two-pane file explorer and DeGoogle.
+Later phases add the remaining parity polish from the original tool.
 
 ## Architecture
 
@@ -36,6 +51,8 @@ dashboard_server.py   Loopback-only HTTP API: capability bootstrap →
                       HttpOnly session cookie, strict CSP, static UI serving
 ui_host.py            Isolated pywebview (edgechromium) window; no js_api
 adb_manager.py        ADB subprocess layer (argument lists only, CREATE_NO_WINDOW)
+degoogle.py           DeGoogle catalogs (safe/risky/unsafe) + per-device undo state
+win32_dialogs.py      Native open/save dialogs (WebView2 cannot expose paths)
 ui/                   React 19 + TypeScript source (Vite)
 ui_bundle/            Production bundle served by the dashboard server
 packaging/            Inno Setup installer, icon, version info

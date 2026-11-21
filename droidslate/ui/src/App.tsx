@@ -1,14 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { api } from './api'
-import type { AppEntry, AppSnapshot, Device, DeviceInfo, LogRecord, ScreenshotRef } from './types'
+import type {
+  AppEntry,
+  AppSnapshot,
+  DeGoogleStatus,
+  Device,
+  DeviceInfo,
+  DirListing,
+  FileEntry,
+  LogRecord,
+  ScreenshotRef,
+} from './types'
 
-type Page = 'devices' | 'apps' | 'shell' | 'logcat' | 'settings'
+type Page = 'devices' | 'apps' | 'files' | 'shell' | 'logcat' | 'degoogle' | 'settings'
 
 const NAV: { id: Page; label: string; glyph: string }[] = [
   { id: 'devices', label: 'Devices', glyph: '▣' },
   { id: 'apps', label: 'Apps', glyph: '▦' },
+  { id: 'files', label: 'Files', glyph: '◫' },
   { id: 'shell', label: 'Shell', glyph: '>_' },
   { id: 'logcat', label: 'Logcat', glyph: '≡' },
+  { id: 'degoogle', label: 'DeGoogle', glyph: '⊘' },
   { id: 'settings', label: 'Settings', glyph: '⚙' },
 ]
 
@@ -103,10 +116,14 @@ export default function App() {
             <DevicesPage snapshot={snapshot} onChanged={refresh} />
           ) : page === 'apps' ? (
             <AppsPage snapshot={snapshot} />
+          ) : page === 'files' ? (
+            <FilesPage snapshot={snapshot} />
           ) : page === 'shell' ? (
             <ShellPage snapshot={snapshot} />
           ) : page === 'logcat' ? (
             <LogcatPage snapshot={snapshot} onChanged={refresh} />
+          ) : page === 'degoogle' ? (
+            <DeGooglePage />
           ) : (
             <SettingsPage snapshot={snapshot} onChanged={refresh} />
           )
@@ -528,6 +545,735 @@ function AppsPage({ snapshot }: { snapshot: AppSnapshot }) {
                     </div>
                   </div>
                 ))
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  )
+}
+
+/* ---------------- Files ---------------- */
+
+type SortKey = 'name' | 'size' | 'modified'
+type PaneKind = 'local' | 'device'
+
+interface PaneData {
+  path: string
+  parent: string | null
+  entries: FileEntry[]
+  drives: string[] | null
+  selected: string | null
+  sortKey: SortKey
+  sortAsc: boolean
+}
+
+const EMPTY_PANE: PaneData = {
+  path: '', parent: null, entries: [], drives: null,
+  selected: null, sortKey: 'name', sortAsc: true,
+}
+
+function pathSep(dir: string): string {
+  return /^[A-Za-z]:[\\/]/.test(dir) ? '\\' : '/'
+}
+
+function joinPath(dir: string, name: string): string {
+  if (!dir) return name
+  const sep = pathSep(dir)
+  return dir.endsWith('\\') || dir.endsWith('/') ? dir + name : dir + sep + name
+}
+
+function sortEntries(entries: FileEntry[], key: SortKey, asc: boolean): FileEntry[] {
+  const factor = asc ? 1 : -1
+  return [...entries].sort((a, b) => {
+    if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1
+    let value = 0
+    if (key === 'name') value = a.name.localeCompare(b.name, undefined, { numeric: true })
+    else if (key === 'size') value = a.size - b.size
+    else value = a.modified.localeCompare(b.modified)
+    return factor * value
+  })
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`
+}
+
+// Display names the original tool special-cases, else .capitalize() per part.
+const FRIENDLY_NAMES: Record<string, string> = {
+  'com.google.android.carlink': 'Android Auto',
+}
+
+function friendlyName(pkg: string): string {
+  if (FRIENDLY_NAMES[pkg]) return FRIENDLY_NAMES[pkg]
+  return pkg.split('.').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+}
+
+interface DragPayload {
+  kind: PaneKind
+  entry: FileEntry
+  fullPath: string
+}
+
+function FilePane({
+  title,
+  kind,
+  data,
+  loading,
+  disabled,
+  quickPaths,
+  dragPayload,
+  onNavigate,
+  onSelect,
+  onSort,
+  onOpen,
+  onDropEntry,
+  onDragStateChange,
+  headerExtra,
+  emptyMessage,
+}: {
+  title: string
+  kind: PaneKind
+  data: PaneData
+  loading: boolean
+  disabled?: boolean
+  quickPaths?: { label: string; path: string }[]
+  dragPayload: DragPayload | null
+  onNavigate: (path: string) => void
+  onSelect: (name: string | null) => void
+  onSort: (key: SortKey) => void
+  onOpen: (entry: FileEntry) => void
+  onDropEntry: (payload: DragPayload) => void
+  onDragStateChange: (payload: DragPayload | null) => void
+  headerExtra?: ReactNode
+  emptyMessage: string
+}) {
+  const [draft, setDraft] = useState(data.path)
+  const [dropActive, setDropActive] = useState(false)
+  useEffect(() => {
+    setDraft(data.path)
+  }, [data.path])
+
+  const canDrop = Boolean(dragPayload && dragPayload.kind !== kind)
+  const entries = sortEntries(data.entries, data.sortKey, data.sortAsc)
+
+  const column = (key: SortKey, label: string, className: string) => (
+    <button className={`col ${className}${data.sortKey === key ? ' sorted' : ''}`}
+      onClick={() => onSort(key)}>
+      {label}{data.sortKey === key ? (data.sortAsc ? ' ▲' : ' ▼') : ''}
+    </button>
+  )
+
+  return (
+    <div
+      className={`file-pane${dropActive && canDrop ? ' drop-ready' : ''}`}
+      onDragOver={(event) => {
+        if (!canDrop) return
+        event.preventDefault()
+        setDropActive(true)
+      }}
+      onDragLeave={() => setDropActive(false)}
+      onDrop={(event) => {
+        event.preventDefault()
+        setDropActive(false)
+        if (canDrop && dragPayload) onDropEntry(dragPayload)
+      }}
+    >
+      <div className="pane-head">
+        <span className="pane-title">{title}</span>
+        {headerExtra}
+      </div>
+      <div className="pane-path">
+        <button className="btn small" disabled={!data.parent} onClick={() => data.parent && onNavigate(data.parent)}>
+          Up
+        </button>
+        <input
+          className="input"
+          value={draft}
+          placeholder={disabled ? 'Select a device first' : 'Path…'}
+          disabled={disabled}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && draft.trim()) onNavigate(draft.trim())
+          }}
+        />
+        <button className="btn small" disabled={disabled || !draft.trim()}
+          onClick={() => onNavigate(draft.trim())}>
+          Go
+        </button>
+        <button className="btn small" disabled={disabled || loading}
+          onClick={() => data.path && onNavigate(data.path)}>
+          ⟳
+        </button>
+      </div>
+      {quickPaths && quickPaths.length > 0 ? (
+        <div className="quick-paths">
+          {quickPaths.map((item) => (
+            <button key={item.path} className="btn small" onClick={() => onNavigate(item.path)}>
+              {item.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      {data.drives && data.drives.length > 0 ? (
+        <div className="quick-paths">
+          {data.drives.map((drive) => (
+            <button key={drive} className="btn small" onClick={() => onNavigate(drive)}>
+              {drive}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <div className="file-table">
+        <div className="file-head">
+          {column('name', 'Name', 'grow')}
+          {column('size', 'Size', 'num')}
+          {column('modified', 'Modified', 'date')}
+        </div>
+        <div className="file-rows">
+          {disabled || (!loading && entries.length === 0) ? (
+            <div className="empty tight">{disabled ? emptyMessage : loading ? 'Loading…' : emptyMessage}</div>
+          ) : (
+            entries.map((entry) => {
+              const fullPath = joinPath(data.path, entry.name)
+              return (
+                <div
+                  key={entry.name}
+                  className={`file-row${data.selected === entry.name ? ' selected' : ''}`}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = 'copy'
+                    event.dataTransfer.setData('text/plain', fullPath)
+                    onDragStateChange({ kind, entry, fullPath })
+                  }}
+                  onDragEnd={() => onDragStateChange(null)}
+                  onClick={() => onSelect(entry.name)}
+                  onDoubleClick={() => onOpen(entry)}
+                >
+                  <span className="col grow name">
+                    <span className="row-glyph">{entry.is_dir ? '▸' : '·'}</span>
+                    {entry.name}
+                    {entry.is_link ? ' →' : ''}
+                  </span>
+                  <span className="col num">{entry.is_dir ? '' : formatSize(entry.size)}</span>
+                  <span className="col date">{entry.modified}</span>
+                </div>
+              )
+            })
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function FilesPage({ snapshot }: { snapshot: AppSnapshot }) {
+  const [local, setLocal] = useState<PaneData>(EMPTY_PANE)
+  const [device, setDevice] = useState<PaneData>(EMPTY_PANE)
+  const [localLoading, setLocalLoading] = useState(false)
+  const [deviceLoading, setDeviceLoading] = useState(false)
+  const [busy, setBusy] = useState('')
+  const [message, setMessage] = useState('')
+  const [drag, setDrag] = useState<DragPayload | null>(null)
+  const devicePathRef = useRef('/sdcard')
+  const selectedDevice = snapshot.selectedDevice
+
+  const loadLocal = useCallback(async (path: string) => {
+    setLocalLoading(true)
+    try {
+      const listing: DirListing = await api.localDir(path)
+      setLocal((prev) => ({
+        ...prev,
+        path: listing.path,
+        parent: listing.parent,
+        entries: listing.entries,
+        drives: listing.drives ?? null,
+        selected: null,
+      }))
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLocalLoading(false)
+    }
+  }, [])
+
+  const loadDevice = useCallback(async (path: string) => {
+    setDeviceLoading(true)
+    try {
+      const listing: DirListing = await api.deviceDir(path)
+      devicePathRef.current = listing.path
+      setDevice((prev) => ({
+        ...prev,
+        path: listing.path,
+        parent: listing.parent,
+        entries: listing.entries,
+        selected: null,
+      }))
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setDeviceLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadLocal('')
+  }, [loadLocal])
+
+  useEffect(() => {
+    if (!selectedDevice) {
+      devicePathRef.current = '/sdcard'
+      setDevice(EMPTY_PANE)
+      return
+    }
+    void loadDevice(devicePathRef.current || '/sdcard')
+  }, [selectedDevice, loadDevice])
+
+  const withBusy = async (phase: string, action: () => Promise<void>) => {
+    setBusy(phase)
+    setMessage('')
+    try {
+      await action()
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const openEntry = (kind: PaneKind, entry: FileEntry) => {
+    if (!entry.is_dir) return
+    const base = kind === 'local' ? local : device
+    void (kind === 'local' ? loadLocal : loadDevice)(joinPath(base.path, entry.name))
+  }
+
+  const handleDrop = (target: PaneKind) => async (payload: DragPayload) => {
+    if (payload.kind === target) return
+    await withBusy('transfer', async () => {
+      if (target === 'device') {
+        if (!device.path) throw new Error('Select a device first.')
+        const destination = joinPath(device.path, payload.entry.name)
+        await api.pushFile(payload.fullPath, destination)
+        setMessage(`Pushed ${payload.entry.name} → ${destination}`)
+        await loadDevice(device.path)
+      } else {
+        const destination = joinPath(local.path, payload.entry.name)
+        await api.pullFile(payload.fullPath, destination)
+        setMessage(`Pulled ${payload.entry.name} → ${destination}`)
+        await loadLocal(local.path)
+      }
+    })
+  }
+
+  const deviceSelected = device.selected
+    ? device.entries.find((item) => item.name === device.selected)
+    : undefined
+
+  const deviceActions = (
+    <>
+      <button className="btn small" disabled={!selectedDevice || Boolean(busy)}
+        onClick={() => void withBusy('pick', async () => {
+          const result = await api.pushPick(device.path || '/sdcard')
+          if (result.cancelled) return
+          setMessage(`Pushed ${result.pushed ?? 0} file(s)${result.failed ? `, ${result.failed} failed` : ''}.`)
+          if (device.path) await loadDevice(device.path)
+        })}>
+        Push file…
+      </button>
+      <button className="btn small" disabled={!deviceSelected || deviceSelected.is_dir || Boolean(busy)}
+        onClick={() => void withBusy('save', async () => {
+          const target = joinPath(device.path, deviceSelected!.name)
+          const result = await api.saveAs(target)
+          if (result.cancelled) return
+          setMessage(`Saved to ${result.path}`)
+        })}>
+        Save as…
+      </button>
+      <button className="btn small" disabled={!selectedDevice || Boolean(busy)}
+        onClick={() => void withBusy('mkdir', async () => {
+          const name = window.prompt('New folder name:')
+          if (!name || !name.trim()) return
+          await api.deviceMkdir(joinPath(device.path, name.trim()))
+          setMessage(`Created ${name.trim()}.`)
+          await loadDevice(device.path)
+        })}>
+        New folder
+      </button>
+      <button className="btn small" disabled={!deviceSelected || Boolean(busy)}
+        onClick={() => void withBusy('rename', async () => {
+          const name = window.prompt('New name:', deviceSelected!.name)
+          if (!name || !name.trim() || name.trim() === deviceSelected!.name) return
+          await api.deviceRename(
+            joinPath(device.path, deviceSelected!.name),
+            joinPath(device.path, name.trim()),
+          )
+          setMessage(`Renamed to ${name.trim()}.`)
+          await loadDevice(device.path)
+        })}>
+        Rename
+      </button>
+      <button className="btn small danger" disabled={!deviceSelected || Boolean(busy)}
+        onClick={() => void withBusy('delete', async () => {
+          const target = joinPath(device.path, deviceSelected!.name)
+          if (!window.confirm(`Delete ${deviceSelected!.name} from the device?`)) return
+          await api.deviceDelete(target)
+          setMessage(`Deleted ${deviceSelected!.name}.`)
+          await loadDevice(device.path)
+        })}>
+        Delete
+      </button>
+    </>
+  )
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1>Files</h1>
+          <div className="sub">
+            Drag rows between panes to push (→ device) or pull (← PC). Drop only — not external Explorer windows.
+          </div>
+        </div>
+        <div className="row">
+          <span className={`badge${busy ? ' warn' : ' ok'}`}>
+            {busy ? 'Working…' : 'Ready'}
+          </span>
+        </div>
+      </div>
+      <div className="page-body">
+        {message ? <div className="hint" style={{ marginBottom: 8 }}>{message}</div> : null}
+        <div className="file-panes">
+          <FilePane
+            title="This PC"
+            kind="local"
+            data={local}
+            loading={localLoading}
+            dragPayload={drag}
+            onNavigate={(path) => void loadLocal(path)}
+            onSelect={(name) => setLocal((prev) => ({ ...prev, selected: name }))}
+            onSort={(key) => setLocal((prev) => ({
+              ...prev,
+              sortKey: key,
+              sortAsc: prev.sortKey === key ? !prev.sortAsc : true,
+            }))}
+            onOpen={(entry) => openEntry('local', entry)}
+            onDropEntry={handleDrop('device')}
+            onDragStateChange={setDrag}
+            emptyMessage="This folder is empty."
+          />
+          <FilePane
+            title="Android device"
+            kind="device"
+            data={device}
+            loading={deviceLoading}
+            disabled={!selectedDevice}
+            quickPaths={[
+              { label: 'sdcard', path: '/sdcard' },
+              { label: 'tmp', path: '/data/local/tmp' },
+              { label: 'root', path: '/' },
+            ]}
+            dragPayload={drag}
+            headerExtra={deviceActions}
+            onNavigate={(path) => void loadDevice(path)}
+            onSelect={(name) => setDevice((prev) => ({ ...prev, selected: name }))}
+            onSort={(key) => setDevice((prev) => ({
+              ...prev,
+              sortKey: key,
+              sortAsc: prev.sortKey === key ? !prev.sortAsc : true,
+            }))}
+            onOpen={(entry) => openEntry('device', entry)}
+            onDropEntry={handleDrop('local')}
+            onDragStateChange={setDrag}
+            emptyMessage={selectedDevice ? 'This folder is empty.' : 'Select a device to browse it.'}
+          />
+        </div>
+      </div>
+    </>
+  )
+}
+
+/* ---------------- DeGoogle ---------------- */
+
+function DeGooglePage() {
+  const [status, setStatus] = useState<DeGoogleStatus | null>(null)
+  const [error, setError] = useState('')
+  const [mode, setMode] = useState<'simple' | 'custom'>('simple')
+  const [action, setAction] = useState<'disable' | 'uninstall'>('disable')
+  const [includeRisky, setIncludeRisky] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set())
+  const [undoDisabled, setUndoDisabled] = useState<Set<string>>(new Set())
+  const [undoUninstalled, setUndoUninstalled] = useState<Set<string>>(new Set())
+  const [busy, setBusy] = useState(false)
+
+  const load = useCallback(async () => {
+    try {
+      setStatus(await api.deGoogleStatus())
+      setError('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+    const timer = window.setInterval(() => void load(), 2000)
+    return () => window.clearInterval(timer)
+  }, [load])
+
+  // When switching to Custom, pre-select the installed safe bucket.
+  useEffect(() => {
+    if (mode !== 'custom' || !status?.installed) return
+    setPicked(new Set(status.installed.safe ?? []))
+  }, [mode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset undo selections whenever a new state snapshot arrives (after a run).
+  useEffect(() => {
+    if (!status) return
+    setUndoDisabled(new Set(status.state.disabled))
+    setUndoUninstalled(new Set(status.state.uninstalled))
+  }, [status?.state.updated]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const job = status?.job
+  const installed = status?.installed
+  const running = Boolean(job?.running)
+  const hasUndo = Boolean(status && (status.state.disabled.length > 0 || status.state.uninstalled.length > 0))
+
+  const run = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await api.deGoogleRun({
+        mode,
+        action,
+        includeRisky,
+        packages: mode === 'custom' ? [...picked] : undefined,
+      })
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const undo = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await api.deGoogleUndo({
+        disabled: [...undoDisabled],
+        uninstalled: [...undoUninstalled],
+      })
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const bucketDetails = (key: 'safe' | 'risky' | 'unsafe', label: string) => {
+    const list = installed?.[key] ?? []
+    return (
+      <details className={`bucket bucket-${key}`} key={key} open={key === 'safe'}>
+        <summary>
+          {label} — {list.length} installed
+          {key === 'unsafe' ? ' ⚠' : ''}
+        </summary>
+        <div className="bucket-list">
+          {list.length === 0 ? (
+            <div className="hint">None of these are installed.</div>
+          ) : (
+            list.map((pkg) => (
+              <label className="check-row" key={pkg}>
+                <input
+                  type="checkbox"
+                  checked={picked.has(pkg)}
+                  disabled={running || busy}
+                  onChange={(event) => {
+                    const next = new Set(picked)
+                    if (event.target.checked) next.add(pkg)
+                    else next.delete(pkg)
+                    setPicked(next)
+                  }}
+                />
+                <span className="mono" title={pkg}>{friendlyName(pkg)}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </details>
+    )
+  }
+
+  return (
+    <>
+      <div className="page-header">
+        <div>
+          <h1>DeGoogle</h1>
+          <div className="sub">
+            {status?.device
+              ? `Working on ${status.device}`
+              : 'Select a device first'}
+            {installed ? ` · ${installed.safe.length + installed.risky.length + installed.unsafe.length} catalog packages installed` : ''}
+          </div>
+        </div>
+        <button className="btn" disabled={busy || running} onClick={() => void load()}>
+          Refresh
+        </button>
+      </div>
+      <div className="page-body">
+        {error ? <div className="error" style={{ marginBottom: 10 }}>{error}</div> : null}
+        {!status?.device ? (
+          <div className="empty">Select a connected device to run DeGoogle.</div>
+        ) : (
+          <>
+            {running ? (
+              <div className="settings-card">
+                <h2>{job?.phase === 'undo' ? 'Restoring packages…' : 'Removing packages…'}</h2>
+                <div className="desc">
+                  {job?.done ?? 0}/{job?.total ?? 0}
+                  {job?.current ? ` · ${job.current}` : ''}
+                </div>
+                <div className="progress">
+                  <div
+                    className="progress-fill"
+                    style={{ width: `${job && job.total ? Math.round((job.done / job.total) * 100) : 0}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+
+            <div className="settings-card">
+              <h2>Mode</h2>
+              <div className="desc">
+                <strong>Simple</strong> removes optional Google apps (never system-critical ones).
+                <strong> Custom</strong> lets you pick every catalog package, including unsafe ones.
+              </div>
+              <div className="row" style={{ marginBottom: 10 }}>
+                <div className="seg">
+                  <button className={mode === 'simple' ? 'active' : ''}
+                    onClick={() => setMode('simple')} disabled={running || busy}>
+                    Simple
+                  </button>
+                  <button className={mode === 'custom' ? 'active' : ''}
+                    onClick={() => setMode('custom')} disabled={running || busy}>
+                    Custom
+                  </button>
+                </div>
+                <div className="seg">
+                  <button className={action === 'disable' ? 'active' : ''}
+                    onClick={() => setAction('disable')} disabled={running || busy}>
+                    Disable
+                  </button>
+                  <button className={action === 'uninstall' ? 'active' : ''}
+                    onClick={() => setAction('uninstall')} disabled={running || busy}>
+                    Uninstall for user
+                  </button>
+                </div>
+              </div>
+              {mode === 'simple' ? (
+                <label className="check-row">
+                  <input type="checkbox" checked={includeRisky} disabled={running || busy}
+                    onChange={(event) => setIncludeRisky(event.target.checked)} />
+                  Also include risky services (login / sync adapters — may break Google sign-in and sync)
+                </label>
+              ) : (
+                <div className="buckets">
+                  {bucketDetails('safe', 'Safe')}
+                  {bucketDetails('risky', 'Risky')}
+                  {bucketDetails('unsafe', 'Unsafe ⚠')}
+                  <div className="error" style={{ marginTop: 8 }}>
+                    Unsafe packages can bootloop the device or kill camera, network, launcher and OTA.
+                    Only select them if you know exactly what you are doing.
+                  </div>
+                </div>
+              )}
+              <div className="row" style={{ marginTop: 12 }}>
+                <button className="btn primary" disabled={running || busy}
+                  onClick={() => void run()}>
+                  {busy ? 'Starting…' : mode === 'simple'
+                    ? `Run Simple cleanup (${action === 'disable' ? 'disable' : 'uninstall'})`
+                    : `Run Custom selection (${picked.size})`}
+                </button>
+              </div>
+              {job?.lastRun && !running ? (
+                <div className="hint" style={{ marginTop: 10 }}>
+                  Last run ({job.lastRun.finished}): {job.lastRun.disabled.length} disabled,{' '}
+                  {job.lastRun.uninstalled.length} uninstalled, {job.lastRun.failed.length} failed.
+                  {job.lastRun.failed.length > 0 ? (
+                    <div className="error">
+                      {job.lastRun.failed.slice(0, 5).map((item) => `${item.package}: ${item.error}`).join(' · ')}
+                      {job.lastRun.failed.length > 5 ? ' …' : ''}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="settings-card">
+              <h2>Undo</h2>
+              <div className="desc">
+                Restore packages this device previously removed through DeGoogle (enabled / reinstalled
+                for your user account).
+              </div>
+              {!hasUndo ? (
+                <div className="hint">Nothing to restore for this device.</div>
+              ) : (
+                <>
+                  {status.state.disabled.length > 0 ? (
+                    <div className="bucket-list" style={{ marginBottom: 8 }}>
+                      <div className="hint">Disabled ({status.state.disabled.length}):</div>
+                      {status.state.disabled.map((pkg) => (
+                        <label className="check-row" key={pkg}>
+                          <input type="checkbox" checked={undoDisabled.has(pkg)} disabled={running || busy}
+                            onChange={(event) => {
+                              const next = new Set(undoDisabled)
+                              if (event.target.checked) next.add(pkg)
+                              else next.delete(pkg)
+                              setUndoDisabled(next)
+                            }} />
+                          <span className="mono" title={pkg}>{friendlyName(pkg)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                  {status.state.uninstalled.length > 0 ? (
+                    <div className="bucket-list" style={{ marginBottom: 8 }}>
+                      <div className="hint">Uninstalled ({status.state.uninstalled.length}):</div>
+                      {status.state.uninstalled.map((pkg) => (
+                        <label className="check-row" key={pkg}>
+                          <input type="checkbox" checked={undoUninstalled.has(pkg)} disabled={running || busy}
+                            onChange={(event) => {
+                              const next = new Set(undoUninstalled)
+                              if (event.target.checked) next.add(pkg)
+                              else next.delete(pkg)
+                              setUndoUninstalled(next)
+                            }} />
+                          <span className="mono" title={pkg}>{friendlyName(pkg)}</span>
+                        </label>
+                      ))}
+                    </div>
+                  ) : null}
+                  <button className="btn" disabled={running || busy} onClick={() => void undo()}>
+                    {busy ? 'Starting…' : `Restore ${undoDisabled.size + undoUninstalled.size} package(s)`}
+                  </button>
+                  {job?.lastUndo && !running ? (
+                    <div className="hint" style={{ marginTop: 10 }}>
+                      Last restore ({job.lastUndo.finished}): {job.lastUndo.restored.length} restored,{' '}
+                      {job.lastUndo.failed.length} failed.
+                    </div>
+                  ) : null}
+                </>
               )}
             </div>
           </>

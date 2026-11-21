@@ -19,12 +19,22 @@ from pathlib import Path
 import re
 import secrets
 import shutil
+import sys
 import tempfile
 import threading
 import time
 import urllib.parse
 
 from adb_manager import ADBManager, find_adb, parse_packages
+from degoogle import (
+    ALL_SET,
+    BUCKETS,
+    empty_state,
+    load_state,
+    save_state,
+    simple_candidates,
+)
+from win32_dialogs import dialogs_supported, pick_files, pick_save_path
 
 MAX_REQUEST_BYTES = 64 * 1024
 MAX_APK_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB streamed to disk, never buffered
@@ -91,6 +101,12 @@ class DroidSlateBackend:
         os.makedirs(self._stage_dir, exist_ok=True)
         self._screenshots_dir = os.path.join(self.data_dir, "screenshots")
         self._install_lock = threading.Lock()
+        self._degoogle_path = os.path.join(self.data_dir, "degoogle_state.json")
+        self._degoogle_lock = threading.Lock()
+        self._degoogle_job: dict = {
+            "running": False, "phase": "", "done": 0, "total": 0, "current": "",
+            "lastRun": None, "lastUndo": None,
+        }
         self._stop_refresh = threading.Event()
         self._refresh_thread = threading.Thread(
             target=self._refresh_loop, name="DroidSlateDeviceRefresh", daemon=True
@@ -440,6 +456,421 @@ class DroidSlateBackend:
         self.log("WARN", "DEVICE", f"Rebooting {serial}{suffix}")
         return {"ok": True, "mode": mode}
 
+    # -- files -------------------------------------------------------------
+
+    @staticmethod
+    def _require_text(value: object, *, max_len: int, label: str) -> str:
+        if not isinstance(value, str) or not value or len(value) > max_len or "\x00" in value:
+            raise DashboardError(f"Invalid {label}.")
+        return value
+
+    @staticmethod
+    def _require_device_path(value: object, *, label: str = "device path") -> str:
+        path = DroidSlateBackend._require_text(value, max_len=4096, label=label)
+        if not path.startswith("/"):
+            raise DashboardError("Device paths must be absolute.")
+        return path
+
+    def list_local_dir(self, path_arg: object) -> dict:
+        path = self._require_text(path_arg or os.path.expanduser("~"), max_len=32768, label="folder path")
+        if not os.path.isdir(path):
+            raise DashboardError("That folder does not exist.", 404)
+        entries: list[dict] = []
+        try:
+            with os.scandir(path) as iterator:
+                for entry in iterator:
+                    try:
+                        is_link = entry.is_symlink()
+                        is_dir = entry.is_dir()
+                        stat = entry.stat()
+                        size = 0 if is_dir else stat.st_size
+                        modified = time.strftime("%Y-%m-%d %H:%M", time.localtime(stat.st_mtime))
+                    except OSError:
+                        continue  # vanished or broken symlink
+                    entries.append({
+                        "name": entry.name,
+                        "size": size,
+                        "modified": modified,
+                        "is_dir": is_dir,
+                        "is_link": is_link,
+                        "permissions": "",
+                    })
+        except PermissionError as exc:
+            raise DashboardError("Access denied to that folder.", 403) from exc
+        except OSError as exc:
+            raise DashboardError(f"Could not list that folder: {exc}", 400) from exc
+        entries.sort(key=lambda item: (not item["is_dir"], item["name"].lower()))
+        absolute = os.path.abspath(path)
+        parent = os.path.dirname(absolute)
+        drives = None
+        if sys.platform == "win32":
+            drives = [f"{letter}:\\" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                      if os.path.isdir(f"{letter}:\\")]
+        return {
+            "path": absolute,
+            "parent": parent if parent != absolute else None,
+            "entries": entries,
+            "drives": drives,
+        }
+
+    def list_device_dir(self, path_arg: object) -> dict:
+        serial = self._require_device()
+        path = self._require_device_path(path_arg or "/sdcard")
+        result = self.adb.list_device_dir(serial, path)
+        if not result["success"]:
+            raise DashboardError(result["stderr"] or "Could not list that folder.", 400)
+        if path == "/":
+            parent = None
+        else:
+            parent = path.rsplit("/", 1)[0] or "/"
+        return {"path": path, "parent": parent, "entries": result["entries"]}
+
+    def push_file(self, payload: dict) -> dict:
+        serial = self._require_device()
+        local = self._require_text(payload.get("localPath"), max_len=32768, label="file path")
+        device = self._require_device_path(payload.get("devicePath"), label="destination")
+        if not os.path.isfile(local):
+            raise DashboardError("That file no longer exists.", 404)
+        result = self.adb.push(serial, local, device, timeout=600)
+        if not result["success"]:
+            detail = (result["stderr"] or result["stdout"] or "push failed").strip()
+            raise DashboardError(f"Push failed: {detail[:400]}", 500)
+        self.log("INFO", "FILES", f"Pushed {os.path.basename(local)} → {device}")
+        return {"ok": True, "to": device}
+
+    def pull_file(self, payload: dict) -> dict:
+        serial = self._require_device()
+        device = self._require_device_path(payload.get("devicePath"), label="source")
+        local = self._require_text(payload.get("localPath"), max_len=32768, label="file path")
+        if not os.path.isabs(local):
+            raise DashboardError("The local destination must be an absolute path.")
+        parent = os.path.dirname(os.path.abspath(local))
+        if not os.path.isdir(parent):
+            raise DashboardError("The destination folder does not exist.", 404)
+        result = self.adb.pull(serial, device, local, timeout=600)
+        if not result["success"]:
+            detail = (result["stderr"] or result["stdout"] or "pull failed").strip()
+            raise DashboardError(f"Pull failed: {detail[:400]}", 500)
+        self.log("INFO", "FILES", f"Pulled {device} → {local}")
+        return {"ok": True, "path": local}
+
+    def push_pick(self, payload: dict) -> dict:
+        """Open the native file picker and push the selection to the device."""
+        serial = self._require_device()
+        device_dir = self._require_device_path(payload.get("deviceDir"), label="device folder")
+        if not dialogs_supported():
+            raise DashboardError("Native file dialogs require Windows.", 501)
+        picked = pick_files(title="Select files to push to the device")
+        if not picked:
+            return {"cancelled": True}
+        results = []
+        for path in picked:
+            if not os.path.isfile(path):
+                results.append({"file": path, "ok": False, "error": "Not a regular file."})
+                continue
+            name = os.path.basename(path.replace("\\", "/"))
+            target = f"{device_dir.rstrip('/')}/{name}"
+            result = self.adb.push(serial, path, target, timeout=600)
+            ok = bool(result["success"])
+            results.append({
+                "file": path,
+                "ok": ok,
+                "error": "" if ok else (result["stderr"] or result["stdout"] or "push failed")[:300],
+            })
+            self.log("INFO" if ok else "ERROR", "FILES",
+                     f"Pushed {name} → {target}" if ok else f"Push failed: {name}")
+        pushed = sum(1 for item in results if item["ok"])
+        return {"results": results, "pushed": pushed, "failed": len(results) - pushed}
+
+    def save_as(self, payload: dict) -> dict:
+        """Pull one device file through the native save-as dialog."""
+        serial = self._require_device()
+        device = self._require_device_path(payload.get("devicePath"), label="source")
+        if not dialogs_supported():
+            raise DashboardError("Native file dialogs require Windows.", 501)
+        suggested = device.rsplit("/", 1)[-1] or "file"
+        target = pick_save_path(suggested=suggested)
+        if not target:
+            return {"cancelled": True}
+        parent = os.path.dirname(os.path.abspath(target))
+        if not os.path.isdir(parent):
+            raise DashboardError("The destination folder does not exist.", 404)
+        result = self.adb.pull(serial, device, target, timeout=600)
+        if not result["success"]:
+            detail = (result["stderr"] or result["stdout"] or "pull failed").strip()
+            raise DashboardError(f"Pull failed: {detail[:400]}", 500)
+        self.log("INFO", "FILES", f"Saved {device} → {target}")
+        return {"ok": True, "path": target}
+
+    def device_mkdir(self, payload: dict) -> dict:
+        serial = self._require_device()
+        path = self._require_device_path(payload.get("path"), label="folder path")
+        result = self.adb.device_mkdir(serial, path)
+        if not result["success"]:
+            detail = (result["stderr"] or result["stdout"] or "mkdir failed").strip()
+            raise DashboardError(f"Could not create the folder: {detail[:300]}", 500)
+        self.log("INFO", "FILES", f"Created {path}")
+        return {"ok": True, "path": path}
+
+    def device_rename(self, payload: dict) -> dict:
+        serial = self._require_device()
+        source = self._require_device_path(payload.get("from"), label="source path")
+        target = self._require_device_path(payload.get("to"), label="target path")
+        result = self.adb.device_rename(serial, source, target)
+        if not result["success"]:
+            detail = (result["stderr"] or result["stdout"] or "rename failed").strip()
+            raise DashboardError(f"Could not rename: {detail[:300]}", 500)
+        self.log("INFO", "FILES", f"Renamed {source} → {target}")
+        return {"ok": True, "path": target}
+
+    def device_delete(self, payload: dict) -> dict:
+        serial = self._require_device()
+        path = self._require_device_path(payload.get("path"), label="path")
+        # Refuse the filesystem root and top-level trees (/sdcard, /data, …):
+        # one mis-click there wipes gigabytes; deeper targets are normal use.
+        depth = len([part for part in path.split("/") if part])
+        if depth < 2:
+            raise DashboardError(
+                "Refusing to delete a top-level device path. Navigate inside it first.",
+                400,
+            )
+        result = self.adb.device_delete(serial, path)
+        if not result["success"]:
+            detail = (result["stderr"] or result["stdout"] or "delete failed").strip()
+            raise DashboardError(f"Could not delete: {detail[:300]}", 500)
+        self.log("WARN", "FILES", f"Deleted {path}")
+        return {"ok": True, "path": path}
+
+    # -- degoogle ----------------------------------------------------------
+
+    def degoogle_status(self) -> dict:
+        serial = self.selected_device()
+        installed: dict[str, list[str]] | None = None
+        if serial:
+            result = self.adb.run(["shell", "pm", "list", "packages"], serial=serial)
+            if result["success"]:
+                present = set(parse_packages(result["stdout"]))
+                installed = {
+                    name: [pkg for pkg in packages if pkg in present]
+                    for name, packages in BUCKETS.items()
+                }
+        state = load_state(self._degoogle_path)
+        with self._degoogle_lock:
+            job = dict(self._degoogle_job)
+        return {
+            "device": serial,
+            "installed": installed,
+            "state": state.get(serial, empty_state()) if serial else empty_state(),
+            "job": job,
+        }
+
+    def degoogle_run(self, payload: dict) -> dict:
+        mode = payload.get("mode")
+        action = payload.get("action", "disable")
+        if action not in ("disable", "uninstall"):
+            raise DashboardError("Action must be 'disable' or 'uninstall'.")
+        serial = self._require_device()
+
+        if mode == "simple":
+            include_risky = bool(payload.get("includeRisky"))
+            candidates = simple_candidates(include_risky)  # never unsafe
+        elif mode == "custom":
+            packages = payload.get("packages")
+            if not isinstance(packages, list) or not 1 <= len(packages) <= 300:
+                raise DashboardError("Select one or more packages (max 300).")
+            candidates = []
+            for item in packages:
+                if not isinstance(item, str) or item not in ALL_SET:
+                    raise DashboardError("That package is not part of the DeGoogle catalog.")
+                if item not in candidates:
+                    candidates.append(item)
+        else:
+            raise DashboardError("Mode must be 'simple' or 'custom'.")
+
+        scan = self.adb.run(["shell", "pm", "list", "packages"], serial=serial)
+        if not scan["success"]:
+            detail = (scan["stderr"] or scan["stdout"] or "scan failed").strip()
+            raise DashboardError(f"Could not scan packages: {detail[:300]}", 500)
+        present = set(parse_packages(scan["stdout"]))
+        todo = [pkg for pkg in candidates if pkg in present]
+
+        with self._degoogle_lock:
+            if self._degoogle_job["running"]:
+                raise DashboardError("A DeGoogle job is already running.", 409)
+            if not todo:
+                return {"started": False, "total": 0, "message": "Nothing to remove."}
+            self._degoogle_job.update({
+                "running": True, "phase": "run", "done": 0,
+                "total": len(todo), "current": todo[0],
+                "lastRun": None,
+            })
+        threading.Thread(
+            target=self._degoogle_run_worker,
+            args=(serial, action, todo),
+            name="DroidSlateDeGoogle",
+            daemon=True,
+        ).start()
+        return {"started": True, "total": len(todo), "action": action}
+
+    def _degoogle_run_worker(self, serial: str, action: str, packages: list[str]) -> None:
+        state = load_state(self._degoogle_path)
+        entry = state.setdefault(serial, empty_state())
+        disabled: list[str] = []
+        uninstalled: list[str] = []
+        failed: list[dict] = []
+        try:
+            for index, package in enumerate(packages, start=1):
+                with self._degoogle_lock:
+                    self._degoogle_job.update({"done": index - 1, "current": package})
+                if action == "disable":
+                    result = self.adb.set_package_enabled(serial, package, enabled=False)
+                    ok = bool(result["success"])
+                    error = "" if ok else (result["stderr"] or result["stdout"] or "disable failed")
+                    if ok and package not in entry["disabled"]:
+                        entry["disabled"].append(package)
+                else:
+                    result = self.adb.uninstall(serial, package, for_user=True)
+                    ok = self._apk_result_ok(result)
+                    error = "" if ok else (result["stderr"] or result["stdout"] or "uninstall failed")
+                    if ok and package not in entry["uninstalled"]:
+                        entry["uninstalled"].append(package)
+                if ok:
+                    if action == "disable":
+                        disabled.append(package)
+                    else:
+                        uninstalled.append(package)
+                    entry["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    save_state(self._degoogle_path, state)  # persist each success
+                    self.log("INFO", "DEGOOGLE", f"{action}: {package}")
+                else:
+                    failed.append({"package": package, "error": str(error)[:300]})
+                    self.log("ERROR", "DEGOOGLE", f"Failed {action} {package}: {str(error)[:200]}")
+            summary = {
+                "action": action,
+                "disabled": disabled,
+                "uninstalled": uninstalled,
+                "failed": failed,
+                "finished": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            with self._degoogle_lock:
+                self._degoogle_job.update({
+                    "running": False, "phase": "", "current": "",
+                    "done": len(packages), "lastRun": summary,
+                })
+        except Exception as exc:  # keep the job from wedging on unexpected errors
+            with self._degoogle_lock:
+                self._degoogle_job.update({
+                    "running": False, "phase": "", "current": "",
+                    "lastRun": {"action": action, "disabled": [], "uninstalled": [],
+                                "failed": [{"package": "", "error": str(exc)[:300]}],
+                                "finished": time.strftime("%Y-%m-%d %H:%M:%S")},
+                })
+
+    def degoogle_undo(self, payload: dict) -> dict:
+        serial = self._require_device()
+        state = load_state(self._degoogle_path)
+        entry = state.get(serial, empty_state())
+
+        def pick(key: str) -> list[str]:
+            requested = payload.get(key)
+            if requested is None:
+                return list(entry[key])
+            if not isinstance(requested, list) or len(requested) > 500:
+                raise DashboardError("Invalid restore selection.")
+            chosen = []
+            for item in requested:
+                if not isinstance(item, str) or item not in entry[key]:
+                    raise DashboardError("Only previously removed packages can be restored.")
+                if item not in chosen:
+                    chosen.append(item)
+            return chosen
+
+        disabled = pick("disabled")
+        uninstalled = pick("uninstalled")
+        if not disabled and not uninstalled:
+            raise DashboardError("Nothing to restore for this device.")
+
+        with self._degoogle_lock:
+            if self._degoogle_job["running"]:
+                raise DashboardError("A DeGoogle job is already running.", 409)
+            self._degoogle_job.update({
+                "running": True, "phase": "undo", "done": 0,
+                "total": len(disabled) + len(uninstalled),
+                "current": (disabled + uninstalled)[0],
+                "lastUndo": None,
+            })
+        threading.Thread(
+            target=self._degoogle_undo_worker,
+            args=(serial, state, disabled, uninstalled),
+            name="DroidSlateDeGoogleUndo",
+            daemon=True,
+        ).start()
+        return {"started": True, "total": len(disabled) + len(uninstalled)}
+
+    def _degoogle_undo_worker(
+        self, serial: str, state: dict, disabled: list[str], uninstalled: list[str]
+    ) -> None:
+        restored: list[str] = []
+        failed: list[dict] = []
+        total = len(disabled) + len(uninstalled)
+        done = 0
+        try:
+            entry = state.get(serial, empty_state())
+            for package in disabled:
+                with self._degoogle_lock:
+                    self._degoogle_job.update({"done": done, "current": package})
+                result = self.adb.set_package_enabled(serial, package, enabled=True)
+                if result["success"]:
+                    restored.append(package)
+                    if package in entry["disabled"]:
+                        entry["disabled"].remove(package)
+                    self.log("INFO", "DEGOOGLE", f"Restored (enabled): {package}")
+                else:
+                    error = (result["stderr"] or result["stdout"] or "enable failed")
+                    failed.append({"package": package, "error": str(error)[:300]})
+                    self.log("ERROR", "DEGOOGLE", f"Enable failed {package}: {str(error)[:200]}")
+                done += 1
+            for package in uninstalled:
+                with self._degoogle_lock:
+                    self._degoogle_job.update({"done": done, "current": package})
+                result = self.adb.reinstall(serial, package)
+                ok = self._apk_result_ok(result)
+                if not ok:
+                    # Some OEMs leave the package disabled after user uninstall.
+                    fallback = self.adb.set_package_enabled(serial, package, enabled=True)
+                    ok = bool(fallback["success"])
+                if ok:
+                    restored.append(package)
+                    if package in entry["uninstalled"]:
+                        entry["uninstalled"].remove(package)
+                    self.log("INFO", "DEGOOGLE", f"Restored (reinstalled): {package}")
+                else:
+                    error = (result["stderr"] or result["stdout"] or "reinstall failed")
+                    failed.append({"package": package, "error": str(error)[:300]})
+                    self.log("ERROR", "DEGOOGLE", f"Reinstall failed {package}: {str(error)[:200]}")
+                done += 1
+            entry["updated"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            if not entry["disabled"] and not entry["uninstalled"]:
+                state.pop(serial, None)
+            save_state(self._degoogle_path, state)
+            summary = {
+                "restored": restored,
+                "failed": failed,
+                "finished": time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            with self._degoogle_lock:
+                self._degoogle_job.update({
+                    "running": False, "phase": "", "current": "",
+                    "done": total, "lastUndo": summary,
+                })
+        except Exception as exc:
+            with self._degoogle_lock:
+                self._degoogle_job.update({
+                    "running": False, "phase": "", "current": "",
+                    "lastUndo": {"restored": [], "failed": [{"package": "", "error": str(exc)[:300]}],
+                                 "finished": time.strftime("%Y-%m-%d %H:%M:%S")},
+                })
+
     # -- shell -------------------------------------------------------------
 
     def run_shell(self, payload: dict) -> dict:
@@ -726,6 +1157,32 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
                 result = self.app.backend.open_screenshots_folder()
             elif self.command == "POST" and path == "/api/v1/reboot":
                 result = self.app.backend.reboot_device(self._parse_json())
+            elif self.command == "GET" and path == "/api/v1/files/local":
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                result = self.app.backend.list_local_dir((query.get("path") or [""])[0])
+            elif self.command == "GET" and path == "/api/v1/files/device":
+                query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                result = self.app.backend.list_device_dir((query.get("path") or [""])[0])
+            elif self.command == "POST" and path == "/api/v1/files/push":
+                result = self.app.backend.push_file(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/files/pull":
+                result = self.app.backend.pull_file(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/files/push-pick":
+                result = self.app.backend.push_pick(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/files/save-as":
+                result = self.app.backend.save_as(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/files/device-mkdir":
+                result = self.app.backend.device_mkdir(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/files/device-rename":
+                result = self.app.backend.device_rename(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/files/device-delete":
+                result = self.app.backend.device_delete(self._parse_json())
+            elif self.command == "GET" and path == "/api/v1/degoogle":
+                result = self.app.backend.degoogle_status()
+            elif self.command == "POST" and path == "/api/v1/degoogle/run":
+                result = self.app.backend.degoogle_run(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/degoogle/undo":
+                result = self.app.backend.degoogle_undo(self._parse_json())
             else:
                 raise DashboardError("Endpoint not found.", 404)
             self._json(200, result)

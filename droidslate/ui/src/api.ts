@@ -1,4 +1,15 @@
-import type { AppEntry, AppSnapshot, Device, DeviceInfo, ScreenshotRef, Settings } from './types'
+import type {
+  AppEntry,
+  AppSnapshot,
+  DeGoogleStatus,
+  Device,
+  DeviceInfo,
+  DirListing,
+  PickResult,
+  ScreenshotRef,
+  Settings,
+  TransferResult,
+} from './types'
 
 const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
 let bootstrapCapability = hashParams.get('session') || ''
@@ -175,5 +186,89 @@ export const api = {
   async reboot(mode: 'normal' | 'recovery' | 'bootloader'): Promise<{ ok: boolean }> {
     if (!isDesktopHost) throw new Error('Reboot is available in the desktop app.')
     return request('/api/v1/reboot', { method: 'POST', body: JSON.stringify({ mode }) })
+  },
+
+  // -- files ---------------------------------------------------------------
+
+  async localDir(path: string): Promise<DirListing> {
+    if (!isDesktopHost) throw new Error('File Explorer is available in the desktop app.')
+    return request(`/api/v1/files/local?path=${encodeURIComponent(path)}`)
+  },
+
+  async deviceDir(path: string): Promise<DirListing> {
+    if (!isDesktopHost) throw new Error('File Explorer is available in the desktop app.')
+    return request(`/api/v1/files/device?path=${encodeURIComponent(path)}`)
+  },
+
+  async pushFile(localPath: string, devicePath: string): Promise<TransferResult> {
+    if (!isDesktopHost) throw new Error('File Explorer is available in the desktop app.')
+    return request('/api/v1/files/push', {
+      method: 'POST',
+      body: JSON.stringify({ localPath, devicePath }),
+    })
+  },
+
+  async pullFile(devicePath: string, localPath: string): Promise<TransferResult> {
+    if (!isDesktopHost) throw new Error('File Explorer is available in the desktop app.')
+    return request('/api/v1/files/pull', {
+      method: 'POST',
+      body: JSON.stringify({ devicePath, localPath }),
+    })
+  },
+
+  async pushPick(deviceDir: string): Promise<PickResult> {
+    if (!isDesktopHost) throw new Error('File Explorer is available in the desktop app.')
+    return request('/api/v1/files/push-pick', {
+      method: 'POST',
+      body: JSON.stringify({ deviceDir }),
+    })
+  },
+
+  async saveAs(devicePath: string): Promise<PickResult & { path?: string }> {
+    if (!isDesktopHost) throw new Error('File Explorer is available in the desktop app.')
+    return request('/api/v1/files/save-as', {
+      method: 'POST',
+      body: JSON.stringify({ devicePath }),
+    })
+  },
+
+  async deviceMkdir(path: string): Promise<{ ok: boolean }> {
+    if (!isDesktopHost) throw new Error('File Explorer is available in the desktop app.')
+    return request('/api/v1/files/device-mkdir', { method: 'POST', body: JSON.stringify({ path }) })
+  },
+
+  async deviceRename(from: string, to: string): Promise<{ ok: boolean }> {
+    if (!isDesktopHost) throw new Error('File Explorer is available in the desktop app.')
+    return request('/api/v1/files/device-rename', {
+      method: 'POST',
+      body: JSON.stringify({ from, to }),
+    })
+  },
+
+  async deviceDelete(path: string): Promise<{ ok: boolean }> {
+    if (!isDesktopHost) throw new Error('File Explorer is available in the desktop app.')
+    return request('/api/v1/files/device-delete', { method: 'POST', body: JSON.stringify({ path }) })
+  },
+
+  // -- degoogle ------------------------------------------------------------
+
+  async deGoogleStatus(): Promise<DeGoogleStatus> {
+    if (!isDesktopHost) throw new Error('DeGoogle is available in the desktop app.')
+    return request('/api/v1/degoogle')
+  },
+
+  async deGoogleRun(payload: {
+    mode: 'simple' | 'custom'
+    action: 'disable' | 'uninstall'
+    includeRisky?: boolean
+    packages?: string[]
+  }): Promise<{ started: boolean; total: number }> {
+    if (!isDesktopHost) throw new Error('DeGoogle is available in the desktop app.')
+    return request('/api/v1/degoogle/run', { method: 'POST', body: JSON.stringify(payload) })
+  },
+
+  async deGoogleUndo(payload: { disabled?: string[]; uninstalled?: string[] }): Promise<{ started: boolean; total: number }> {
+    if (!isDesktopHost) throw new Error('DeGoogle is available in the desktop app.')
+    return request('/api/v1/degoogle/undo', { method: 'POST', body: JSON.stringify(payload) })
   },
 }

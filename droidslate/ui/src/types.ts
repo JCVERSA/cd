@@ -54,6 +54,68 @@ export interface ScreenshotRef {
   path: string
 }
 
+export interface FileEntry {
+  name: string
+  size: number
+  modified: string
+  is_dir: boolean
+  is_link: boolean
+  permissions: string
+}
+
+export interface DirListing {
+  path: string
+  parent: string | null
+  entries: FileEntry[]
+  drives?: string[] | null
+}
+
+export interface TransferResult {
+  ok: boolean
+  to?: string
+  path?: string
+}
+
+export interface PickResult {
+  cancelled?: boolean
+  results?: { file: string; ok: boolean; error: string }[]
+  pushed?: number
+  failed?: number
+}
+
+export interface DeGoogleBucketState {
+  disabled: string[]
+  uninstalled: string[]
+  updated: string
+}
+
+export interface DeGoogleJob {
+  running: boolean
+  phase: string
+  done: number
+  total: number
+  current: string
+  lastRun: {
+    action: string
+    disabled: string[]
+    uninstalled: string[]
+    failed: { package: string; error: string }[]
+    finished: string
+  } | null
+  lastUndo: {
+    restored: string[]
+    failed: { package: string; error: string }[]
+    finished: string
+  } | null
+}
+
+export interface DeGoogleStatus {
+  device: string
+  installed: Record<string, string[]> | null
+  state: DeGoogleBucketState
+  job: DeGoogleJob
+}
+
 export interface DeviceInfo {
   Model: string
   Manufacturer: string

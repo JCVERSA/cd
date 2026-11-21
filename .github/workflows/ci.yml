@@ -243,7 +243,7 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Compile Python modules
-        run: python -m py_compile DroidSlate.pyw adb_manager.py dashboard_server.py ui_host.py
+        run: python -m py_compile DroidSlate.pyw adb_manager.py dashboard_server.py ui_host.py degoogle.py win32_dialogs.py
 
       - name: Install interface dependencies
         working-directory: droidslate/ui

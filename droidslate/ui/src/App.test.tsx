@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppSnapshot } from './types'
@@ -33,6 +33,18 @@ const mockApi = vi.hoisted(() => ({
   latestScreenshot: vi.fn(),
   openScreenshotsFolder: vi.fn(),
   reboot: vi.fn(),
+  localDir: vi.fn(),
+  deviceDir: vi.fn(),
+  pushFile: vi.fn(),
+  pullFile: vi.fn(),
+  pushPick: vi.fn(),
+  saveAs: vi.fn(),
+  deviceMkdir: vi.fn(),
+  deviceRename: vi.fn(),
+  deviceDelete: vi.fn(),
+  deGoogleStatus: vi.fn(),
+  deGoogleRun: vi.fn(),
+  deGoogleUndo: vi.fn(),
 }))
 
 vi.mock('./api', () => ({ api: mockApi }))
@@ -103,5 +115,90 @@ describe('DroidSlate app shell', () => {
     expect(screen.queryByText('com.android.settings')).not.toBeInTheDocument()
     expect(screen.getByText('com.example.chat')).toBeInTheDocument()
     expect(screen.getByText('1 shown')).toBeInTheDocument()
+  })
+
+  it('renders both file panes with entries and sorts by size', async () => {
+    mockApi.localDir.mockResolvedValue({
+      path: '/home/user/test',
+      parent: '/home/user',
+      entries: [
+        { name: 'big.bin', is_dir: false, size: 100, modified: 'Apr 30, 08:15' },
+        { name: 'small.bin', is_dir: false, size: 1, modified: 'Apr 30, 08:15' },
+        { name: 'docs', is_dir: true, size: null, modified: 'May 1, 12:00' },
+      ],
+      drives: [],
+    })
+    mockApi.deviceDir.mockResolvedValue({
+      path: '/sdcard',
+      parent: '/',
+      entries: [{ name: 'DCIM', is_dir: true, size: null, modified: 'May 1, 12:00' }],
+      drives: [],
+    })
+
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Files/ }))
+
+    expect(await screen.findByText('This PC')).toBeInTheDocument()
+    expect(await screen.findByText('Android device')).toBeInTheDocument()
+    expect(await screen.findByText('big.bin')).toBeInTheDocument()
+    expect(await screen.findByText('DCIM')).toBeInTheDocument()
+    // device quick paths from the spec
+    expect(screen.getByRole('button', { name: 'tmp' })).toBeInTheDocument()
+
+    const firstPane = document.querySelector('.file-pane') as HTMLElement
+    await user.click(within(firstPane).getByText('Size'))
+    const names = Array.from(firstPane.querySelectorAll('.file-row .name'))
+      .map((el) => (el.textContent ?? '').replace(/^[^A-Za-z0-9]+/, ''))
+    expect(names).toEqual(['docs', 'small.bin', 'big.bin'])
+  })
+
+  it('runs a simple DeGoogle pass and switches to custom selection', async () => {
+    mockApi.deGoogleStatus.mockResolvedValue({
+      device: 'emulator-5554',
+      installed: {
+        safe: ['com.google.android.carlink', 'com.google.android.youtube'],
+        risky: ['com.google.android.gsf.login'],
+        unsafe: ['com.android.vending'],
+      },
+      state: { disabled: [], uninstalled: [], updated: '' },
+      job: {
+        running: false,
+        phase: null,
+        done: 0,
+        total: 0,
+        current: '',
+        lastRun: null,
+        lastUndo: null,
+      },
+    })
+    mockApi.deGoogleRun.mockResolvedValue({ started: true, total: 2 })
+
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /DeGoogle/ }))
+
+    expect(await screen.findByRole('button', { name: 'Simple' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Custom' })).toBeInTheDocument()
+    // simple mode never renders the unsafe bucket
+    expect(document.querySelector('.bucket-unsafe')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: /Run Simple/ }))
+    await vi.waitFor(() => {
+      expect(mockApi.deGoogleRun).toHaveBeenCalledWith({
+        mode: 'simple',
+        action: 'disable',
+        includeRisky: false,
+      })
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Custom' }))
+    expect(await screen.findByText('Android Auto')).toBeInTheDocument()
+    const unsafe = document.querySelector('.bucket-unsafe')
+    expect(unsafe).not.toBeNull()
+    // raw package id kept in the title attribute next to the friendly name
+    expect(unsafe?.querySelector('span[title="com.android.vending"]')).not.toBeNull()
   })
 })
