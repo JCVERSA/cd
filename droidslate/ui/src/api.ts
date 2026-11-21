@@ -70,7 +70,7 @@ const previewSnapshot: AppSnapshot = {
   runtime: { version: '1.0.0-preview', adbPath: 'adb', adbFound: true, uptimeSeconds: 0, theme: 'dark' },
   devices: [],
   selectedDevice: '',
-  settings: { adbPath: '', theme: 'dark' },
+  settings: { adbPath: '', theme: 'dark', accent: 'emerald' },
   wifiHistory: [],
   logcat: { running: false, serial: null },
   logs: [],

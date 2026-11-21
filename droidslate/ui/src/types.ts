@@ -14,17 +14,21 @@ export interface LogRecord {
   message: string
 }
 
+export type ThemeMode = 'dark' | 'light' | 'system'
+export type AccentId = 'emerald' | 'violet' | 'nebula' | 'amber' | 'crimson'
+
 export interface RuntimeState {
   version: string
   adbPath: string
   adbFound: boolean
   uptimeSeconds: number
-  theme: 'dark' | 'light'
+  theme: ThemeMode
 }
 
 export interface Settings {
   adbPath: string
-  theme: 'dark' | 'light'
+  theme: ThemeMode
+  accent: AccentId
 }
 
 export interface LogcatState {

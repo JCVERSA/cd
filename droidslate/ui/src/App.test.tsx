@@ -8,7 +8,7 @@ const baseSnapshot: AppSnapshot = {
   runtime: { version: '1.0.0', adbPath: 'adb', adbFound: true, uptimeSeconds: 12, theme: 'dark' },
   devices: [{ id: 'emulator-5554', status: 'device', model: 'Pixel 8' }],
   selectedDevice: 'emulator-5554',
-  settings: { adbPath: '', theme: 'dark' },
+  settings: { adbPath: '', theme: 'dark', accent: 'emerald' },
   wifiHistory: [],
   logcat: { running: false, serial: null },
   logs: [],
@@ -514,6 +514,38 @@ describe('DroidSlate app shell', () => {
     expect(confirmSpy).toHaveBeenCalledWith('Push notes.txt to /sdcard/Download/?')
     await vi.waitFor(() => {
       expect(alertSpy).toHaveBeenCalledWith('Pushed 1 file(s) to /sdcard/Download/.')
+    })
+  })
+
+  it('switches color mode and accent from Settings', async () => {
+    // Persist into the snapshot the way the real backend does — otherwise the
+    // 2.5s snapshot poll immediately reverts the optimistic DOM update.
+    mockApi.saveSettings.mockImplementation(async (patch) => {
+      const merged: AppSnapshot['settings'] = { ...baseSnapshot.settings, ...patch }
+      mockApi.snapshot.mockResolvedValue({
+        ...structuredClone(baseSnapshot),
+        settings: merged,
+        // The backend mirrors the theme into runtime.theme — keep the mock honest.
+        runtime: { ...baseSnapshot.runtime, theme: merged.theme },
+      })
+      return merged
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Settings/ }))
+
+    await user.click(await screen.findByRole('button', { name: 'System' }))
+    await vi.waitFor(() => {
+      expect(mockApi.saveSettings).toHaveBeenCalledWith({ theme: 'system' })
+      // jsdom reports no dark OS preference → system resolves to light
+      expect(document.documentElement.dataset.theme).toBe('light')
+    })
+
+    await user.click(screen.getByRole('button', { name: 'Violet' }))
+    await vi.waitFor(() => {
+      expect(mockApi.saveSettings).toHaveBeenCalledWith({ accent: 'violet' })
+      expect(document.documentElement.dataset.accent).toBe('violet')
     })
   })
 

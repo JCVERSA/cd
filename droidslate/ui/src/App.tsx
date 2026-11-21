@@ -4,6 +4,7 @@ import { api } from './api'
 import { I18nProvider, useI18n, useT, type DictKey } from './i18n'
 import type {
   AdbUpdates,
+  AccentId,
   AppEntry,
   AppSnapshot,
   BundleInspect,
@@ -16,6 +17,7 @@ import type {
   LogRecord,
   MdnsService,
   ScreenshotRef,
+  ThemeMode,
 } from './types'
 
 type Page = 'devices' | 'apps' | 'installer' | 'files' | 'shell' | 'logcat' | 'degoogle' | 'settings'
@@ -37,6 +39,26 @@ function formatUptime(seconds: number): string {
   if (minutes < 60) return `${minutes}m ${seconds % 60}s`
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
 }
+
+function prefersDark(): boolean {
+  return (
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  )
+}
+
+function resolveThemeMode(mode: string): 'dark' | 'light' {
+  if (mode === 'dark' || mode === 'light') return mode
+  return prefersDark() ? 'dark' : 'light'
+}
+
+const ACCENTS: { id: AccentId; label: string; color: string }[] = [
+  { id: 'emerald', label: 'Emerald', color: '#3ddc84' },
+  { id: 'violet', label: 'Violet', color: '#a78bfa' },
+  { id: 'nebula', label: 'Nebula', color: '#60a5fa' },
+  { id: 'amber', label: 'Amber', color: '#f59e0b' },
+  { id: 'crimson', label: 'Crimson', color: '#f43f5e' },
+]
 
 export default function App() {
   return (
@@ -64,7 +86,8 @@ function AppShell() {
 
   const applySnapshot = useCallback((next: AppSnapshot) => {
     setSnapshot(next)
-    document.documentElement.dataset.theme = next.runtime.theme
+    document.documentElement.dataset.theme = resolveThemeMode(next.runtime.theme)
+    document.documentElement.dataset.accent = next.settings.accent || 'emerald'
   }, [])
 
   const refresh = useCallback(async () => {
@@ -82,6 +105,19 @@ function AppShell() {
     const timer = window.setInterval(() => void refresh(), 2500)
     return () => window.clearInterval(timer)
   }, [refresh])
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return
+    const query = window.matchMedia('(prefers-color-scheme: dark)')
+    if (typeof query.addEventListener !== 'function') return
+    const onChange = () => {
+      if (snapshot && snapshot.runtime.theme === 'system') {
+        document.documentElement.dataset.theme = resolveThemeMode('system')
+      }
+    }
+    query.addEventListener('change', onChange)
+    return () => query.removeEventListener('change', onChange)
+  }, [snapshot])
 
   const selected = snapshot?.selectedDevice || ''
   const selectedDevice = useMemo(
@@ -2312,6 +2348,7 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
   const { lang, setLang } = useI18n()
   const [adbPath, setAdbPath] = useState(snapshot.settings.adbPath)
   const [theme, setTheme] = useState(snapshot.settings.theme)
+  const [accent, setAccent] = useState(snapshot.settings.accent)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState('')
   const [error, setError] = useState('')
@@ -2324,15 +2361,17 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
   useEffect(() => {
     setAdbPath(snapshot.settings.adbPath)
     setTheme(snapshot.settings.theme)
-  }, [snapshot.settings.adbPath, snapshot.settings.theme])
+    setAccent(snapshot.settings.accent)
+  }, [snapshot.settings.adbPath, snapshot.settings.theme, snapshot.settings.accent])
 
-  const save = async (patch: { adbPath?: string; theme?: 'dark' | 'light' }) => {
+  const save = async (patch: { adbPath?: string; theme?: ThemeMode; accent?: AccentId }) => {
     setSaving(true)
     setError('')
     setSaved('')
     try {
       await api.saveSettings(patch)
-      document.documentElement.dataset.theme = patch.theme ?? document.documentElement.dataset.theme
+      if (patch.theme) document.documentElement.dataset.theme = resolveThemeMode(patch.theme)
+      if (patch.accent) document.documentElement.dataset.accent = patch.accent
       await onChanged()
       setSaved(t('set.saved'))
       window.setTimeout(() => setSaved(''), 2000)
@@ -2397,8 +2436,32 @@ function SettingsPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChange
               >
                 {t('set.light')}
               </button>
+              <button
+                className={theme === 'system' ? 'active' : ''}
+                onClick={() => {
+                  setTheme('system')
+                  void save({ theme: 'system' })
+                }}
+              >
+                {t('set.system')}
+              </button>
             </div>
             {saved ? <span className="saved">{saved}</span> : null}
+          </div>
+          <div className="row" style={{ marginTop: 8, flexWrap: 'wrap' }}>
+            {ACCENTS.map((item) => (
+              <button
+                key={item.id}
+                className={`swatch${accent === item.id ? ' active' : ''}`}
+                onClick={() => {
+                  setAccent(item.id)
+                  void save({ accent: item.id })
+                }}
+              >
+                <span className="swatch-dot" style={{ background: item.color }} />
+                {item.label}
+              </button>
+            ))}
           </div>
         </div>
 

@@ -42,12 +42,22 @@ class BackendSettingsTests(unittest.TestCase):
 
     def test_defaults_roundtrip(self):
         settings = self.backend.save_settings({})
-        self.assertEqual(settings, {"adbPath": "", "theme": "dark"})
+        self.assertEqual(
+            settings, {"adbPath": "", "theme": "dark", "accent": "emerald"}
+        )
 
     def test_theme_validation(self):
         with self.assertRaises(DashboardError):
             self.backend.save_settings({"theme": "neon"})
         self.assertEqual(self.backend.save_settings({"theme": "light"})["theme"], "light")
+        self.assertEqual(self.backend.save_settings({"theme": "system"})["theme"], "system")
+
+    def test_accent_validation(self):
+        with self.assertRaises(DashboardError):
+            self.backend.save_settings({"accent": "rainbow"})
+        self.assertEqual(
+            self.backend.save_settings({"accent": "violet"})["accent"], "violet"
+        )
 
     def test_settings_persist_to_disk(self):
         self.backend.save_settings({"theme": "light", "adbPath": ""})

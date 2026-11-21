@@ -266,6 +266,7 @@ export const en = {
   'set.appearanceDesc': 'Choose the dashboard color theme.',
   'set.dark': 'Dark',
   'set.light': 'Light',
+  'set.system': 'System',
   'set.saved': 'Saved.',
   'set.language': 'Language',
   'set.languageDesc': 'Interface language.',

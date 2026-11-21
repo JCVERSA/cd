@@ -44,7 +44,8 @@ MAX_REQUEST_BYTES = 64 * 1024
 MAX_APK_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB streamed to disk, never buffered
 MAX_LOG_RECORDS = 500
 DEVICE_REFRESH_INTERVAL = 5.0
-VALID_THEMES = {"dark", "light"}
+VALID_THEMES = {"dark", "light", "system"}
+VALID_ACCENTS = {"emerald", "violet", "nebula", "amber", "crimson"}
 APP_VERSION = "1.0.0"
 PACKAGE_NAME_RE = re.compile(r"[A-Za-z0-9._]{1,255}\Z")
 APK_NAME_RE = re.compile(r"[^/\\:*?\"<>|\x00-\x1f]{1,200}\.apk\Z", re.IGNORECASE)
@@ -121,6 +122,7 @@ def default_settings() -> dict:
     return {
         "adb_path": "",
         "theme": "dark",
+        "accent": "emerald",
         "selected_device": "",
         "wifi_history": [],
     }
@@ -217,6 +219,10 @@ class DroidSlateBackend:
                 if payload["theme"] not in VALID_THEMES:
                     raise DashboardError("Unknown color theme.")
                 self._settings["theme"] = payload["theme"]
+            if "accent" in payload:
+                if payload["accent"] not in VALID_ACCENTS:
+                    raise DashboardError("Unknown accent color.")
+                self._settings["accent"] = payload["accent"]
             self._save_settings()
             return self._public_settings()
 
@@ -224,6 +230,7 @@ class DroidSlateBackend:
         return {
             "adbPath": self._settings.get("adb_path", ""),
             "theme": self._settings.get("theme", "dark"),
+            "accent": self._settings.get("accent", "emerald"),
         }
 
     # -- logging -----------------------------------------------------------

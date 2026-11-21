@@ -271,6 +271,7 @@ export const fr: Record<keyof typeof en, string> = {
   'set.appearanceDesc': 'Choisissez le thème de couleur du tableau de bord.',
   'set.dark': 'Sombre',
   'set.light': 'Clair',
+  'set.system': 'Système',
   'set.saved': 'Enregistré.',
   'set.language': 'Langue',
   'set.languageDesc': 'Langue de l’interface.',
