@@ -9,6 +9,9 @@ import type {
   ScreenshotRef,
   Settings,
   TransferResult,
+  WifiConnectResult,
+  WifiIpResult,
+  WifiTcpResult,
 } from './types'
 
 const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
@@ -270,5 +273,27 @@ export const api = {
   async deGoogleUndo(payload: { disabled?: string[]; uninstalled?: string[] }): Promise<{ started: boolean; total: number }> {
     if (!isDesktopHost) throw new Error('DeGoogle is available in the desktop app.')
     return request('/api/v1/degoogle/undo', { method: 'POST', body: JSON.stringify(payload) })
+  },
+
+  // -- wireless (WiFi) ------------------------------------------------------
+
+  async wifiGetIp(): Promise<WifiIpResult> {
+    if (!isDesktopHost) throw new Error('WiFi connect is available in the desktop app.')
+    return request('/api/v1/wifi/get-ip', { method: 'POST', body: '{}' })
+  },
+
+  async wifiEnableTcp(port?: number): Promise<WifiTcpResult> {
+    if (!isDesktopHost) throw new Error('WiFi connect is available in the desktop app.')
+    return request('/api/v1/wifi/enable-tcp', { method: 'POST', body: JSON.stringify({ port }) })
+  },
+
+  async wifiConnect(ip: string, port?: number): Promise<WifiConnectResult> {
+    if (!isDesktopHost) throw new Error('WiFi connect is available in the desktop app.')
+    return request('/api/v1/wifi/connect', { method: 'POST', body: JSON.stringify({ ip, port }) })
+  },
+
+  async wifiDisconnect(ip: string, port?: number): Promise<WifiConnectResult> {
+    if (!isDesktopHost) throw new Error('WiFi connect is available in the desktop app.')
+    return request('/api/v1/wifi/disconnect', { method: 'POST', body: JSON.stringify({ ip, port }) })
   },
 }

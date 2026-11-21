@@ -391,6 +391,74 @@ class ADBManager:
         args = ["reboot"] if mode == "normal" else ["reboot", mode]
         return self.run(args, serial=serial, timeout=15)
 
+    # -- wireless (WiFi) ---------------------------------------------------
+
+    _WIFI_INET_RE = re.compile(r"inet\s+(\d{1,3}(?:\.\d{1,3}){3})")
+    _WIFI_SRC_RE = re.compile(r"\bsrc\s+(\d{1,3}(?:\.\d{1,3}){3})")
+
+    @staticmethod
+    def _valid_ipv4(candidate: str) -> bool:
+        parts = candidate.split(".")
+        if len(parts) != 4:
+            return False
+        for part in parts:
+            if not part.isdigit() or not 0 <= int(part) <= 255:
+                return False
+        return True
+
+    def get_wifi_ip(self, serial: str, *, timeout: int = 20) -> str | None:
+        """Best-effort Wi-Fi IPv4 of the device (wlan0 only — never a
+        mobile-data address).  Primary: ``ip -f inet addr show wlan0``
+        (reference implementation); fallback: ``ip route`` with a ``src``
+        field (the method recommended by the official scrcpy docs)."""
+        result = self.run(
+            ["shell", "ip", "-f", "inet", "addr", "show", "wlan0"],
+            serial=serial, timeout=timeout,
+        )
+        if result.get("success"):
+            match = self._WIFI_INET_RE.search(result.get("stdout", ""))
+            if match and self._valid_ipv4(match.group(1)):
+                return match.group(1)
+        result = self.run(["shell", "ip", "route"], serial=serial, timeout=timeout)
+        if result.get("success"):
+            for line in result.get("stdout", "").splitlines():
+                if "wlan0" not in line:
+                    continue
+                match = self._WIFI_SRC_RE.search(line)
+                if match and self._valid_ipv4(match.group(1)):
+                    return match.group(1)
+        return None
+
+    def enable_tcpip(self, serial: str, port: int = 5555) -> dict:
+        """Restart adbd in TCP/IP mode (classic flow: USB first, same Wi-Fi)."""
+        return self.run(["tcpip", str(port)], serial=serial, timeout=20)
+
+    def adb_connect(self, ip: str, port: int = 5555) -> dict:
+        """``adb connect ip:port`` → ``{success, target, output}``."""
+        target = f"{ip}:{port}"
+        result = self.run(["connect", target], timeout=15)
+        combined = f"{result.get('stdout', '')} {result.get('stderr', '')}".strip()
+        lowered = combined.lower()
+        ok = (
+            result.get("success")
+            and "connected" in lowered
+            and not any(token in lowered for token in ("failed", "cannot", "unable", "error:"))
+        )
+        if not combined:
+            combined = f"Connected to {target}" if ok else "adb connect returned no output."
+        return {"success": ok, "target": target, "output": combined}
+
+    def adb_disconnect(self, ip: str, port: int = 5555) -> dict:
+        """``adb disconnect ip:port`` (idempotent: already-closed is fine)."""
+        target = f"{ip}:{port}"
+        result = self.run(["disconnect", target], timeout=15)
+        combined = f"{result.get('stdout', '')} {result.get('stderr', '')}".strip()
+        lowered = combined.lower()
+        ok = result.get("success") and "cannot" not in lowered and "error:" not in lowered
+        if not combined:
+            combined = f"Disconnected {target}" if ok else "adb disconnect returned no output."
+        return {"success": ok, "target": target, "output": combined}
+
     # -- files -------------------------------------------------------------
 
     def list_device_dir(self, serial: str, path: str) -> dict:

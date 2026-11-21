@@ -34,6 +34,11 @@ React 19 + TypeScript + Vite interface.
   runs as a single background job with progress, and every removal is
   recorded per device for one-click undo (`pm enable` /
   `pm install-existing` + enable).
+- **WiFi (no cable)** — ADB over the network in three steps:
+  **Get IP** (reads the phone's wlan0 address, with `ip route` fallback),
+  **Enable TCP/IP** (`adb tcpip 5555` over USB), then unplug and
+  **Connect** (`adb connect IP:5555`) — plus Disconnect when done.
+  Strict IPv4/port validation server-side; same Wi-Fi network required.
 - **Shell** — run any `adb shell` command with streaming output and
   command history (↑/↓). A leading `adb shell` is stripped automatically.
 - **Logcat** — live `logcat` streaming with text filtering and follow mode.

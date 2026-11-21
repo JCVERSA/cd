@@ -48,6 +48,12 @@ SHOT_NAME_RE = re.compile(r"screenshot_\d{8}_\d{6}(_\d+)?\.png\Z")
 REBOOT_MODES = ("normal", "recovery", "bootloader")
 
 
+_IPV4_RE = re.compile(
+    r"^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}"
+    r"(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$"
+)
+
+
 class DashboardError(RuntimeError):
     def __init__(self, message: str, status: int = HTTPStatus.BAD_REQUEST):
         super().__init__(message)
@@ -871,6 +877,75 @@ class DroidSlateBackend:
                                  "finished": time.strftime("%Y-%m-%d %H:%M:%S")},
                 })
 
+    # -- wireless (WiFi) ---------------------------------------------------
+
+    @staticmethod
+    def _require_ip(value: object) -> str:
+        if not isinstance(value, str) or len(value) > 45:
+            raise DashboardError("Enter a valid IPv4 address (e.g. 192.168.1.25).")
+        candidate = value.strip()
+        if not _IPV4_RE.match(candidate):
+            raise DashboardError("Enter a valid IPv4 address (e.g. 192.168.1.25).")
+        return candidate
+
+    @staticmethod
+    def _wifi_port(value: object) -> int:
+        if value in (None, ""):
+            return 5555
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            raise DashboardError("The port must be a number between 1 and 65535.")
+        try:
+            port = int(value)
+        except (TypeError, ValueError):
+            raise DashboardError("The port must be a number between 1 and 65535.") from None
+        if not 1 <= port <= 65535:
+            raise DashboardError("The port must be a number between 1 and 65535.")
+        return port
+
+    def wifi_get_ip(self, payload: dict | None = None) -> dict:
+        """Read the selected device's Wi-Fi IPv4 (USB-selected device required)."""
+        serial = self._require_device()
+        ip = self.adb.get_wifi_ip(serial)
+        if not ip:
+            raise DashboardError(
+                "No Wi-Fi IP found. Turn on Wi-Fi on the phone (same network "
+                "as this computer) and try again.", 404,
+            )
+        return {"ip": ip, "serial": serial}
+
+    def wifi_enable_tcp(self, payload: dict | None = None) -> dict:
+        """Switch adbd to TCP/IP mode (classic ``adb tcpip 5555`` flow)."""
+        serial = self._require_device()
+        port = self._wifi_port((payload or {}).get("port"))
+        result = self.adb.enable_tcpip(serial, port)
+        if not result.get("success"):
+            detail = (result.get("stderr") or result.get("stdout") or "").strip()
+            raise DashboardError(
+                f"Could not enable TCP/IP: {detail[:300] or 'adb tcpip failed.'}", 500,
+            )
+        return {"port": port, "serial": serial}
+
+    def wifi_connect(self, payload: dict) -> dict:
+        """``adb connect ip:port`` — host-level, no selected device needed."""
+        ip = self._require_ip(payload.get("ip"))
+        port = self._wifi_port(payload.get("port"))
+        result = self.adb.adb_connect(ip, port)
+        if not result["success"]:
+            raise DashboardError(
+                f"Connection to {result['target']} failed: {result['output'][:300]}", 500,
+            )
+        return {"target": result["target"], "output": result["output"]}
+
+    def wifi_disconnect(self, payload: dict) -> dict:
+        ip = self._require_ip(payload.get("ip"))
+        port = self._wifi_port(payload.get("port"))
+        result = self.adb.adb_disconnect(ip, port)
+        if not result["success"]:
+            raise DashboardError(
+                f"Could not disconnect {result['target']}: {result['output'][:300]}", 500,
+            )
+        return {"target": result["target"], "output": result["output"]}
+
     # -- shell -------------------------------------------------------------
 
     def run_shell(self, payload: dict) -> dict:
@@ -1183,6 +1258,14 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
                 result = self.app.backend.degoogle_run(self._parse_json())
             elif self.command == "POST" and path == "/api/v1/degoogle/undo":
                 result = self.app.backend.degoogle_undo(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/wifi/get-ip":
+                result = self.app.backend.wifi_get_ip(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/wifi/enable-tcp":
+                result = self.app.backend.wifi_enable_tcp(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/wifi/connect":
+                result = self.app.backend.wifi_connect(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/wifi/disconnect":
+                result = self.app.backend.wifi_disconnect(self._parse_json())
             else:
                 raise DashboardError("Endpoint not found.", 404)
             self._json(200, result)

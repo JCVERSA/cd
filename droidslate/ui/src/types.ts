@@ -116,6 +116,21 @@ export interface DeGoogleStatus {
   job: DeGoogleJob
 }
 
+export interface WifiIpResult {
+  ip: string
+  serial: string
+}
+
+export interface WifiTcpResult {
+  port: number
+  serial: string
+}
+
+export interface WifiConnectResult {
+  target: string
+  output: string
+}
+
 export interface DeviceInfo {
   Model: string
   Manufacturer: string

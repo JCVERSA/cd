@@ -45,6 +45,10 @@ const mockApi = vi.hoisted(() => ({
   deGoogleStatus: vi.fn(),
   deGoogleRun: vi.fn(),
   deGoogleUndo: vi.fn(),
+  wifiGetIp: vi.fn(),
+  wifiEnableTcp: vi.fn(),
+  wifiConnect: vi.fn(),
+  wifiDisconnect: vi.fn(),
 }))
 
 vi.mock('./api', () => ({ api: mockApi }))
@@ -200,5 +204,27 @@ describe('DroidSlate app shell', () => {
     expect(unsafe).not.toBeNull()
     // raw package id kept in the title attribute next to the friendly name
     expect(unsafe?.querySelector('span[title="com.android.vending"]')).not.toBeNull()
+  })
+
+  it('offers the WiFi no-cable flow on the Devices page', async () => {
+    mockApi.wifiGetIp.mockResolvedValue({ ip: '192.168.1.25', serial: 'emulator-5554' })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+
+    expect(screen.getByText('WiFi (no cable)')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Get IP' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Enable TCP/IP' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Connect' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Disconnect' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Get IP' }))
+    await vi.waitFor(() => {
+      expect(mockApi.wifiGetIp).toHaveBeenCalledTimes(1)
+      expect((screen.getByLabelText('Device IP') as HTMLInputElement).value).toBe('192.168.1.25')
+    })
+    expect(
+      screen.getByText('Found device IP: 192.168.1.25 — now click Enable TCP/IP.'),
+    ).toBeInTheDocument()
   })
 })

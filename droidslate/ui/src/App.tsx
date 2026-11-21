@@ -142,6 +142,10 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
   const [shot, setShot] = useState<ScreenshotRef | null>(null)
   const [rebootMode, setRebootMode] = useState<'normal' | 'recovery' | 'bootloader'>('normal')
   const [actionBusy, setActionBusy] = useState('')
+  const [wifiIp, setWifiIp] = useState('')
+  const [wifiBusy, setWifiBusy] = useState('')
+  const [wifiStatus, setWifiStatus] = useState('')
+  const [wifiStatusKind, setWifiStatusKind] = useState<'ok' | 'error'>('ok')
   const selected = snapshot.selectedDevice
 
   useEffect(() => {
@@ -184,6 +188,44 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
       setMessage(err instanceof Error ? err.message : String(err))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const wifiAction = async (action: 'get-ip' | 'enable-tcp' | 'connect' | 'disconnect') => {
+    setWifiBusy(action)
+    setWifiStatus('')
+    try {
+      if (action === 'get-ip') {
+        const result = await api.wifiGetIp()
+        setWifiIp(result.ip)
+        setWifiStatusKind('ok')
+        setWifiStatus(`Found device IP: ${result.ip} — now click Enable TCP/IP.`)
+      } else if (action === 'enable-tcp') {
+        const result = await api.wifiEnableTcp()
+        setWifiStatusKind('ok')
+        setWifiStatus(
+          `Wi-Fi mode enabled on port ${result.port} — you can unplug USB now, then Connect.`,
+        )
+      } else if (action === 'connect') {
+        const ip = wifiIp.trim()
+        if (!ip) throw new Error('Enter the device IP first (Get IP fills it automatically).')
+        const result = await api.wifiConnect(ip)
+        setWifiStatusKind('ok')
+        setWifiStatus(`Connected to ${result.target} — it now appears in the device list above.`)
+        await onChanged()
+      } else {
+        const ip = wifiIp.trim()
+        if (!ip) throw new Error('Enter the device IP to disconnect.')
+        const result = await api.wifiDisconnect(ip)
+        setWifiStatusKind('ok')
+        setWifiStatus(`Disconnected ${result.target}.`)
+        await onChanged()
+      }
+    } catch (err) {
+      setWifiStatusKind('error')
+      setWifiStatus(err instanceof Error ? err.message : String(err))
+    } finally {
+      setWifiBusy('')
     }
   }
 
@@ -324,6 +366,62 @@ function DevicesPage({ snapshot, onChanged }: { snapshot: AppSnapshot; onChanged
             ) : (
               <div className="hint" style={{ marginTop: 10 }}>
                 No screenshot yet — capture the current screen to save it as a PNG.
+              </div>
+            )}
+          </div>
+        ) : null}
+        {selected ? (
+          <div className="settings-card" style={{ marginTop: 16 }}>
+            <h2>WiFi (no cable)</h2>
+            <div className="desc">
+              One-time USB flow: <strong>Get IP</strong> → <strong>Enable TCP/IP</strong> →
+              unplug the cable → <strong>Connect</strong>. Phone and computer must share the
+              same Wi-Fi network.
+            </div>
+            <div className="row" style={{ marginBottom: 8 }}>
+              <input
+                className="input"
+                style={{ maxWidth: 220 }}
+                value={wifiIp}
+                placeholder="192.168.1.25"
+                aria-label="Device IP"
+                onChange={(event) => setWifiIp(event.target.value)}
+              />
+              <button
+                className="btn"
+                disabled={Boolean(wifiBusy)}
+                onClick={() => void wifiAction('get-ip')}
+              >
+                {wifiBusy === 'get-ip' ? 'Reading…' : 'Get IP'}
+              </button>
+              <button
+                className="btn"
+                disabled={Boolean(wifiBusy)}
+                onClick={() => void wifiAction('enable-tcp')}
+              >
+                {wifiBusy === 'enable-tcp' ? 'Enabling…' : 'Enable TCP/IP'}
+              </button>
+              <button
+                className="btn primary"
+                disabled={Boolean(wifiBusy)}
+                onClick={() => void wifiAction('connect')}
+              >
+                {wifiBusy === 'connect' ? 'Connecting…' : 'Connect'}
+              </button>
+              <button
+                className="btn"
+                disabled={Boolean(wifiBusy)}
+                onClick={() => void wifiAction('disconnect')}
+              >
+                {wifiBusy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}
+              </button>
+            </div>
+            {wifiStatus ? (
+              <div className={wifiStatusKind === 'error' ? 'error' : 'hint'}>{wifiStatus}</div>
+            ) : (
+              <div className="hint">
+                TCP/IP mode lasts until the phone reboots. Legacy ADB over TCP is
+                unencrypted — only use it on a trusted network.
               </div>
             )}
           </div>
