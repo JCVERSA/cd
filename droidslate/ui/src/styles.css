@@ -1077,3 +1077,35 @@ textarea {
   border-radius: 50%;
   display: inline-block;
 }
+
+/* ---------------- Mirror ---------------- */
+
+.mirror-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.mirror-grid h3 {
+  margin: 4px 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.mirror-logs {
+  margin: 0;
+  padding: 10px 12px;
+  min-height: 80px;
+  max-height: 240px;
+  overflow: auto;
+  background: var(--panel-2, rgba(0, 0, 0, 0.25));
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

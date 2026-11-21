@@ -317,6 +317,36 @@ jobs:
           $version = (& (Join-Path $dest 'adb.exe') version) -join ' | '
           "### Bundled adb`n``$version``" | Add-Content $env:GITHUB_STEP_SUMMARY
 
+      - name: Download and verify scrcpy
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tag = 'v5.0.1'
+          $asset = "scrcpy-win64-$tag.zip"
+          $zip = Join-Path $env:RUNNER_TEMP $asset
+          $sums = Join-Path $env:RUNNER_TEMP 'SHA256SUMS.txt'
+          $extract = Join-Path $env:RUNNER_TEMP 'scrcpy'
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/Genymobile/scrcpy/releases/download/$tag/$asset" -OutFile $zip
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/Genymobile/scrcpy/releases/download/$tag/SHA256SUMS.txt" -OutFile $sums
+          $line = Get-Content $sums | Where-Object { $_ -match [regex]::Escape($asset) } | Select-Object -First 1
+          if (-not $line) { throw "No checksum entry for $asset in SHA256SUMS.txt" }
+          $expected = ($line -split '\s+')[0].ToLowerInvariant()
+          $actual = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "scrcpy checksum mismatch: $actual != $expected" }
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          $src = Join-Path $extract "scrcpy-win64-$tag"
+          if (-not (Test-Path $src)) { throw "Unexpected scrcpy archive layout in $extract" }
+          $dest = './droidslate/scrcpy-bin'
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item (Join-Path $src '*') $dest -Recurse -Force
+          # Ship ONE adb: drop scrcpy's copy so our bundled adb-bin wins on
+          # PATH (a single adb server avoids "daemon version mismatch" fights).
+          Remove-Item (Join-Path $dest 'adb.exe') -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $dest 'AdbWinApi.dll') -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $dest 'AdbWinUsbApi.dll') -ErrorAction SilentlyContinue
+          $version = (& (Join-Path $dest 'scrcpy.exe') --version) -join ' | '
+          "### Bundled scrcpy`n``$version``" | Add-Content $env:GITHUB_STEP_SUMMARY
+
       - name: Run Windows Python tests
         working-directory: droidslate
         run: python -m unittest discover -s tests -v

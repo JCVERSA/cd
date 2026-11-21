@@ -10,6 +10,8 @@ release/
 packaging/MicrosoftEdgeWebview2Setup.exe
 # Downloaded by CI (and optionally by local builds) from Google's platform-tools.
 adb-bin/
+# Downloaded by CI from the official scrcpy releases for the Mirror tab.
+scrcpy-bin/
 debug.log
 ui-error.log
 # Runtime state written next to the source checkout in dev mode.

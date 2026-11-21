@@ -9,8 +9,11 @@ import type {
   DeviceInfo,
   DirListing,
   MdnsService,
+  MirrorStatus,
+  MirrorVersion,
   PickResult,
   ScreenshotRef,
+  ScrcpyConfig,
   Settings,
   TransferResult,
   WifiConnectResult,
@@ -404,6 +407,41 @@ export const api = {
     return request('/api/v1/installer/install', {
       method: 'POST',
       body: JSON.stringify({ filename, options }),
+    })
+  },
+
+  async mirrorVersion(): Promise<MirrorVersion> {
+    // The web preview has no bundled scrcpy: report it as missing.
+    if (!isDesktopHost) return { found: false, path: null, version: null }
+    return request('/api/v1/mirror/version')
+  },
+
+  async mirrorStart(serial: string, config: ScrcpyConfig): Promise<{ ok: boolean; pid: number }> {
+    if (!isDesktopHost) throw new Error('Mirror is available in the desktop app.')
+    return request('/api/v1/mirror/start', {
+      method: 'POST',
+      body: JSON.stringify({ serial, config }),
+    })
+  },
+
+  async mirrorStop(serial: string): Promise<{ ok: boolean; serial: string; running: boolean }> {
+    if (!isDesktopHost) throw new Error('Mirror is available in the desktop app.')
+    return request('/api/v1/mirror/stop', {
+      method: 'POST',
+      body: JSON.stringify({ serial }),
+    })
+  },
+
+  async mirrorStatus(): Promise<MirrorStatus> {
+    if (!isDesktopHost) return { processes: {} }
+    return request('/api/v1/mirror/status')
+  },
+
+  async mirrorLogs(serial: string, limit = 200): Promise<{ serial: string; lines: string[] }> {
+    if (!isDesktopHost) return { serial, lines: [] }
+    return request('/api/v1/mirror/logs', {
+      method: 'POST',
+      body: JSON.stringify({ serial, limit }),
     })
   },
 }

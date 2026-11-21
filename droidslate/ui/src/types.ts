@@ -212,3 +212,38 @@ export interface DeviceInfo {
   Serial: string
   CPU: string
 }
+
+// -- Mirror (scrcpy) -------------------------------------------------------
+
+export interface MirrorVersion {
+  found: boolean
+  path: string | null
+  version: string | null
+}
+
+export interface MirrorProcess {
+  pid: number
+  running: boolean
+}
+
+export interface MirrorStatus {
+  processes: Record<string, MirrorProcess>
+}
+
+export interface ScrcpyConfig {
+  codec: 'h264' | 'h265'
+  audio: boolean
+  audioCodec: 'opus' | 'aac' | 'flac' | 'raw'
+  bitrate: number
+  maxSize: number
+  fps: number
+  rotation: '0' | '1' | '2' | '3'
+  alwaysOnTop: boolean
+  fullscreen: boolean
+  borderless: boolean
+  stayAwake: boolean
+  turnScreenOff: boolean
+  keepActive: boolean
+  record: boolean
+  recordPath: string
+}

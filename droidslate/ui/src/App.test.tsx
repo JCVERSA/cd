@@ -60,6 +60,11 @@ const mockApi = vi.hoisted(() => ({
   uploadBundle: vi.fn(),
   inspectBundle: vi.fn(),
   installBundle: vi.fn(),
+  mirrorVersion: vi.fn(),
+  mirrorStart: vi.fn(),
+  mirrorStop: vi.fn(),
+  mirrorStatus: vi.fn(),
+  mirrorLogs: vi.fn(),
 }))
 
 vi.mock('./api', () => ({ api: mockApi }))
@@ -67,6 +72,7 @@ vi.mock('./api', () => ({ api: mockApi }))
 afterEach(() => {
   window.localStorage.removeItem('droidslate.language')
   window.localStorage.removeItem('droidslate.onboarding')
+  window.localStorage.removeItem('droidslate.scrcpy')
   vi.restoreAllMocks()
 })
 
@@ -75,6 +81,9 @@ describe('DroidSlate app shell', () => {
     vi.clearAllMocks()
     mockApi.snapshot.mockResolvedValue(structuredClone(baseSnapshot))
     mockApi.latestScreenshot.mockResolvedValue({ none: true })
+    mockApi.mirrorVersion.mockResolvedValue({ found: false, path: null, version: null })
+    mockApi.mirrorStatus.mockResolvedValue({ processes: {} })
+    mockApi.mirrorLogs.mockResolvedValue({ serial: '', lines: [] })
     mockApi.deviceInfo.mockResolvedValue({
       Model: 'Pixel 8',
       Manufacturer: 'Google',
@@ -563,5 +572,58 @@ describe('DroidSlate app shell', () => {
     release(structuredClone(baseSnapshot))
     expect((await screen.findAllByText('Pixel 8')).length).toBeGreaterThan(0)
     expect(screen.queryByText('Connecting to DroidSlate…')).not.toBeInTheDocument()
+  })
+
+  it('mirrors the device: version, start, live logs, stop', async () => {
+    mockApi.mirrorVersion.mockResolvedValue({
+      found: true,
+      path: 'C:/DroidSlate/scrcpy-bin/scrcpy.exe',
+      version: '5.0.1',
+    })
+    mockApi.mirrorStart.mockResolvedValue({ ok: true, pid: 4242 })
+    mockApi.mirrorStop.mockResolvedValue({ ok: true, serial: 'emulator-5554', running: false })
+
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Mirror/ }))
+
+    expect(await screen.findByRole('heading', { name: 'Mirror' })).toBeInTheDocument()
+    expect(await screen.findByText('scrcpy 5.0.1')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Start mirror' }))
+    await waitFor(() =>
+      expect(mockApi.mirrorStart).toHaveBeenCalledWith(
+        'emulator-5554',
+        expect.objectContaining({ codec: 'h264', bitrate: 8, fps: 0 }),
+      ),
+    )
+
+    // The status poll (1.5 s) picks up the running session and streams its log.
+    mockApi.mirrorStatus.mockResolvedValue({
+      processes: { 'emulator-5554': { pid: 4242, running: true } },
+    })
+    mockApi.mirrorLogs.mockResolvedValue({
+      serial: 'emulator-5554',
+      lines: ['$ scrcpy -s emulator-5554', 'fake scrcpy up'],
+    })
+    expect(
+      await screen.findByText('Mirroring (pid 4242)', {}, { timeout: 4000 }),
+    ).toBeInTheDocument()
+    expect(await screen.findByText(/fake scrcpy up/, {}, { timeout: 4000 })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Stop' }))
+    await waitFor(() => expect(mockApi.mirrorStop).toHaveBeenCalledWith('emulator-5554'))
+  })
+
+  it('explains when the bundled scrcpy is missing', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findAllByText('Pixel 8')
+    await user.click(screen.getByRole('button', { name: /Mirror/ }))
+
+    expect(await screen.findByText(/scrcpy not found/)).toBeInTheDocument()
+    // Without the engine the start action stays unavailable.
+    expect(screen.getByRole('button', { name: 'Start mirror' })).toBeDisabled()
   })
 })

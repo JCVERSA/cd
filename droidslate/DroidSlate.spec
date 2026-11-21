@@ -19,6 +19,16 @@ if adb_bin.is_dir():
         if candidate.is_file():
             adb_data.append((str(candidate), 'adb-bin'))
 
+# Same idea for scrcpy: CI downloads the official win64 release into
+# scrcpy-bin/ so the Mirror tab works out of the box. Source checkouts
+# without that folder still run — the UI reports "scrcpy not found".
+scrcpy_bin = root / 'scrcpy-bin'
+scrcpy_data = []
+if scrcpy_bin.is_dir():
+    for candidate in sorted(scrcpy_bin.iterdir()):
+        if candidate.is_file():
+            scrcpy_data.append((str(candidate), 'scrcpy-bin'))
+
 a = Analysis(
     ['DroidSlate.pyw'],
     pathex=[str(root)],
@@ -27,7 +37,7 @@ a = Analysis(
         (str(root / 'ui_bundle'), 'ui_bundle'),
         (str(root / 'packaging' / 'DroidSlate.ico'), 'assets'),
         (str(root / 'packaging' / 'droidslate-logo.png'), 'assets'),
-    ] + adb_data + webview_data,
+    ] + adb_data + scrcpy_data + webview_data,
     hiddenimports=[
         'clr',
         'pythonnet',

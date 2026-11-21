@@ -16,14 +16,19 @@ import type {
   FileEntry,
   LogRecord,
   MdnsService,
+  MirrorProcess,
+  MirrorStatus,
+  MirrorVersion,
   ScreenshotRef,
+  ScrcpyConfig,
   ThemeMode,
 } from './types'
 
-type Page = 'devices' | 'apps' | 'installer' | 'files' | 'shell' | 'logcat' | 'degoogle' | 'settings'
+type Page = 'devices' | 'mirror' | 'apps' | 'installer' | 'files' | 'shell' | 'logcat' | 'degoogle' | 'settings'
 
 const NAV: { id: Page; labelKey: DictKey; glyph: string }[] = [
   { id: 'devices', labelKey: 'nav.devices', glyph: '▣' },
+  { id: 'mirror', labelKey: 'nav.mirror', glyph: '▷' },
   { id: 'apps', labelKey: 'nav.apps', glyph: '▦' },
   { id: 'installer', labelKey: 'nav.installer', glyph: '⬇' },
   { id: 'files', labelKey: 'nav.files', glyph: '◫' },
@@ -249,6 +254,8 @@ function AppShell() {
         {snapshot ? (
           page === 'devices' ? (
             <DevicesPage snapshot={snapshot} onChanged={refresh} />
+          ) : page === 'mirror' ? (
+            <MirrorPage snapshot={snapshot} />
           ) : page === 'apps' ? (
             <AppsPage snapshot={snapshot} />
           ) : page === 'installer' ? (
@@ -309,6 +316,358 @@ function AppShell() {
         </div>
       ) : null}
     </div>
+  )
+}
+
+/* ---------------- Mirror ---------------- */
+
+const MIRROR_STORAGE_KEY = 'droidslate.scrcpy'
+
+const DEFAULT_MIRROR_CONFIG: ScrcpyConfig = {
+  codec: 'h264',
+  audio: true,
+  audioCodec: 'opus',
+  bitrate: 8,
+  maxSize: 0,
+  fps: 0,
+  rotation: '0',
+  alwaysOnTop: false,
+  fullscreen: false,
+  borderless: false,
+  stayAwake: false,
+  turnScreenOff: false,
+  keepActive: false,
+  record: false,
+  recordPath: '',
+}
+
+function loadMirrorConfig(): ScrcpyConfig {
+  try {
+    const raw = window.localStorage.getItem(MIRROR_STORAGE_KEY)
+    if (raw) return { ...DEFAULT_MIRROR_CONFIG, ...(JSON.parse(raw) as Partial<ScrcpyConfig>) }
+  } catch {
+    // Corrupt or unavailable storage — fall back to defaults.
+  }
+  return { ...DEFAULT_MIRROR_CONFIG }
+}
+
+function MirrorPage({ snapshot }: { snapshot: AppSnapshot }) {
+  const t = useT()
+  const device = snapshot.selectedDevice
+  const [config, setConfig] = useState<ScrcpyConfig>(loadMirrorConfig)
+  const [version, setVersion] = useState<MirrorVersion | null>(null)
+  const [status, setStatus] = useState<Record<string, MirrorProcess>>({})
+  const [logs, setLogs] = useState<string[]>([])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  const active = Boolean(status[device]?.running)
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MIRROR_STORAGE_KEY, JSON.stringify(config))
+    } catch {
+      // Private mode — the config simply won't persist.
+    }
+  }, [config])
+
+  useEffect(() => {
+    let cancelled = false
+    api
+      .mirrorVersion()
+      .then((value) => {
+        if (!cancelled) setVersion(value)
+      })
+      .catch(() => {
+        // Version is informational only; the page still works without it.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!device) return
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const next: MirrorStatus = await api.mirrorStatus()
+        if (cancelled) return
+        setStatus(next.processes)
+        if (next.processes[device]?.running) {
+          const session = await api.mirrorLogs(device, 200)
+          if (!cancelled) setLogs(session.lines)
+        }
+      } catch {
+        // Transient poll failure — the next tick retries.
+      }
+    }
+    void tick()
+    const id = window.setInterval(() => void tick(), 1500)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [device])
+
+  const update = <K extends keyof ScrcpyConfig>(key: K, value: ScrcpyConfig[K]) => {
+    setConfig((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const start = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await api.mirrorStart(device, config)
+    } catch (exc) {
+      setError(t('mirror.failed', { error: exc instanceof Error ? exc.message : String(exc) }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const stop = async () => {
+    setBusy(true)
+    setError('')
+    try {
+      await api.mirrorStop(device)
+      setLogs([])
+    } catch (exc) {
+      setError(t('mirror.failed', { error: exc instanceof Error ? exc.message : String(exc) }))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const startDisabled = !device || busy || active || (version !== null && !version.found)
+
+  return (
+    <section>
+      <h1>{t('mirror.title')}</h1>
+      <p className="hint">{t('mirror.sub')}</p>
+      {version?.found ? (
+        <p className="hint">{t('mirror.version', { version: version.version ?? '?' })}</p>
+      ) : null}
+      {version && !version.found ? <p className="error">{t('mirror.notFound')}</p> : null}
+      {!device ? <p className="hint">{t('mirror.noDevice')}</p> : null}
+      {error ? <p className="error">{error}</p> : null}
+
+      <div className="row" style={{ marginBottom: 14 }}>
+        <button className="btn primary" disabled={startDisabled} onClick={() => void start()}>
+          {t('mirror.start')}
+        </button>
+        <button
+          className="btn danger"
+          disabled={!device || busy || !active}
+          onClick={() => void stop()}
+        >
+          {t('mirror.stop')}
+        </button>
+        {active ? (
+          <span className="hint">{t('mirror.running', { pid: status[device]?.pid ?? 0 })}</span>
+        ) : null}
+      </div>
+
+      <div className="mirror-grid">
+        <div>
+          <h3>{t('mirror.video')}</h3>
+          <div className="field">
+            <label htmlFor="mirror-codec">{t('mirror.codec')}</label>
+            <select
+              id="mirror-codec"
+              value={config.codec}
+              disabled={active}
+              onChange={(event) => update('codec', event.target.value as ScrcpyConfig['codec'])}
+            >
+              <option value="h264">H.264</option>
+              <option value="h265">H.265</option>
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="mirror-bitrate">{t('mirror.bitrate')}</label>
+            <select
+              id="mirror-bitrate"
+              value={config.bitrate}
+              disabled={active}
+              onChange={(event) => update('bitrate', Number(event.target.value))}
+            >
+              {[2, 4, 8, 12, 16, 24, 50].map((value) => (
+                <option key={value} value={value}>
+                  {t('mirror.mbps', { n: value })}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="mirror-fps">{t('mirror.fps')}</label>
+            <select
+              id="mirror-fps"
+              value={config.fps}
+              disabled={active}
+              onChange={(event) => update('fps', Number(event.target.value))}
+            >
+              <option value={0}>{t('mirror.fpsAuto')}</option>
+              {[30, 60, 90, 120].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="mirror-size">{t('mirror.maxSize')}</label>
+            <select
+              id="mirror-size"
+              value={config.maxSize}
+              disabled={active}
+              onChange={(event) => update('maxSize', Number(event.target.value))}
+            >
+              <option value={0}>{t('mirror.sizeAuto')}</option>
+              {[800, 1280, 1920, 2560].map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="field">
+            <label htmlFor="mirror-rotation">{t('mirror.rotation')}</label>
+            <select
+              id="mirror-rotation"
+              value={config.rotation}
+              disabled={active}
+              onChange={(event) => update('rotation', event.target.value as ScrcpyConfig['rotation'])}
+            >
+              <option value="0">{t('mirror.rot0')}</option>
+              <option value="1">{t('mirror.rot1')}</option>
+              <option value="2">{t('mirror.rot2')}</option>
+              <option value="3">{t('mirror.rot3')}</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <h3>{t('mirror.audio')}</h3>
+          <div className="field">
+            <label>
+              <input
+                type="checkbox"
+                checked={config.audio}
+                disabled={active}
+                onChange={(event) => update('audio', event.target.checked)}
+              />{' '}
+              {t('mirror.audio')}
+            </label>
+          </div>
+          <div className="field">
+            <label htmlFor="mirror-acodec">{t('mirror.codec')}</label>
+            <select
+              id="mirror-acodec"
+              value={config.audioCodec}
+              disabled={active || !config.audio}
+              onChange={(event) =>
+                update('audioCodec', event.target.value as ScrcpyConfig['audioCodec'])
+              }
+            >
+              <option value="opus">Opus</option>
+              <option value="aac">AAC</option>
+              <option value="flac">FLAC</option>
+              <option value="raw">Raw</option>
+            </select>
+          </div>
+
+          <h3>{t('mirror.window')}</h3>
+          <div className="field">
+            <label>
+              <input
+                type="checkbox"
+                checked={config.alwaysOnTop}
+                disabled={active}
+                onChange={(event) => update('alwaysOnTop', event.target.checked)}
+              />{' '}
+              {t('mirror.alwaysOnTop')}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={config.fullscreen}
+                disabled={active}
+                onChange={(event) => update('fullscreen', event.target.checked)}
+              />{' '}
+              {t('mirror.fullscreen')}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={config.borderless}
+                disabled={active}
+                onChange={(event) => update('borderless', event.target.checked)}
+              />{' '}
+              {t('mirror.borderless')}
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <h3>{t('mirror.behavior')}</h3>
+          <div className="field">
+            <label>
+              <input
+                type="checkbox"
+                checked={config.stayAwake}
+                disabled={active}
+                onChange={(event) => update('stayAwake', event.target.checked)}
+              />{' '}
+              {t('mirror.stayAwake')}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={config.turnScreenOff}
+                disabled={active}
+                onChange={(event) => update('turnScreenOff', event.target.checked)}
+              />{' '}
+              {t('mirror.turnScreenOff')}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={config.keepActive}
+                disabled={active}
+                onChange={(event) => update('keepActive', event.target.checked)}
+              />{' '}
+              {t('mirror.keepActive')}
+            </label>
+          </div>
+
+          <h3>{t('mirror.record')}</h3>
+          <div className="field">
+            <label>
+              <input
+                type="checkbox"
+                checked={config.record}
+                disabled={active}
+                onChange={(event) => update('record', event.target.checked)}
+              />{' '}
+              {t('mirror.record')}
+            </label>
+            <label htmlFor="mirror-record-path">{t('mirror.recordPath')}</label>
+            <input
+              id="mirror-record-path"
+              className="input"
+              type="text"
+              value={config.recordPath}
+              disabled={active || !config.record}
+              placeholder={t('mirror.recordPathHint')}
+              onChange={(event) => update('recordPath', event.target.value)}
+            />
+          </div>
+        </div>
+      </div>
+
+      <h3>{t('mirror.logs')}</h3>
+      <pre className="mirror-logs">{logs.length ? logs.join('\n') : t('mirror.noLogs')}</pre>
+    </section>
   )
 }
 

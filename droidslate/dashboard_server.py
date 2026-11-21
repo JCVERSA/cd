@@ -29,6 +29,7 @@ import platform as platform_module
 from datetime import datetime, timezone
 
 from adb_manager import ADBManager, find_adb, parse_packages
+from scrcpy_manager import ScrcpyError, ScrcpyManager
 from bundle_inspect import BundleError, extract_entries, inspect_bundle, plan_install
 from degoogle import (
     ALL_SET,
@@ -154,6 +155,7 @@ class DroidSlateBackend:
         self.data_dir = os.path.abspath(data_dir)
         self.settings_path = os.path.join(self.data_dir, "settings.json")
         self.adb = adb or ADBManager()
+        self.scrcpy = ScrcpyManager()
         self.started_at = time.monotonic()
         self._lock = threading.RLock()
         self._logs: collections.deque[dict] = collections.deque(maxlen=MAX_LOG_RECORDS)
@@ -1271,6 +1273,53 @@ class DroidSlateBackend:
     def logcat_status(self) -> dict:
         return {"running": self.adb.logcat_running(), "serial": self.adb.logcat_serial()}
 
+    # -- mirror (scrcpy) ---------------------------------------------------
+
+    def mirror_version(self, payload: dict | None = None) -> dict:
+        """Locate the bundled scrcpy and report its version."""
+        return self.scrcpy.version()
+
+    def mirror_start(self, payload: dict | None = None) -> dict:
+        """Start a mirror session for ``serial`` (or the selected device)."""
+        payload = payload or {}
+        serial = payload.get("serial") or self._require_device()
+        if not isinstance(serial, str) or not serial.strip():
+            raise DashboardError("A device serial is required.", 400)
+        try:
+            result = self.scrcpy.start(serial, payload.get("config"))
+        except ScrcpyError as exc:
+            raise DashboardError(str(exc), exc.status) from exc
+        self.log("INFO", "MIRROR", f"Mirror session started for {serial} (pid {result.get('pid')}).")
+        return result
+
+    def mirror_stop(self, payload: dict | None = None) -> dict:
+        """Stop the mirror session for ``serial`` (idempotent)."""
+        payload = payload or {}
+        serial = payload.get("serial") or self._require_device()
+        if not isinstance(serial, str) or not serial.strip():
+            raise DashboardError("A device serial is required.", 400)
+        try:
+            result = self.scrcpy.stop(serial)
+        except ScrcpyError as exc:
+            raise DashboardError(str(exc), exc.status) from exc
+        self.log("INFO", "MIRROR", f"Mirror session stopped for {serial}.")
+        return result
+
+    def mirror_status(self, payload: dict | None = None) -> dict:
+        return {"processes": self.scrcpy.status()}
+
+    def mirror_logs(self, payload: dict | None = None) -> dict:
+        payload = payload or {}
+        serial = payload.get("serial") or self._require_device()
+        if not isinstance(serial, str) or not serial.strip():
+            raise DashboardError("A device serial is required.", 400)
+        try:
+            limit = int(payload.get("limit")) if payload.get("limit") is not None else 200
+        except (TypeError, ValueError):
+            limit = 200
+        limit = max(0, min(limit, 500))
+        return {"serial": serial, "lines": self.scrcpy.logs(serial, limit)}
+
     # -- updates & diagnostics ---------------------------------------------
 
     def updates_adb(self, payload: dict | None = None) -> dict:
@@ -1375,6 +1424,7 @@ class DroidSlateBackend:
     def close(self) -> None:
         self._stop_refresh.set()
         self.adb.stop_logcat()
+        self.scrcpy.shutdown()
 
 
 class _DroidSlateHTTPServer(ThreadingHTTPServer):
@@ -1643,6 +1693,16 @@ class DroidSlateRequestHandler(BaseHTTPRequestHandler):
                 result = self.app.backend.wifi_pair(self._parse_json())
             elif self.command == "POST" and path == "/api/v1/adb/restart":
                 result = self.app.backend.adb_restart(self._parse_json())
+            elif self.command == "GET" and path == "/api/v1/mirror/version":
+                result = self.app.backend.mirror_version()
+            elif self.command == "POST" and path == "/api/v1/mirror/start":
+                result = self.app.backend.mirror_start(self._parse_json())
+            elif self.command == "POST" and path == "/api/v1/mirror/stop":
+                result = self.app.backend.mirror_stop(self._parse_json())
+            elif self.command == "GET" and path == "/api/v1/mirror/status":
+                result = self.app.backend.mirror_status()
+            elif self.command == "POST" and path == "/api/v1/mirror/logs":
+                result = self.app.backend.mirror_logs(self._parse_json())
             else:
                 raise DashboardError("Endpoint not found.", 404)
             self._json(200, result)
