@@ -140,6 +140,7 @@ class DesktopPackagingTest(unittest.TestCase):
             "actions/setup-python": "ece7cb06caefa5fff74198d8649806c4678c61a1",
             "actions/setup-node": "a0853c24544627f65ddf259abe73b1d18a591444",
             "actions/upload-artifact": "cf430e030ddbb5b0abf93d22962f4752f3646cd9",
+            "actions/download-artifact": "37930b1c2abaa49bbe596cd826c3c89aef350131",
         }
         action_lines = [line.strip() for line in workflow.splitlines() if "uses:" in line]
         self.assertTrue(action_lines)
